@@ -510,7 +510,7 @@ export function launchModule(plainFile: string, options?: {
     inModule?: string;
     guidance?: string;
     model?: string;
-    onDelta?: (delta: string) => void;
+    onOutput?: (text: string) => void;
 }): Promise<Launch>;
 
 // @public

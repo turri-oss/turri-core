@@ -498,6 +498,7 @@ export interface Frontend {
     shows?: {
         pulseEnds?: boolean;
         notices?: boolean;
+        map?: boolean;
     };
     surface?: string;
     systemPrompt?(prompt: string, context: {
@@ -729,6 +730,16 @@ export interface LaunchedProcess {
     startedAt: number;
     // (undocumented)
     url?: string;
+}
+
+// @public
+export interface LaunchOptions {
+    again?: boolean;
+    chat?: string;
+    guidance?: string;
+    inModule?: string;
+    onOutput?(text: string): void;
+    signal?: AbortSignal;
 }
 
 // @public
@@ -1741,9 +1752,7 @@ export interface Turri {
     readonly launches: {
         list(): Launch[];
         running(): LaunchedProcess[];
-        launch(plainFile?: string, options?: {
-            chat?: string;
-        }): Promise<Launch>;
+        launch(plainFile?: string, options?: LaunchOptions): Promise<Launch>;
         followLogs(onLine: (name: string, line: string) => void, options?: {
             signal?: AbortSignal;
         }): Promise<void>;
@@ -1904,6 +1913,14 @@ export interface TurriEventMap {
     };
     launch: {
         launch: Launch;
+    };
+    launchOutput: {
+        launch: string;
+        codebase: string;
+        text: string;
+    };
+    map: {
+        pages: MarkedPage[];
     };
     notice: {
         notice: Notice;

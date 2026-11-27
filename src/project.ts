@@ -21,14 +21,14 @@ export function readDrift(plainFile: string, cwd = process.cwd()): DriftReport[]
 
 /**
  * Launch a module's code on its own, outside any session: the launch agent, on the codebase's coding model unless one is
- * named, follows the project's guidance - its words as they stream to `onDelta`. Resolves when the launch ends.
+ * named, follows the project's guidance - its words as they stream to `onOutput`. Resolves when the launch ends.
  */
-export async function launchModule(plainFile: string, options: { cwd?: string; inModule?: string; guidance?: string; model?: string; onDelta?: (delta: string) => void } = {}): Promise<Launch> {
+export async function launchModule(plainFile: string, options: { cwd?: string; inModule?: string; guidance?: string; model?: string; onOutput?: (text: string) => void } = {}): Promise<Launch> {
   const cwd = options.cwd ?? process.cwd();
   const file = resolve(cwd, plainFile);
   refuseTestPlainFile(file);
   const model = options.model ?? modelSpec(projectModels(configForSpec(file)).coding);
-  const track = createLaunchTrack({ cwd, run: (launch, code, signal, freed) => runLaunchAgent({ cwd, launch, code, signal, freed, model, ...(options.onDelta !== undefined ? { onDelta: options.onDelta } : {}) }) });
+  const track = createLaunchTrack({ cwd, run: (launch, code, signal, freed) => runLaunchAgent({ cwd, launch, code, signal, freed, model, ...(options.onOutput !== undefined ? { onDelta: options.onOutput } : {}) }) });
   const { launch } = track.request({ plainFile: file, ...(options.inModule !== undefined ? { inModule: options.inModule } : {}), ...(options.guidance !== undefined ? { guidance: options.guidance } : {}), cause: {} });
   return track.done(launch.id);
 }

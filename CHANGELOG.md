@@ -25,6 +25,8 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - A session's work loop runs with no chat open, on the config's models: the coding model builds, the harness model plans.
 - A fresh chat of the person's starts on the project's harness model.
 - `launches.followLogs` and `followLaunchedLogs` stop on a signal.
+- `launchOutput` events: each launch's agent's words as they stream. `launches.launch` takes `onOutput`, `signal`, `guidance`, `inModule` and `again`, and `launchModule` `onOutput`.
+- `map` events: the spec map as it changes, for a front end that shows it (`Frontend.shows.map`) - its files looked at each second, its marks laid again as the work moves.
 - `settings.set` writes through `/settings`' own path: a path outside the project and a project-wide setting in a module's file refused, the legacy config copied first, a module's file and what overrides it said, and the harness model the session was opened with giving way to the file's, as the coding model does.
 - `/plain` loads no pi: an editor reads, highlights and checks \*\*\*plain with no agent runtime.
 

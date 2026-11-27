@@ -11,6 +11,7 @@ export {
   type ExternalSessions,
   type Frontend,
   type HaltTarget,
+  type LaunchOptions,
   type ManagedSessions,
   type Question,
   type RevealTarget,

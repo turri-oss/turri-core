@@ -108,9 +108,10 @@ export interface Frontend {
   systemPrompt?(prompt: string, context: { chat: string }): string;
   /**
    * What the front end shows the person itself, from the events: pulse ends and the sentinel's conclusions - the chat's
-   * agent is told them with no turn of its own - and notices, which a chat then never puts as a question.
+   * agent is told them with no turn of its own - notices, which a chat then never puts as a question, and the spec map,
+   * which the session then watches, sending `map` as it changes.
    */
-  shows?: { pulseEnds?: boolean; notices?: boolean };
+  shows?: { pulseEnds?: boolean; notices?: boolean; map?: boolean };
   /** The sentinel's own tools beside turri's - a front end's browser - and where the person watches it use them. */
   sentinel?: { tools?: ToolDefinition[]; surface?: string };
 }
@@ -164,6 +165,10 @@ export interface TurriEventMap {
   plan: Record<never, never>;
   /** A launch asked for, started, or ended. */
   launch: { launch: Launch };
+  /** A launch's agent said more, as it streams: `text` follows what it said before. */
+  launchOutput: { launch: string; codebase: string; text: string };
+  /** The spec map changed - sent while the front end shows it (`shows.map`). */
+  map: { pages: MarkedPage[] };
   /** Put to the person by the sentinel or turri - answer with `notices.answer`. */
   notice: { notice: Notice };
   /** Answered, dismissed or superseded. */
@@ -216,6 +221,22 @@ export interface WorkStatus {
 
 /** What to halt: a pulse, a module's planned pulses (by a planned row or the module's name), or what a launch started. */
 export type HaltTarget = { pulse: string; reason?: string } | { launched: string };
+
+/** How a launch is asked for, and what it tells as it runs. */
+export interface LaunchOptions {
+  /** The chat told when it ends. */
+  chat?: string;
+  /** How this project launches it, as the person said it - kept for the codebase's launches after it. */
+  guidance?: string;
+  /** The codebase to take, when modules built on this one branch. */
+  inModule?: string;
+  /** Launch it even when its code is out already. */
+  again?: boolean;
+  /** The launch agent's words as they stream - this launch's, and the one that took its place. */
+  onOutput?(text: string): void;
+  /** Stops the launch - and what it started - while it is under way. */
+  signal?: AbortSignal;
+}
 
 export interface SkillRunOptions {
   /** The module it is about, when it is about one. */
@@ -289,8 +310,11 @@ export interface Turri {
     list(): Launch[];
     /** What launches started and is running now, on this machine. */
     running(): LaunchedProcess[];
-    /** Launch a module's code; resolves when the launch ends. */
-    launch(plainFile?: string, options?: { chat?: string }): Promise<Launch>;
+    /**
+     * Launch a module's code - the config's module, none named - and resolve when the launch ends: or, superseded by a
+     * newer one as it waited, when that one ends. Already out, it resolves with the launch that put it out.
+     */
+    launch(plainFile?: string, options?: LaunchOptions): Promise<Launch>;
     /** Follow what launches started as it logs, a line at a time, until nothing runs or `signal` is aborted. */
     followLogs(onLine: (name: string, line: string) => void, options?: { signal?: AbortSignal }): Promise<void>;
   };
@@ -337,6 +361,9 @@ export interface Turri {
   [Symbol.asyncDispose](): Promise<void>;
 }
 
+/** How often a shown spec map's files are looked at for a change. */
+const MAP_EVERY_MS = 1000;
+
 /** The session open in this process, if one is. */
 let current: Turri | undefined;
 
@@ -372,13 +399,39 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     }
   };
 
+  let disposed = false;
+  const closed = new AbortController();
+  const map = createSpecMapSource({ files: () => defaultMapFiles(cwd), plan: () => plannedLoop(core.jobs)?.mapPlan() ?? { files: [], codebases: [] } });
+  // The spec map, watched while the front end shows it: sent as it changes - its files looked at each second, and the
+  // marks laid again as the work moves.
+  let mapShown = "";
+  let mapSoon: ReturnType<typeof setTimeout> | undefined;
+  const sendMap = () => {
+    mapSoon = undefined;
+    if (disposed) return;
+    const pages = map.read();
+    const print = JSON.stringify(pages);
+    if (print === mapShown) return;
+    mapShown = print;
+    emit({ type: "map", pages: snapshot(pages) });
+  };
+  const mapTimer = frontend?.shows?.map === true ? setInterval(sendMap, MAP_EVERY_MS) : undefined;
+  mapTimer?.unref();
+
   const ask = frontend?.ask;
   const dialogsFor = ask !== undefined ? (chat: string): AskUserIO => frontendDialogs(ask, chat) : undefined;
   const host: TurriHost = {
     onEvent: fromCore,
-    onJobChange: (job) => emit({ type: "job", job: snapshot(job), final: job.replacedBy === undefined && (job.status === "succeeded" || job.status === "failed" || job.status === "stopped") }),
-    onPlanChange: () => emit({ type: "plan" }),
+    onJobChange: (job) => {
+      emit({ type: "job", job: snapshot(job), final: job.replacedBy === undefined && (job.status === "succeeded" || job.status === "failed" || job.status === "stopped") });
+      mapMoved();
+    },
+    onPlanChange: () => {
+      emit({ type: "plan" });
+      mapMoved();
+    },
     onLaunch: (launch) => emit({ type: "launch", launch: snapshot(launch) }),
+    onLaunchOutput: (launch, text) => emit({ type: "launchOutput", launch: launch.id, codebase: launch.codebase, text }),
     onNotice: (notice) => emit({ type: "notice", notice: snapshot(notice) }),
     onNoticeOver: (notice) => emit({ type: "noticeOver", notice: snapshot(notice) }),
     onConcluded: ({ chat, ...conclusion }) => emit({ type: "concluded", chat, conclusion }),
@@ -463,6 +516,14 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     });
   }
 
+  /** The work moved: the map, while it is shown, marked again and sent if that changed it - once for a burst of changes. */
+  function mapMoved(): void {
+    if (frontend?.shows?.map !== true || disposed || mapSoon !== undefined) return;
+    map.remark();
+    mapSoon = setTimeout(sendMap, 50);
+    mapSoon.unref();
+  }
+
   /** A chat's entries and messages, as each is appended or delivered. */
   function follow(chat: string, session: AgentSession): void {
     session.subscribe((event) => {
@@ -521,7 +582,6 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     return state;
   };
 
-  const map = createSpecMapSource({ files: () => defaultMapFiles(cwd), plan: () => plannedLoop(core.jobs)?.mapPlan() ?? { files: [], codebases: [] } });
   const job = (id: string) => core.jobs.get(id);
 
   const work = (kind: "regenerate" | "conform") => async (request: Partial<WorkRequest> & WorkRunOptions & { chat?: string }) => {
@@ -637,9 +697,37 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       async launch(plainFile, asked = {}) {
         const track = sessionLaunchesOf(core.jobs)?.track;
         const file = plainFile ?? readProjectConfig(cwd).module;
-        if (track === undefined || file === undefined) throw new TurriError("refused", "Name the module's .plain file: config.turri.yaml names no module.");
-        const { launch, already } = track.request({ plainFile: resolve(cwd, file), cause: asked.chat !== undefined ? { chat: asked.chat } : {} });
-        return snapshot(already ? launch : await track.done(launch.id));
+        if (file === undefined) throw new TurriError("refused", "Name the module's .plain file: config.turri.yaml names no module.");
+        if (track === undefined) throw new TurriError("refused", "This session has no launch track.");
+        if (asked.signal?.aborted === true) throw new TurriError("aborted", "The launch was stopped before it was asked for.");
+        let request: ReturnType<typeof track.request>;
+        try {
+          request = track.request({
+            plainFile: resolve(cwd, file),
+            cause: asked.chat !== undefined ? { chat: asked.chat } : {},
+            ...(asked.guidance !== undefined ? { guidance: asked.guidance } : {}),
+            ...(asked.inModule !== undefined ? { inModule: asked.inModule } : {}),
+            ...(asked.again === true ? { again: true } : {}),
+          });
+        } catch (error) {
+          throw new TurriError("refused", error instanceof Error ? error.message : String(error), { cause: error });
+        }
+        const { launch, already } = request;
+        if (already) return snapshot(launch);
+        // Its output, and the output of each launch that takes its place, to `onOutput` - until it ends.
+        const ours = new Set([launch.id]);
+        const follow = (id: string): void => void track.replaced(id).then((next) => (ours.add(next.id), follow(next.id)));
+        follow(launch.id);
+        const onOutput = asked.onOutput;
+        const off = onOutput !== undefined ? turri.on("launchOutput", (event) => { if (ours.has(event.launch)) onOutput(event.text); }) : () => {};
+        const stop = () => void track.stop(launch.codebase);
+        asked.signal?.addEventListener("abort", stop, { once: true });
+        try {
+          return snapshot(await track.done(launch.id));
+        } finally {
+          off();
+          asked.signal?.removeEventListener("abort", stop);
+        }
       },
       followLogs: (onLine, asked = {}) => followLaunchedLogs(onLine, asked.signal !== undefined ? { signal: asked.signal } : {}),
     },
@@ -682,6 +770,8 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       if (disposed) return;
       disposed = true;
       closed.abort();
+      if (mapTimer !== undefined) clearInterval(mapTimer);
+      if (mapSoon !== undefined) clearTimeout(mapSoon);
       stopLedger();
       await core.dispose();
       await stopLaunched();
@@ -691,8 +781,6 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     },
     [Symbol.asyncDispose]: () => turri.dispose(),
   };
-  let disposed = false;
-  const closed = new AbortController();
 
   /** The models of every provider signed in to, from a chat's own registry - the one shown, else any open. */
   function reachableModels(): string[] {

@@ -681,6 +681,10 @@ export function createSpecMapSource(options: { files: () => string[]; plan: () =
       last = undefined;
       read = undefined;
     },
+    /** Lay the pages over the plan again on the next read - the work moved - the files read again only if they changed. */
+    remark(): void {
+      last = undefined;
+    },
   };
 }
 

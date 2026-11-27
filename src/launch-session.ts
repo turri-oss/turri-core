@@ -61,6 +61,8 @@ export function createSessionLaunches(options: {
   /** The launch agent's model: the coding model of the codebase. */
   model: (plainFile: string) => string | undefined;
   onChange: (launch: Launch) => void;
+  /** A launch's agent said more, as it streams. */
+  onOutput?: (launch: Launch, text: string) => void;
 }): SessionLaunches {
   const landedPulses = new Map<string, Landed>();
   const waiters = new Map<string, Array<() => void>>();
@@ -68,7 +70,8 @@ export function createSessionLaunches(options: {
     cwd: options.cwd,
     run: (launch, code, signal, freed) => {
       const model = options.model(launch.plainFile);
-      return runLaunchAgent({ launch, code, cwd: options.cwd, signal, freed, ...(model !== undefined ? { model } : {}) });
+      const onOutput = options.onOutput;
+      return runLaunchAgent({ launch, code, cwd: options.cwd, signal, freed, ...(model !== undefined ? { model } : {}), ...(onOutput !== undefined ? { onDelta: (text: string) => onOutput(launch, text) } : {}) });
     },
     onChange: options.onChange,
   });

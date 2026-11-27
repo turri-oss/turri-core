@@ -397,6 +397,13 @@ export function createTurriCore(
       }
       core?.launchChanged(launch);
     },
+    onOutput: (launch, text) => {
+      try {
+        host.onLaunchOutput?.(launch, text);
+      } catch {
+        /* a host that throws still has the launch run on */
+      }
+    },
   });
   sessionLaunches.set(jobs, launches);
   projectHooks.set(jobs, { ...(options.openProject !== undefined ? { openProject: options.openProject } : {}), ...(options.captured !== undefined ? { captured: options.captured } : {}) });

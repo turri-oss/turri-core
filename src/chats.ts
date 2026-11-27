@@ -96,6 +96,8 @@ export interface TurriHost {
    * request comes again, `stopped`.
    */
   onLaunch?(launch: Launch): void;
+  /** A launch's agent said more, as it streams. */
+  onLaunchOutput?(launch: Launch, text: string): void;
   /** What the sentinel puts to the person - and, `kind: "sentinel-start"`, whether to start it: the host draws it in the chat it names, and answers it with `answer`. */
   onNotice?(notice: Notice): void;
   /**
