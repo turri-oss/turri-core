@@ -25,6 +25,7 @@ import { reportFile as captureReportFile } from "./capture/state.ts";
 import { canReopen, REOPENED_AFTER_CAPTURE, reopenIn } from "./reopen.ts";
 import { duration, type CaptureStatus } from "./capture/progress.ts";
 import { createAskUserTool } from "./tools.ts";
+import { planWork } from "./work.ts";
 import { asksFromScratch, asksWholeChain, driftTool, endWait, fromWorkingDir, haltLaunched, haltTool, loopReply, startWait, toldByWaitingCall, MODEL_PARAM, regenerateTool, stopJob, WAIT_PARAM, whenBuildable, WORKING_DIR_PARAM } from "./loop-tools.ts";
 import { createWebTools } from "./regenerate/web.ts";
 import { describeGates, interruptedRun, runSkill, type SkillMessages } from "./genome.ts";
@@ -1695,7 +1696,8 @@ function conformTool(options: {
         const waiting = wait ? { jobs: options.jobs, wait: startWait(options.jobs) } : undefined;
         let statuses: ModuleStatus[];
         try {
-          statuses = await loop.conformance(plainFile, {
+          statuses = await planWork(loop, "conform", {
+            plainFile,
             ...(params.funcIds !== undefined ? { funcIds: params.funcIds } : {}),
             ...(model !== undefined ? { model } : {}),
             ...(params.one_by_one === true ? { separately: true } : {}),

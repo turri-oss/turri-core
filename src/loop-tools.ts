@@ -16,6 +16,7 @@ import { projectDirOf } from "./regenerate/paths.ts";
 import { findTestScripts } from "./regenerate/test-scripts.ts";
 import { scriptBeingWritten } from "./regenerate/scripts-being-written.ts";
 import { surfaceOf } from "./surface.ts";
+import { planWork } from "./work.ts";
 
 /**
  * The tools that act on the work loop - `regenerate`, `drift` and `halt` - defined once, for the conversation and for the
@@ -325,12 +326,12 @@ export function regenerateTool(options: LoopToolsOptions & { loop: (ctx: Extensi
         const waiting = wait && options.jobs !== undefined ? { jobs: options.jobs, wait: startWait(options.jobs) } : undefined;
         let statuses: ModuleStatus[];
         try {
-          statuses =
-            given.from_scratch !== undefined
-              ? await loop.fromScratch(plainFile, { ...request, chain: given.from_scratch === "chain" })
-              : again.length > 0
-                ? await loop.regenerateAgain(plainFile, again, request)
-                : await loop.bringUp(plainFile, request);
+          statuses = await planWork(loop, "regenerate", {
+            plainFile,
+            ...request,
+            ...(again.length > 0 ? { funcIds: again } : {}),
+            ...(given.from_scratch !== undefined ? { fromScratch: given.from_scratch } : {}),
+          });
         } catch (error) {
           if (waiting !== undefined) endWait(waiting.jobs, waiting.wait);
           throw error;
