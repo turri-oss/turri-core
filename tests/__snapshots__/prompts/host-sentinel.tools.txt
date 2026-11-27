@@ -1,0 +1,853 @@
+{
+  "name": "read",
+  "label": "read",
+  "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+  "promptSnippet": "Read file contents",
+  "promptGuidelines": [
+    "Use read to examine files instead of cat or sed."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "path"
+    ],
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+      },
+      "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+      }
+    }
+  }
+}
+{
+  "name": "write",
+  "label": "write",
+  "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+  "promptSnippet": "Create or overwrite files",
+  "promptGuidelines": [
+    "Use write only for new files or complete rewrites."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "path",
+      "content"
+    ],
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to write (relative or absolute)"
+      },
+      "content": {
+        "type": "string",
+        "description": "Content to write to the file"
+      }
+    }
+  }
+}
+{
+  "name": "edit",
+  "label": "edit",
+  "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+  "promptSnippet": "Make precise file edits with exact text replacement, including multiple disjoint edits in one call",
+  "promptGuidelines": [
+    "Use edit for targeted changes. Batch changes to one file in a single call.",
+    "Each edits[].oldText must exactly and uniquely match the original file. Keep matches short and non-overlapping; merge nearby changes without including large unchanged regions."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "path",
+      "edits"
+    ],
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to the file to edit (relative or absolute)"
+      },
+      "edits": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "oldText",
+            "newText"
+          ],
+          "properties": {
+            "oldText": {
+              "type": "string",
+              "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+            },
+            "newText": {
+              "type": "string",
+              "description": "Replacement text for this targeted edit."
+            }
+          }
+        },
+        "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+      }
+    }
+  }
+}
+{
+  "name": "ls",
+  "label": "ls",
+  "description": "List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to 500 entries or 50KB (whichever is hit first).",
+  "promptSnippet": "List directory contents",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Directory to list (default: current directory)"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of entries to return (default: 500)"
+      }
+    }
+  }
+}
+{
+  "name": "grep",
+  "label": "grep",
+  "description": "Search file contents for a pattern. Returns matching lines with file paths and line numbers. Respects .gitignore. Output is truncated to 100 matches or 50KB (whichever is hit first). Long lines are truncated to 500 chars.",
+  "promptSnippet": "Search file contents for patterns (respects .gitignore)",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "pattern"
+    ],
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Search pattern (regex or literal string)"
+      },
+      "path": {
+        "type": "string",
+        "description": "Directory or file to search (default: current directory)"
+      },
+      "glob": {
+        "type": "string",
+        "description": "Filter files by glob pattern relative to path, e.g. 'src/**/*.ts'. Without '/', e.g. '*.ts', it matches file names at any depth"
+      },
+      "ignoreCase": {
+        "type": "boolean",
+        "description": "Case-insensitive search (default: false)"
+      },
+      "literal": {
+        "type": "boolean",
+        "description": "Treat pattern as literal string instead of regex (default: false)"
+      },
+      "context": {
+        "type": "number",
+        "description": "Number of lines to show before and after each match (default: 0)"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of matches to return (default: 100)"
+      }
+    }
+  }
+}
+{
+  "name": "find",
+  "label": "find",
+  "description": "Search for files by glob pattern. Returns matching file paths relative to the search directory. Respects .gitignore. Output is truncated to 1000 results or 50KB (whichever is hit first).",
+  "promptSnippet": "Find files by glob pattern (respects .gitignore)",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "pattern"
+    ],
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Glob pattern relative to the search directory, e.g. 'src/**/*.ts'. Without '/', e.g. '*.ts', it matches file names at any depth"
+      },
+      "path": {
+        "type": "string",
+        "description": "Directory to search in (default: current directory)"
+      },
+      "limit": {
+        "type": "number",
+        "description": "Maximum number of results (default: 1000)"
+      }
+    }
+  }
+}
+{
+  "name": "bash",
+  "label": "bash",
+  "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.\n\nCommands run on this machine, from your folder, with this machine's toolchains, your own $HOME and $TMPDIR, and the open network. A command that names a path outside your folders is refused before it runs; what one changes outside them is put back, and you are told. You install nothing on the machine: the project's dependencies go into the project, through its manifest.\n\nA command is stopped after 120 seconds unless you give it a timeout, and after 1800 at most. Never run one that does not end on its own in the foreground: start a server or a watcher in the background (`cmd > app.log 2>&1 &`), and give a command that asks for input its input (`--yes`, `-B`, `CI=1`, `< /dev/null`).",
+  "promptSnippet": "Execute bash commands (ls, grep, find, etc.)",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "command"
+    ],
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+      },
+      "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+      }
+    }
+  }
+}
+{
+  "name": "read_output",
+  "label": "Read output",
+  "description": "Read the whole of an output that was cut short - a test run's or a command's - by the id the cut named: a range of lines (offset, from 1, and limit), or only the lines matching a pattern (a regular expression). Each line comes with its number.",
+  "promptSnippet": "read_output: the whole of a cut output, by the id the cut named",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "id"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "The id the cut output named, e.g. 2026-10-05T10-00-00-000Z-run_unittests.sh.log"
+      },
+      "offset": {
+        "type": "number",
+        "description": "The first line to show, from 1"
+      },
+      "limit": {
+        "type": "number",
+        "description": "How many lines to show (at most 2000)"
+      },
+      "pattern": {
+        "type": "string",
+        "description": "Show only the lines matching this regular expression"
+      }
+    }
+  }
+}
+{
+  "name": "notify_person",
+  "label": "Notify",
+  "description": "Put what is wrong with a finished pulse to the person, in the chat they are in: what is wrong, what shows it, and what they can do about it. Each action is a task the agent of their chat carries out once they accept it. Only when they need to act - never for a pulse that went well - or, severity info and no actions, to say what you fixed yourself in the testing scripts or their config, and why.",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "severity",
+      "summary",
+      "evidence",
+      "actions"
+    ],
+    "properties": {
+      "severity": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "error"
+          },
+          {
+            "type": "string",
+            "const": "warning"
+          },
+          {
+            "type": "string",
+            "const": "info"
+          }
+        ],
+        "description": "error: it is broken; warning: it works but not as its ***plain says, or something is missing; info: worth their knowing"
+      },
+      "summary": {
+        "type": "string",
+        "description": "What is wrong, in one line"
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "What shows it, a line each: a step that failed, a log's lines, a request and its answer"
+      },
+      "actions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "label",
+            "task"
+          ],
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "What the person accepts, in a few words: \"Change the ***plain to …\", \"Regenerate fs 3 again\""
+            },
+            "task": {
+              "type": "string",
+              "description": "Exactly what their chat's agent does once they accept it - all it is given"
+            }
+          }
+        },
+        "description": "What can be done, the best first"
+      },
+      "module": {
+        "type": "string",
+        "description": "The module it is about"
+      },
+      "pulse": {
+        "type": "string",
+        "description": "The pulse's id"
+      },
+      "check": {
+        "type": "string",
+        "description": "The check's id, when it is about a check the person asked for"
+      },
+      "fixed": {
+        "type": "boolean",
+        "description": "true when this says what you fixed yourself in a testing script or its config - severity info, no actions: a note, nothing to answer"
+      },
+      "ignorable": {
+        "type": "boolean",
+        "description": "true when the person may reasonably leave it as the build has it, for good: chiefly a gap in the ***plain the build settled with an assumption - then say the gap in the summary and what the build does in the evidence (the ***plain does not say what happens to passwords over 72 bytes; the build refuses them with 422). Never for something broken, a pulse that went wrong, or a launch that did not come up."
+      }
+    }
+  }
+}
+{
+  "name": "conclude",
+  "label": "Conclude",
+  "description": "Say you are done with a pulse - or a check the person asked for - whether what you checked holds, and in a line or two what you checked and found. The chat the person is in is told, whether all is well or not. Once a pulse or check, last - after notify_person, when something is wrong. Name the pulse, or the check.",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "verdict",
+      "summary"
+    ],
+    "properties": {
+      "pulse": {
+        "type": "string",
+        "description": "The pulse's id"
+      },
+      "check": {
+        "type": "string",
+        "description": "The check's id, for a check the person asked for - in place of pulse"
+      },
+      "verdict": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "holds"
+          },
+          {
+            "type": "string",
+            "const": "wrong"
+          }
+        ],
+        "description": "holds: it does what its ***plain says; wrong: it does not, or it went wrong"
+      },
+      "summary": {
+        "type": "string",
+        "description": "What you checked and what you found, in a line or two: \"GET /api/ping answers pong; the new alias route redirects\""
+      }
+    }
+  }
+}
+{
+  "name": "keep_guidance",
+  "label": "Keep guidance",
+  "description": "Keep what the person told you about how to check their software, in their words: it is in your prompt from now on, after you are closed and opened again too.",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "text"
+    ],
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "What to keep in mind, as they said it"
+      }
+    }
+  }
+}
+{
+  "name": "who_holds",
+  "label": "Who holds",
+  "description": "What listens on a TCP port on this machine, and whose it is: a server one of turri's launches started (which launch, which module, which commit), one another turri started, or a program turri did not start - with how the person frees it. Use it when what answers at a launch's URL is not what you expect, or nothing does: your shell cannot see other processes. It stops nothing.",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "port"
+    ],
+    "properties": {
+      "port": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535,
+        "description": "The port, e.g. 8000"
+      }
+    }
+  }
+}
+{
+  "name": "resume",
+  "label": "Resume",
+  "description": "Bring a module up again after you fixed what stopped its pulse - a testing script, a toolchains: entry: what is left to regenerate there runs again, its testing scripts with it, as when the person asks for it. Only after a fix of yours, never to try again what nothing was changed for. What it starts comes back to you as a pulse that finished.",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "plain_file"
+    ],
+    "properties": {
+      "plain_file": {
+        "type": "string",
+        "description": "The module's .plain file, from the project's folder: app.plain"
+      }
+    }
+  }
+}
+{
+  "name": "doctor",
+  "label": "Doctor",
+  "description": "Whether this machine and this project are ready for turri, as turri doctor checks it: Node, bash, git, which OS sandbox is up under the agents' commands, whether a model provider has credentials, the toolchains the modules' implementation reqs name and what the testing scripts run that this machine lacks - against the PATH turri's pulses run with. With models: true, each model config.turri.yaml names is asked for a word with this machine's credentials - a request a model, which costs money. Changes nothing.",
+  "promptSnippet": "doctor: turri's self check - this machine and project, ready or what to fix",
+  "promptGuidelines": [
+    "Use doctor, not `turri doctor` in the shell, to check whether this machine and project are ready - when the person asks, when a pulse fails for a missing toolchain or command, or before the first build on a machine. Ask the models (models: true) only when the person asks, or a model fails to answer: it costs a request a model."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "models": {
+        "type": "boolean",
+        "description": "Ask each model the project's config names for a word - one paid request a model. Default false"
+      }
+    }
+  }
+}
+{
+  "name": "pulses",
+  "label": "Pulses",
+  "description": "Pulses in every tense - earlier sessions', this session's, running now and what runs next. With no parameter: every pulse of this session - finished, running, and planned, those of a look ahead marked as waiting for regenerate - the launches and what they started, and the last runs of earlier sessions, a line a pulse - how each ended, how long, what it cost. With job_id, one pulse: running, whether it still is and its latest output; finished, its report and what the ledger recorded of it - its rounds and test runs (how many failed the same way), the verdicts, the healers, the model provider's trouble, what turri refused, what it committed - and, one that did not land, why, from its whole transcript: its diagnosis, the stages that went wrong, the last failing test run with its output, the last review that sent the work back, the tool calls that failed, and where the whole log is; of an earlier session, told from the ledger; planned (planned-<module>-N), its cases and - the next pulse of its codebase - the whole prompt its coding agent will get, from the plan regenerate runs. With plain_file, a look ahead: that module's work planned as regenerate plans it, and kept - nothing started, its pulses waiting for regenerate, which then runs this plan unless the ***plain changed - and what is planned listed. What is left to regenerate, without a plan, is drift's. Every generation of a module's code and tests is a commit in its history, read with git: git --git-dir=plain_modules/<module>/.plaingit log, and show <commit>.",
+  "promptSnippet": "pulses: every pulse or one - earlier, running or planned - why one did not land, and with plain_file what will run next and its prompt",
+  "promptGuidelines": [
+    "When a pulse failed or did not land, call pulses with its id before you explain it or change the spec: go by what happened, not by the report alone.",
+    "Call pulses with plain_file when the user wants to see or check what will run before it does, then with a planned row's id for its prompt. To change the plan, change the ***plain, then look again."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "One pulse: the id returned when it started, an earlier session's, or a planned row's (planned-<module>-N). Omitted: every pulse"
+      },
+      "plain_file": {
+        "type": "string",
+        "description": "A look ahead: the .plain file of the module to plan, starting nothing. Not with job_id. Omitted: no look ahead"
+      },
+      "working_dir": {
+        "type": "string",
+        "description": "The folder the .plain files are in, relative to where turri was started - as if it had been started there (e.g. \"plain\"). plain_file is then relative to it - hubspot.plain, not plain/hubspot.plain. Default: where turri was started."
+      },
+      "wait": {
+        "type": "boolean",
+        "description": "With a pulse started: block until it finishes instead of reporting its current state (default false)"
+      },
+      "runs": {
+        "type": "number",
+        "description": "With no parameter: how many runs of earlier sessions to list (default 3)"
+      }
+    }
+  }
+}
+{
+  "name": "settings",
+  "label": "Settings",
+  "description": "Read or change the project's settings: config.turri.yaml, and a module's own config.turri.<module>.yaml laid over it for that module and every module built on it that has no file of its own. With no key: every setting, what it is and where it is set. With a key and no value: that setting, what it takes and what it is unset. With a value: written, taking effect as it says - the coding model at the next pulse. A model may be given by its name as the user said it; one that fits several, or none with credentials, comes back as a list - ask the user which. Some settings are the user's alone and are refused: they change them with /settings. For one pulse on another model, pass model to regenerate or conform instead.",
+  "promptSnippet": "read the project's settings, or change one when the user asks - the coding model among them",
+  "promptGuidelines": [
+    "Change a setting only when the user asks for it - \"regenerate with gpt 5.5 from now on\" is coding-model - and say what it is now and when it takes effect.",
+    "If settings returns several candidate models, ask the user which one, then call it again with the exact provider/model-id.",
+    "A setting settings refuses is the user's to change: tell them why it matters and that /settings changes it - never edit the config files to get round it."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "key": {
+        "type": "string",
+        "description": "The setting as the config file writes it - coding-model, models.coding, review, unittests-script. Omitted: every setting"
+      },
+      "value": {
+        "type": "string",
+        "description": "What to set it to: true or false, a number, one of its words, a path from the project root, a model as provider/model-id - :thinking after it - or its name as the user said it, a list separated by commas; unset to take it out. Omitted: what it is now"
+      },
+      "module": {
+        "type": "string",
+        "description": "The module - its .plain file, e.g. backend.plain - whose own config.turri.<module>.yaml to write. Omitted: config.turri.yaml, the whole project's"
+      }
+    }
+  }
+}
+{
+  "name": "parse",
+  "label": "Parse ***plain",
+  "description": "Parse one or more .plain modules - their syntax and structure - without regenerating: each with its test plain files, its imports and required modules, reporting every syntax, concept and structure error with the line it is on, and every test plain file outside its module's folder. A module that passes lists each functional spec with its test plain file and its scenarios - one with no test plain file is not tested. Pass a directory to check every .plain module in it; a test plain file or test folder is refused - name its module. Fast, free, and offline. It reads the ***plain alone: it runs no code and no test - whether the code does what the ***plain says is the conformance tests', with conform.",
+  "promptSnippet": "parse ***plain - its syntax and structure, never its code or tests - regenerating nothing",
+  "promptGuidelines": [
+    "Run parse after editing a .plain file, and before telling the user it is ready. Never shell out to another renderer to check one."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "target"
+    ],
+    "properties": {
+      "target": {
+        "type": "string",
+        "description": "A .plain file, or a directory holding .plain files"
+      },
+      "template_dir": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Extra template directories"
+      }
+    }
+  }
+}
+{
+  "name": "ask_user",
+  "label": "Ask the user",
+  "description": "Put one question to the user and wait for their answer. Ask exactly one thing at a time. Offer concrete options in `options` so the user can pick rather than type - that is the normal case, and a question with neither options nor free_form is refused rather than asked.",
+  "promptSnippet": "ask the user one question, offering options to pick from",
+  "promptGuidelines": [
+    "Every ask_user call should carry `options` unless the answer genuinely cannot be anticipated; picking from a list is far quicker for the user than typing. A free-form question needs free_form: true.",
+    "Use multi_select: true when several answers can apply at once, rather than asking the same question repeatedly.",
+    "The dialog shows the question, its options and `context` alone - nothing you wrote before it. When the user must read something to answer - the brief to confirm, the plan to approve - pass it as `context`; never put an account of your work there (what a probe returned, what a regeneration did).",
+    "Keep `context` short enough to take in at a glance - a heading or two and short bullets, a line each, about fifteen lines at most: what the person decides on, not every detail. The details are in the spec; say where, and they can ask.",
+    "When a question to the user has a handful of plausible answers - a choice, yes or no, which of these - ask it with ask_user rather than in your reply."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "question"
+    ],
+    "properties": {
+      "question": {
+        "type": "string",
+        "description": "One question. Never bundle two."
+      },
+      "options": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Concrete choices to offer. The user can always pick \"Something else…\" and type instead, or \"Chat about this\" to talk the question over with you first, so offering options never traps them."
+      },
+      "multi_select": {
+        "type": "boolean",
+        "description": "Let the user pick several of the options."
+      },
+      "context": {
+        "type": "string",
+        "description": "What the user must read to answer, shown above the question - the brief to confirm, the plan to approve. Only that: never an account of what you did."
+      },
+      "free_form": {
+        "type": "boolean",
+        "description": "Ask without options, for a genuinely open question. Required when options is omitted."
+      }
+    }
+  }
+}
+{
+  "name": "web_search",
+  "label": "Web search",
+  "description": "Search the web (DuckDuckGo) and get back the results: title, address and a snippet each. Use it for a library's documentation, an API you are unsure of, or an error you have not seen. Read a result with web_fetch.",
+  "promptSnippet": "search the web for documentation, APIs and errors",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "query"
+    ],
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "What to search for, as you would type it into a search engine"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "How many results, 8 by default"
+      }
+    }
+  }
+}
+{
+  "name": "web_fetch",
+  "label": "Fetch a web page",
+  "description": "Fetch a page from the public web and get it back as readable text - an HTML page without its markup, or a text, JSON or XML file as it is. Long pages come in parts: call again with the offset it gives to read on.",
+  "promptSnippet": "read a web page, such as documentation, as text",
+  "parameters": {
+    "type": "object",
+    "required": [
+      "url"
+    ],
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The page's full address, starting with https://"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Where to start reading, for the next part of a long page"
+      }
+    }
+  }
+}
+{
+  "name": "regenerate",
+  "label": "Regenerate",
+  "description": "Regenerate a .plain module's code from its spec as the files have it now - and every module it requires, bottom of the requires chain first. Call it after any change to the spec, by any means: the file tools, a skill, the user in an editor. It takes no diff: what is left to regenerate - from what each module's code was regenerated from to its spec now - is worked out and planned into pulses, and a pulse running that regenerates something the spec no longer wants is stopped and rolled back. Nothing to do where the code is regenerated from the spec as it is. With funcIds named - each as module:func-id - those are regenerated though their spec did not change - their code taken out and built anew, better made, never left as it was - planned into pulses as any change is, the ones next to each other together; their conformance tests stay as they are.",
+  "promptSnippet": "regenerate a module's code from its spec as it is now - after any change to the spec",
+  "promptGuidelines": [
+    "Call regenerate after editing a .plain file with the file tools - or when the user says they changed one - instead of working out a diff: turri compares what is regenerated with the spec now.",
+    "regenerate returns at once with what runs and what is planned. Report it, keep talking, and use pulses when the user asks; the pulses report when they finish.",
+    "When the user wants a functionality to come out differently, change its spec - the spec is what persists - then regenerate. When they want ones already built regenerated as their spec stands - better made, on another model, after many patches - name them in funcIds, each as module:func-id, all in one call.",
+    "A change to a file the spec links - an API surface, a mapping document - is a change to the spec: regenerate sees it by itself, and regenerates every functional spec that uses what links it.",
+    "Never stop pulses and start them again yourself to follow a spec change: regenerate does it.",
+    "Set from_scratch only when the user asks for the module to be regenerated from scratch - started over, its code deleted - in this conversation, or agrees to it when a module's status says it has to start over: never to fix a pulse that did not land.",
+    "from_scratch \"module\" takes out the code where the module is built; the modules below keep theirs, and the module starts from a copy of the code below it. \"chain\" takes out every codebase of its requires chain, the base's too, and builds all of it again from the bottom: use it after modules were split, merged or moved (refactor-module), or when the user asks for the whole chain."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "plain_file": {
+        "type": "string",
+        "description": "Path to the .plain file. Omitted: the module the project's config.turri.yaml names"
+      },
+      "working_dir": {
+        "type": "string",
+        "description": "The folder the .plain files are in, relative to where turri was started - as if it had been started there (e.g. \"plain\"). plain_file is then relative to it - hubspot.plain, not plain/hubspot.plain. Default: where turri was started."
+      },
+      "funcIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Functional specs already built, each as module:func-id (todo:add-task), to regenerate though their spec did not change. Omitted: what the spec now differs from the code in"
+      },
+      "from_scratch": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "module"
+          },
+          {
+            "type": "string",
+            "const": "chain"
+          }
+        ],
+        "description": "Only when the user asks for it: the module's code and conformance tests deleted - committed first, so its lineage keeps them - and the whole module regenerated from its spec. \"chain\": every module of its requires chain too, built again from the bottom"
+      },
+      "model": {
+        "type": "string",
+        "description": "The model for the agents of this one call: a provider/model-id, or its name as the user said it. Omitted: the coding model the module's config names, else the conversation's. To change it for every later pulse, set coding-model with settings instead."
+      },
+      "wait": {
+        "type": "boolean",
+        "description": "Block until the work finishes instead of returning a pulse id. Defaults to false in the interactive TUI and true elsewhere, where a pulse would not outlive the turn."
+      }
+    }
+  }
+}
+{
+  "name": "drift",
+  "label": "Drift",
+  "description": "How far a module's code has drifted from its spec: in each codebase where it lives, what is left to regenerate - the functional specs to add, change, regenerate again or take out, and reqs or definitions alone - and the conformance tests left to write, those scheduled ahead of their code, what is regenerating now, and why nothing is regenerated where nothing is; with nothing left, it says the module is fully regenerated. It plans nothing and starts nothing, and calls no model.",
+  "promptSnippet": "drift: what is left to regenerate in a module, code and conformance tests - starting nothing",
+  "promptGuidelines": [
+    "Use drift when the user asks what is left to build, whether a module is up to date with its spec, or what changed since it was last regenerated. To see how it is planned into pulses, and the next pulse's prompt, use pulses with plain_file."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "plain_file": {
+        "type": "string",
+        "description": "Path to the .plain file. Omitted: the module the project's config.turri.yaml names"
+      },
+      "working_dir": {
+        "type": "string",
+        "description": "The folder the .plain files are in, relative to where turri was started - as if it had been started there (e.g. \"plain\"). plain_file is then relative to it - hubspot.plain, not plain/hubspot.plain. Default: where turri was started."
+      }
+    }
+  }
+}
+{
+  "name": "conform",
+  "label": "Conform",
+  "description": "Write and run the black-box conformance tests of a module's functional specs - the ones named, or every one with scenarios - on the code as it is built, in a pulse of their own - every functional spec tested in one, as far as a size guardrail lets, or one a functional spec when the user asks for that: each implements exactly the functional spec's conformance and acceptance scenarios, at least one test each, by the spec's test reqs, runs them with the whole suite the module inherits, and, where one fails, fixes the test or the code, whichever is wrong. What they are written for is recorded apart from the code. The work loop starts these pulses by itself for every functional spec with scenarios whose tests are behind, once the module's code is built; conform starts them now, or for the functional specs named - those alone: the module's others stay behind until conform names none, or the module is regenerated. A functional spec named whose tests are written already has them written again - deleted and written anew from its scenarios, its code untouched; with from_scratch, the module's whole tests folder is taken out and written again, at the tip of each chain it is built in, as regenerate from scratch does its code. A functional spec with no scenarios - no test plain file - is refused: there is nothing to test until scenarios are written. So is one the spec does not have, and a module with scenarios that skipped a step of adding tests - no test reqs, or no conformance testing script: the refusal names the next step. While conformance tests are off it is refused too: they make each change take about twice as long, and turning them on is the person's - with /conform - never yours.",
+  "promptSnippet": "conform: write and run the conformance tests of functional specs with scenarios",
+  "promptGuidelines": [
+    "What is tested is the scenarios: a functional spec's conformance and acceptance scenarios, in its test plain file, tests/<module>/<func-id>.plain. When the user asks for conformance tests, decide in a sentence or two which scenarios to write, write them with the file tools - a test plain file's ***conformance tests*** and ***acceptance tests***, each scenario a # <scenario-id> heading and its text - then call regenerate for the module. Every scenario written is tested once the code is built: the loop starts the conformance pulse by itself. Never edit config.turri.yaml for it, and never name a functionality in funcIds to get them.",
+    "Call conform when the user asks for the conformance tests to be written or run now, for a module or some of its functional specs with scenarios.",
+    "What the user asks for comes first: for a module already regenerated, while a module built on it is being regenerated, conform stops that pulse, deletes the codebase built on it, writes the tests, and the module above is regenerated from it after - say so. For a module not regenerated yet, its tests are written once its code is built, before anything is built on it.",
+    "Conformance tests go in one pulse for all the functional specs tested. Set one_by_one only when the user asks for a pulse a functional spec - one at a time, separately, or the like.",
+    "Name a functional spec whose tests are written only when the user asks for its tests to be written again: they are deleted and written anew. Set from_scratch only when the user asks for a module's conformance tests - or its whole chain's - to be written again from scratch, never to fix tests that did not pass. Name funcIds or set from_scratch, not both.",
+    "from_scratch works where the module's code lives - the tip of each chain it is built in, never a module in the middle - and takes that codebase's whole tests folder out, committed first so its lineage keeps it. \"module\" starts it again from a copy of the tests of the module the tip requires, and writes the tip's own tests anew on them; \"chain\" starts it from nothing, every functional spec of the chain written anew. Neither touches the code, nor any other codebase."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "plain_file"
+    ],
+    "properties": {
+      "plain_file": {
+        "type": "string",
+        "description": "A .plain file of the module"
+      },
+      "working_dir": {
+        "type": "string",
+        "description": "The folder the .plain files are in, relative to where turri was started - as if it had been started there (e.g. \"plain\"). plain_file is then relative to it - hubspot.plain, not plain/hubspot.plain. Default: where turri was started."
+      },
+      "funcIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "The functional specs to test, each as module:func-id (todo:add-task) - each with scenarios; one whose tests are written has them written again. Omitted: every one with scenarios"
+      },
+      "from_scratch": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "module"
+          },
+          {
+            "type": "string",
+            "const": "chain"
+          }
+        ],
+        "description": "Only when the user asks for it: the tests folder where the module's code lives - the tip of its chain - taken out, committed first so its lineage keeps it, and written again from a copy of the tests of the module the tip requires; the code untouched. \"chain\": written again from nothing - every functional spec of the chain's tests"
+      },
+      "one_by_one": {
+        "type": "boolean",
+        "description": "Only when the user asks for it: a pulse a functional spec. Omitted: every functional spec tested in one pulse, as far as the size guardrail lets"
+      },
+      "model": {
+        "type": "string",
+        "description": "The model for the agents of this one call: a provider/model-id, or its name as the user said it. Omitted: the coding model the module's config names, else the conversation's. To change it for every later pulse, set coding-model with settings instead."
+      },
+      "wait": {
+        "type": "boolean",
+        "description": "Block until the work finishes instead of returning a pulse id. Defaults to false in the interactive TUI and true elsewhere, where a pulse would not outlive the turn."
+      }
+    }
+  }
+}
+{
+  "name": "launch",
+  "label": "Launch",
+  "description": "Launch what is regenerated for the person to try, in the background: the last commit of the module on top of the spec's requires chain, which holds the code of the ones below, exported to dist/<module>, and an agent that starts it on this machine - or, with guidance, follows it from the host codebase: an integration a host application loads, say, put in place with the host's scripts. Before you call it, ask yourself whether there is guidance for launching this project - in what the person said, AGENTS.md, a skill - and pass it in full. It returns at once; you are told where it runs, or why it did not come up, once it ends. It replaces what launches of the modules below it started, and takes a port or anything else turri's launches of other modules hold that it needs - its summary says what it stopped; guidance never tells it to leave one of those running. When what is launched is that code already, it does nothing and says so. Under launch-after-pulse turri launches what each pulse lands itself: never call it for that.",
+  "promptSnippet": "launch the regenerated code for the person to try, in the background - as the project's guidance says, or from dist/<module>",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "plain_file": {
+        "type": "string",
+        "description": "A .plain file of the module. Default: the project's module from config.turri.yaml."
+      },
+      "in_module": {
+        "type": "string",
+        "description": "The codebase to take, when modules built on this one branch"
+      },
+      "again": {
+        "type": "boolean",
+        "description": "Launch even when its code is out already - only when the last launch did not leave it as the person needs it, or they want it launched some other way."
+      },
+      "guidance": {
+        "type": "string",
+        "description": "The guidance for launching this project, whole, from wherever it is - the person, AGENTS.md, a skill: the scripts to run and in which order, where the code goes. Omit when there is none."
+      }
+    }
+  }
+}
+{
+  "name": "halt",
+  "label": "Halt",
+  "description": "Halt a pulse, a module's planned pulses, or a launch. A pulse: a queued one never starts, a running one has its agent stopped at once, and the pulses queued behind it move up - what a running pulse already changed is rolled back, and what it was regenerating counts as not regenerated. A planned row (planned-<module>-...) or a module's name halts the module: its running pulse stopped, none of its planned pulses started, and the modules built on it waiting - until it is asked for again with regenerate; a spec change does not start it. A module whose .plain file is gone is dropped. launched: what a launch started, by name; a module's name, its launch under way and what it started; or all.",
+  "promptSnippet": "halt a pulse, or a launch and what it started",
+  "promptGuidelines": [
+    "Halt a pulse only when the user asks, or your instructions say to. Name which one, and say which pulses were queued behind it - they will now run.",
+    "Halting a planned row halts its whole module - one planned pulse cannot be taken out alone, as the plan is made again from the spec. To drop work, change the spec.",
+    "A planned row for a module that is no longer in the project is halted the same way, and dropped."
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "job_id": {
+        "type": "string",
+        "description": "The pulse's id, or the start of it; a planned row's id (planned-<module>-...), or a module's name, halts the module"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Why it is halted, kept with it - what the spec now says that it did not, say"
+      },
+      "launched": {
+        "type": "string",
+        "description": "What a launch started, by name; a module's name for its launch under way and what it started; or \"all\""
+      }
+    }
+  }
+}
+{
+  "name": "cultivate",
+  "label": "Cultivate",
+  "description": "Execute one of this project's gated skills end to end. The skill's steps, review gates and judges are enforced by the harness, so a gated skill's result has already passed review when it comes back; a skill without gates is not reviewed. Every result says which files the run changed in the project.\n\nAvailable skills:\n- analyze-2-func-specs: Analyze two functional specs from a .plain file to determine if they conflict. Use when the user wants to check whether two specific functional requirements are compatible, or when debugging a suspected conflict between two specs.\n- analyze-func-specs: Analyze a batch of functional specs from a .plain file to determine which pairs conflict. Replaces the pair-by-pair `analyze-2-func-specs` flow when a caller wants to check many functional specs at once (e.g. a new one against every existing one, or a freshly inserted batch against itself).\n- break-down-func-spec: Break down a functional spec that is too complex into smaller ones that each imply ≤ 200 lines of code. Use when a functional spec is judged too large against the complexity limit (`func-specs.md`), before or after it is written in.\n- consolidate-concepts: Gather concept definitions scattered across multiple modules into a single shared import module in template/. Removes the moved definitions from the original modules and adds the new import to their frontmatter. Use when concepts are duplicated or spread across modules and should be centralized.\n- convert-old-syntax: Convert one module from the old ***plain syntax - functional specs as `- ` bullets, acceptance tests nested under them - to `# <func-id>` headings and test plain files, word for word, the ids confirmed by the person first. Use when turri says a module is in the old ***plain syntax, or the person asks to convert one. One run converts one module, the lowest of the chain first; it never regenerates.\n- debug-specs: Investigate a bug observed in the running application by reading the generated code in plain_modules/, tracing the issue back to the ***plain, and fixing only the .plain files. Generated code is never modified. Use when the user reports unexpected behavior, visual glitches, crashes, or incorrect logic in the app.\n- implement-conformance-testing-script: Implement a self-contained conformance-test runner script (Bash, run by the harness on the person's machine; an optional PowerShell copy for running it by hand on Windows) for an arbitrary programming language. The script stages the build, installs its dependencies in isolation, runs the static checks of the conformance tests - formatter, linter, type checker - and runs a module's whole conformance suite against it. Use when the user wants to add a conformance-test runner for a new language (Node.js, Go, Rust, Flutter, etc.) to a ***plain project, or wants to regenerate / adapt one of the existing runners. Runs in the background: cultivate returns at once, and its end comes back to this chat - pass plainFile, the module it is for.\n- implement-unit-testing-script: Implement a unit-test runner script (Bash, which turri runs; a PowerShell copy on request, for Windows) for an arbitrary programming language, following the same conceptual pattern as the bundled Java reference script in assets/. The script runs the code's static checks - formatter in check mode, linter, type checker - with its unit tests, and both count. Use when the user wants to add a testing script for a new language (Python, Node.js, Go, Rust, etc.) to a ***plain project, or wants to regenerate / adapt the existing Java runner. Runs in the background: cultivate returns at once, and its end comes back to this chat - pass plainFile, the module it is for.\n- refactor-module: Split a large ***plain module into smaller modules grouped by logical domain. The resulting modules are connected via a requires chain so that their behaviour is 100% preserved. Use when a module has become too large and its functional functional specs span multiple distinct concerns that would be clearer as separate modules.\n- resolve-section-ownership: Route every fact in a .plain bullet, section, or file to the section that owns it — splitting a bullet that carries several kinds of fact, and moving a misplaced one to where turri will read it. Use when a bullet answers more than one of what it is / what it does / how it is built / how it is tested, when a requirement looks like it is in the wrong section, or when auditing a file for section ownership. Not for a functional spec that is merely too large (use break-down-func-spec) or for two that contradict each other (use resolve-spec-conflict).\n- resolve-spec-conflict: Resolve a conflict between two functional specs in a .plain file. Use when conformance tests for a previously passing functional spec start failing after a new one is regenerated, or when a potential conflict is detected while adding a new functional spec (the conflict check of `func-specs.md`).",
+  "promptSnippet": "cultivate: run a gated skill - its steps and review gates enforced by turri",
+  "promptGuidelines": [
+    "When a request matches a skill listed in cultivate's description, call cultivate instead of doing the work yourself. Doing it by hand skips the review gates.",
+    "A skill marked as started only by the person runs only from its command: a message that is its command - /<name> what they want - is the person starting it, and so is an option starting with it that they picked in your ask_user. Call cultivate for it at once, with what they said as context. Never call cultivate for one otherwise.",
+    "A skill cultivate lists may also be among your own skills, from the project's .agents/skills: run it with cultivate all the same, never by reading its SKILL.md and following it.",
+    "cultivate returns the reviewed artifact and a trace of every gate decision. Report the artifact to the user; do not rewrite it.",
+    "A skill that runs in the background returns at once: go on with the turn, without waiting or telling the person to wait. Its end comes back to this chat by itself - a line when it did its work, a message to act on when it did not.",
+    "If cultivate fails, say so and stop. Never carry out the skill's work yourself in the conversation - the gates and the judges are the point of running it, and an unreviewed hand-run silently drops them.",
+    "Always pass `context` to cultivate, summarising what the user has already told you."
+  ],
+  "parameters": {
+    "type": "object",
+    "required": [
+      "skill"
+    ],
+    "properties": {
+      "skill": {
+        "type": "string",
+        "description": "Skill name. One of: analyze-2-func-specs, analyze-func-specs, break-down-func-spec, consolidate-concepts, convert-old-syntax, debug-specs, implement-conformance-testing-script, implement-unit-testing-script, refactor-module, resolve-section-ownership, resolve-spec-conflict"
+      },
+      "context": {
+        "type": "string",
+        "description": "Everything the user has already told you that this skill would otherwise ask for - what they are building, for whom, any decisions already made, names they have used. The skill runs in its own session and cannot see this conversation, so whatever you leave out it will ask again."
+      },
+      "resume": {
+        "type": "boolean",
+        "description": "Continue the run of this skill that was interrupted here - by a restart, a crash - from the step it was in, with its session as it was. Use when the user wants to carry on where they left off."
+      },
+      "fresh": {
+        "type": "boolean",
+        "description": "Start a new run even though an interrupted one exists here, discarding it."
+      },
+      "plainFile": {
+        "type": "string",
+        "description": "The module the skill's work is for - its .plain file, e.g. backend.plain: a testing script is written for that module, named in its config, on its coding model. Omitted: the project's."
+      }
+    }
+  }
+}
