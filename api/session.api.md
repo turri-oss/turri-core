@@ -1705,6 +1705,13 @@ export interface SpecGap {
 }
 
 // @public
+export interface StartOverQuestion {
+    body: string;
+    codebases: string[];
+    title: string;
+}
+
+// @public
 export interface TouchedSpec {
     // (undocumented)
     funcId: string;
@@ -2041,7 +2048,7 @@ export interface WorkRunOptions {
     exportTo?: string;
     report?: string;
     signal?: AbortSignal;
-    startOver?: boolean | "ask";
+    startOver?: boolean | "ask" | ((question: StartOverQuestion) => Promise<boolean | undefined>);
 }
 
 // @public

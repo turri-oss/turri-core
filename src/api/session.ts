@@ -83,7 +83,7 @@ export type { ModuleStanding } from "../regenerate/standing.ts";
 export type { ModuleState } from "../run-report.ts";
 export type { RunView } from "../regenerate/ledger-view.ts";
 export { countOf, focusOf, hasScenarioViews, lineDiff, rungOf, type Mark, type MarkedItem, type MarkedPage, type Rung } from "../regenerate/spec-map.ts";
-export type { ExportResult, WorkRequest, WorkResult, WorkRunOptions } from "../work.ts";
+export type { ExportResult, StartOverQuestion, WorkRequest, WorkResult, WorkRunOptions } from "../work.ts";
 
 // The types the session's data reaches, each nameable by a front end.
 export type { ChatRole, NoticeInput } from "../notice.ts";

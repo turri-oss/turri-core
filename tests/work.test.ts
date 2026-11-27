@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Job } from "../src/regenerate/jobs.ts";
+import type { StartOverQuestion } from "../src/work.ts";
 
 /**
  * A run of work through the session's loop (work.ts): what it planned, how it settles a start over, and how it ends -
@@ -118,6 +119,38 @@ describe("a run of work", () => {
     expect(declined.status).toBe("incomplete");
 
     const run = await runWork(session(), "regenerate", { plainFile: app, startOver: true });
+    expect(run.planned.some((status) => status.startOver !== undefined)).toBe(false);
+    expect((await run.done).status).toBe("completed");
+  });
+
+  it("puts a start over to the run's own answerer - yes starts over, no regenerates the rest, no answer ends it at once", async () => {
+    spec("base", "Base one.");
+    const app = spec("app", "App one.");
+    const code = join(dir, "plain_modules", "app", "code");
+    mkdirSync(code, { recursive: true });
+    writeFileSync(join(code, "main.py"), "print(1)\n");
+    writeCodeRecord(code, chainSpec(resolveRequiresChain(app, [], undefined, { allowNoFunctionalities: true })).tree);
+    recordHistory(code, "app pulse 1 landed");
+    spec("app", "App one.", "base");
+    const said: StartOverQuestion[] = [];
+    const answering = (answer: boolean | undefined) => async (question: StartOverQuestion) => (said.push(question), answer);
+
+    // No answer: nothing more runs - the person's "no" is not guessed.
+    const unanswered = await (await runWork(session(), "regenerate", { plainFile: app, startOver: answering(undefined) })).done;
+    expect(said[0]).toMatchObject({ title: "Start over?", codebases: ["app"] });
+    expect(said[0]!.body).toContain("was built without base");
+    expect(unanswered).toMatchObject({ status: "incomplete", jobs: [] });
+    expect(unanswered.reason).toContain("Nobody answered");
+
+    // No - as `false` given outright too: the run drains what else there is, and ends with app left as it is.
+    for (const no of [answering(false), false] as const) {
+      const declined = await (await runWork(session(), "regenerate", { plainFile: app, startOver: no })).done;
+      expect(declined).toMatchObject({ status: "incomplete", unfinished: [{ module: "app", state: "start_over_needed" }] });
+      expect(declined.reason).toBeUndefined();
+    }
+
+    // Yes: started over, then built.
+    const run = await runWork(session(), "regenerate", { plainFile: app, startOver: answering(true) });
     expect(run.planned.some((status) => status.startOver !== undefined)).toBe(false);
     expect((await run.done).status).toBe("completed");
   });

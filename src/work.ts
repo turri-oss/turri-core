@@ -81,14 +81,26 @@ export async function askLoop(loop: WorkLoop, kind: WorkKind, request: WorkReque
   return planWork(loop, kind, { ...request, plainFile });
 }
 
+/** A start over put to whoever answers it for a run: what would be started over, and why, in turri's words. */
+export interface StartOverQuestion {
+  /** The question, a few words: "Start over?" */
+  title: string;
+  /** Why each codebase cannot be brought up by changing its code, and what starting over does. */
+  body: string;
+  /** The codebases that would be started over. */
+  codebases: string[];
+}
+
 /** How a run of work goes on past what it planned. */
 export interface WorkRunOptions {
   /**
    * A codebase built without a module it now requires - or before functional specs had func-ids - cannot be brought up
-   * by changing its code: it is started over only when this says so. `true`: started over; `"ask"`: the person is asked;
-   * absent or `false`: the run ends incomplete, saying why.
+   * by changing its code: it is started over only when this says so. The answer: `true`, started over; `false`, not -
+   * the rest of the chain is regenerated, and the run ends incomplete with those codebases unfinished; `"ask"`, the
+   * person is asked through the front end; a function, it is asked, for this run alone, and answers `true`, `false`, or
+   * undefined for no answer. Absent, or no answer: the run ends incomplete at once, saying why.
    */
-  startOver?: boolean | "ask";
+  startOver?: boolean | "ask" | ((question: StartOverQuestion) => Promise<boolean | undefined>);
   /** A run report written to this file as the run goes (run-report.ts). */
   report?: string;
   /** The command, as the report gives it. */
@@ -201,15 +213,23 @@ export async function runWork(context: WorkContext, kind: WorkKind, request: Wor
           : `${startOver!.codebases.join(", ")} was built without ${startOver!.requires.join(", ")}, which it now requires: no change to its code can bring it in.`,
       )
       .join("\n");
+    const question: StartOverQuestion = {
+      title: "Start over?",
+      body: `${why}\nStarting over takes its code and conformance tests out - they stay in its history - and builds it again from the bottom of the chain.`,
+      codebases: [...new Set(toStartOver.flatMap(({ startOver }) => startOver!.codebases))],
+    };
+    const answer = request.startOver;
     const agreed =
-      request.startOver === true
-        ? true
-        : request.startOver === "ask" && context.ask !== undefined
-          ? await context.ask("Start over?", `${why}\nStarting over takes its code and conformance tests out - they stay in its history - and builds it again from the bottom of the chain.`)
-          : undefined;
+      typeof answer === "boolean"
+        ? answer
+        : typeof answer === "function"
+          ? await answer(question)
+          : answer === "ask" && context.ask !== undefined
+            ? await context.ask(question.title, question.body)
+            : undefined;
     if (agreed === true) planned = await loop.startOver(plainFile, request.model !== undefined ? { model: request.model } : {});
     else if (agreed === undefined) {
-      const reason = `${why}\nNobody was asked whether to start over: ask again with startOver set to start over without asking.`;
+      const reason = `${why}\nNobody answered whether to start over: run again with startOver true to start over, or false to regenerate the rest of the chain without it.`;
       return { planned, done: Promise.resolve(finish({ status: "incomplete", jobs: jobs.list(), failed: [], unfinished: moduleStates(loop.drift(plainFile)), reason })) };
     }
   }
