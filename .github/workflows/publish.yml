@@ -1,35 +1,31 @@
 name: publish
 
-# This workflow owns both paths onto npm:
+# This workflow owns both paths onto npm for @turri-dev/core, the package turri's
+# command line and hosts such as turri-app build on:
 #
 #   * A published GitHub Release tagged `vX.Y.Z` ships that version to the
 #     `latest` dist-tag. The tag is the source of truth for the version -
 #     nothing is committed back to the repository.
 #   * A push or merge into main ships a prerelease to the `next` dist-tag,
 #     versioned from the current `latest` plus the commit sha. `latest` is never
-#     touched by this path, so `npm install -g @turri-dev/cli` never gets a
+#     touched by this path, so `npm install @turri-dev/core` never gets a
 #     prerelease.
 #
-# Run by hand with a release's tag, it announces that release on Discord again -
-# one whose announcement did not go out - and does nothing else: no test, no
-# publish.
+# Telling users of a release - the Discord post - is the command line's
+# concern (turri's own publish.yml): nobody installs the core by itself.
 #
 # Auth is OIDC (npm trusted publishing) - no NPM_TOKEN secret. The trusted
-# publisher is configured on npmjs.com against this repo and this exact
-# workflow filename (publish.yml), which is why the prerelease job lives here
-# rather than in a file of its own: a new filename would not be trusted and
-# would need a second publisher entry on npmjs.com.
+# publisher is configured on npmjs.com for @turri-dev/core against this repo
+# and this exact workflow filename (publish.yml), which is why the prerelease
+# job lives here rather than in a file of its own: a new filename would not be
+# trusted and would need a second publisher entry on npmjs.com. package.json's
+# `repository` must name the repository this runs in, or npm refuses the
+# provenance.
 on:
   release:
     types: [published]
   push:
     branches: [main]
-  # A published release announced again, by hand: the workflow as main has it.
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "the release to announce: its tag, v0.2.3"
-        required: true
 
 # Least privilege by default: jobs get no GITHUB_TOKEN scopes unless they
 # opt in below.
@@ -40,12 +36,11 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PACKAGE: "@turri-dev/cli"
+  PACKAGE: "@turri-dev/core"
 
 jobs:
   test:
     name: Test
-    if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +68,7 @@ jobs:
     # Records the release under Deployments -> npm.
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@turri-dev/cli
+      url: https://www.npmjs.com/package/@turri-dev/core
     permissions:
       contents: read       # read the tagged tree
       id-token: write      # OIDC token for trusted publishing
@@ -95,12 +90,15 @@ jobs:
 
       - run: npm ci
 
-      # The package runs dist/, built by prepack, never src/ - prove it is packed.
-      - name: Check the built CLI is in the package
+      # The package runs dist/, built by prepack, never src/ - prove its two entries,
+      # `.` and `./host`, are packed.
+      - name: Check the built entries are in the package
         run: |
-          npm pack --dry-run --json \
-            | jq -e '[.[]][0].files[] | select(.path == "dist/cli.js")' >/dev/null \
-            || { echo "::error::dist/cli.js is missing from the npm package"; exit 1; }
+          files=$(npm pack --dry-run --json | jq -r '[.[]][0].files[].path')
+          for entry in dist/extension.js dist/host.js; do
+            grep -qxF "$entry" <<< "$files" \
+              || { echo "::error::$entry is missing from the npm package"; exit 1; }
+          done
 
       - name: Read the version from the release tag
         id: pkg
@@ -139,89 +137,6 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # A release on `latest` -> a post in the Discord channel, so users update.
-  #
-  # Only once npm has the version, so nobody is told to install what is not
-  # there yet, and never for a pre-release or a push to main. The webhook URL is
-  # the repository secret DISCORD_RELEASE_WEBHOOK (Discord: the channel's
-  # settings -> Integrations -> Webhooks); without it the job says so and passes.
-  # The release's notes reach the payload only through the environment and jq,
-  # never through an expression, so nothing in them can become a command.
-  # Run by hand, the release is read from GitHub - published, never a
-  # pre-release - and posted only once npm has its version.
-  announce:
-    name: Announce on Discord
-    needs: publish
-    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && !github.event.release.prerelease && needs.publish.result == 'success')) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions: {}
-
-    steps:
-      - name: Post the release to Discord
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
-          NAME: ${{ github.event.release.name }}
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-          URL: ${{ github.event.release.html_url }}
-          NOTES: ${{ github.event.release.body }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if [ -z "$WEBHOOK" ]; then
-            echo "::notice::DISCORD_RELEASE_WEBHOOK is not set - no announcement posted"
-            exit 0
-          fi
-          # The URL alone: a secret pasted with a newline, spaces or quotes
-          # around it is taken without them, as curl rejects such a URL.
-          WEBHOOK=$(printf '%s' "$WEBHOOK" | tr -d '[:space:]' | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')
-          if [[ "$WEBHOOK" != https://* ]]; then
-            echo "::warning::DISCORD_RELEASE_WEBHOOK is not an https:// URL - no announcement posted"
-            exit 0
-          fi
-          # Run by hand: the release read from GitHub's public API, with no token.
-          if [ -z "$URL" ]; then
-            release=$(curl --silent --show-error --fail --retry 3 -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPOSITORY/releases/tags/$TAG") \
-              || { echo "::error::no published release $TAG"; exit 1; }
-            if [ "$(printf '%s' "$release" | jq -r '.prerelease')" = true ]; then
-              echo "::notice::$TAG is a pre-release - no announcement posted"
-              exit 0
-            fi
-            NAME=$(printf '%s' "$release" | jq -r '.name // ""')
-            URL=$(printf '%s' "$release" | jq -r '.html_url')
-            NOTES=$(printf '%s' "$release" | jq -r '.body // ""')
-            if ! npm view "$PACKAGE@${TAG#v}" version >/dev/null 2>&1; then
-              echo "::error::$PACKAGE@${TAG#v} is not on npm - nobody is told to install it"
-              exit 1
-            fi
-          fi
-          # Discord holds an embed's description to 4096 characters: longer
-          # notes are cut and point to the release for the rest.
-          payload=$(jq -n \
-            --arg name "${NAME:-turri ${TAG#v}}" \
-            --arg url "$URL" \
-            --arg notes "$NOTES" \
-            --arg update "npm install -g $PACKAGE@latest" \
-            '{
-              username: "turri",
-              content: ("**" + $name + "** is out - update with `" + $update + "`"),
-              allowed_mentions: { parse: [] },
-              embeds: [{
-                title: $name,
-                url: $url,
-                color: 3447003,
-                description: (if ($notes | length) > 3900
-                  then ($notes[0:3900] + "\n\n... [the rest on GitHub](" + $url + ")")
-                  else $notes end)
-              }]
-            }')
-          curl --fail-with-body --silent --show-error --retry 3 \
-            -H "Content-Type: application/json" \
-            -d "$payload" "$WEBHOOK"
-          echo "announced $TAG on Discord"
-
-  # ---------------------------------------------------------------------------
   # Push or merge into main -> a prerelease on the `next` dist-tag.
   #
   # Runs in this file, not a file of its own, because npm's trusted publisher is
@@ -236,7 +151,7 @@ jobs:
     # protection rules, so this never waits for an approval.
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@turri-dev/cli/v/next
+      url: https://www.npmjs.com/package/@turri-dev/core/v/next
     permissions:
       contents: read
       id-token: write      # OIDC token for trusted publishing
@@ -256,11 +171,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Check the built CLI is in the package
+      - name: Check the built entries are in the package
         run: |
-          npm pack --dry-run --json \
-            | jq -e '[.[]][0].files[] | select(.path == "dist/cli.js")' >/dev/null \
-            || { echo "::error::dist/cli.js is missing from the npm package"; exit 1; }
+          files=$(npm pack --dry-run --json | jq -r '[.[]][0].files[].path')
+          for entry in dist/extension.js dist/host.js; do
+            grep -qxF "$entry" <<< "$files" \
+              || { echo "::error::$entry is missing from the npm package"; exit 1; }
+          done
 
       # package.json on main is stale by design, so the published `latest` is
       # the base - or package.json's version before the first release. Bump its
@@ -323,5 +240,5 @@ jobs:
             echo "| dist-tag | \`next\` |"
             echo "| \`latest\` still | \`${{ steps.pre.outputs.base }}\` |"
             echo
-            echo "Try it: \`npm install -g $PACKAGE@next\`"
+            echo "Try it: \`npm install $PACKAGE@next\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -69,13 +69,13 @@ npm install
 npm link              # puts `turri` on your PATH, pointing at this clone
 ```
 
-A clone runs its TypeScript sources directly - Node strips the types - so edits take effect immediately. The package on npm runs JavaScript compiled from them instead (`npm run build`, into `dist/`, run by `npm pack` and `npm publish` before they pack), as Node runs no `.ts` file inside a `node_modules`. `bin/turri.mjs` runs `src/` where there is one, and `dist/` otherwise.
+A clone runs its TypeScript sources directly - Node strips the types - so edits take effect immediately. The package on npm runs JavaScript compiled from them instead (`npm run build`, into `dist/`, run by `npm pack` and `npm publish` before they pack), as Node runs no `.ts` file inside a `node_modules`. turri's CLI's `bin/turri.mjs` runs `src/` where there is one, and `dist/` otherwise.
 
 To update, `git pull` and `npm install` - the second picks up a dependency that changed, [pi](https://pi.dev)'s say. `npm link` needs running only once. A **turri** already running keeps the code it started with: start it again to run what you pulled.
 
 ## In Docker
 
-`docker/Dockerfile` builds an image with Node, git, bash, bubblewrap and **turri** linked; the agents' commands and the testing scripts run inside it, so add the toolchains your projects need first. It runs **turri** as the user who owns the project folder mounted at `/work`, never as root - bubblewrap as root in a container lacks the capability to make its namespaces - and with seccomp and AppArmor unconfined the OS sandbox starts. `systempaths=unconfined` lets it mount a `/proc` of its own; without it, it binds the container's. The build, the run, Windows and the keys: [turri in Docker](../docker/README.md).
+turri's CLI's `docker/Dockerfile` builds an image with Node, git, bash, bubblewrap and **turri** linked; the agents' commands and the testing scripts run inside it, so add the toolchains your projects need first. It runs **turri** as the user who owns the project folder mounted at `/work`, never as root - bubblewrap as root in a container lacks the capability to make its namespaces - and with seccomp and AppArmor unconfined the OS sandbox starts. `systempaths=unconfined` lets it mount a `/proc` of its own; without it, it binds the container's. The build, the run, Windows and the keys: turri in Docker, turri's CLI's `docker/README.md`.
 
 ## What `turri doctor` checks
 
@@ -118,7 +118,7 @@ An older `turri setup` could load turri into every `pi`, with a one-line file in
 
 ### Project trust
 
-[pi](https://pi.dev) will not auto-discover a project-local extension until you trust the project, and `-p` has no way to ask - so `npm run chat` and `npm run ask` pass `-e` explicitly. Once you have run `pi` interactively in this directory and accepted the trust prompt, plain `pi` picks the extension up on its own. A `defaultProjectTrust` key in `.pi/settings.json` does *not* work - a project cannot vouch for itself; that setting only counts in `~/.pi/agent/settings.json`.
+[pi](https://pi.dev) will not auto-discover a project-local extension until you trust the project, and `-p` has no way to ask - so turri's CLI's `npm run chat` and `npm run ask` pass `-e` explicitly. Once you have run `pi` interactively in this directory and accepted the trust prompt, plain `pi` picks the extension up on its own. A `defaultProjectTrust` key in `.pi/settings.json` does *not* work - a project cannot vouch for itself; that setting only counts in `~/.pi/agent/settings.json`.
 
 ## Environment
 

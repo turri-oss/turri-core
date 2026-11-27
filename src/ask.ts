@@ -5,9 +5,6 @@
  * the TUI and the CLI, and so it can be tested without a terminal.
  */
 
-import { isKeyRelease, isKeyRepeat, matchesKey } from "@earendil-works/pi-tui";
-import { PANEL_KEY } from "./regenerate/job-panel.ts";
-
 export interface AskUserRequest {
   question: string;
   /** Concrete choices. Selecting beats typing whenever the answer space is known. */
@@ -203,17 +200,4 @@ export async function runAsk(asked: AskUserRequest, io: AskUserIO): Promise<stri
   }
 
   return ticked.size > 0 ? picked().join(", ") : DISMISSED;
-}
-
-/**
- * While a question is open, what catches ctrl+h on the terminal's input: pi gives an extension's shortcut only the keys
- * its editor sees, and a question has the focus. It opens the side panel - the question waits under it - unless the
- * panel shows already: its own listener has ctrl+h then, to close it. A key's release and its repeats are left alone.
- */
-export function peekKeyListener(panel: { open(): void; shown(): boolean }): (data: string) => { consume: true } | undefined {
-  return (data) => {
-    if (isKeyRelease(data) || isKeyRepeat(data) || !matchesKey(data, PANEL_KEY) || panel.shown()) return undefined;
-    panel.open();
-    return { consume: true };
-  };
 }

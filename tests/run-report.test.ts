@@ -1,15 +1,12 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testPlainFile } from "./test-plain.ts";
-import { overrideConfig, projectModels, readProjectConfig, booleanOption, roleModel } from "../src/config.ts";
-import { configKeyOptions, parseArgs } from "../src/cli-options.ts";
-import { headlessOptions, moduleStates } from "../src/loop-cli.ts";
+import { overrideConfig, projectModels, readProjectConfig, booleanOption, roleModel, splitModelSpec } from "../src/config.ts";
 import { reportModelEvent, reportUsage } from "../src/regenerate/activity.ts";
 import { createJobRegistry } from "../src/regenerate/jobs.ts";
-import { recordHistory } from "../src/regenerate/lineage.ts";
 import { conformanceDirFor } from "../src/regenerate/conformance.ts";
 import { chainSpec, functionalityCompletion } from "../src/regenerate/loop.ts";
 import { modulesRoot } from "../src/regenerate/paths.ts";
@@ -17,7 +14,6 @@ import { writeCodeRecord, writeTestsRecord } from "../src/regenerate/records.ts"
 import { resolveRequiresChain } from "../src/regenerate/requires.ts";
 import { startRunReport, writeAtomically, type UsageTotals } from "../src/run-report.ts";
 
-const TURRI = resolve("bin/turri.mjs");
 let dir: string;
 
 beforeEach(() => {
@@ -352,52 +348,11 @@ describe("the functional specs conformance tested", () => {
   });
 });
 
-describe("each codebase's state", () => {
-  it("is complete only with nothing left to regenerate, and says why when it is not", () => {
-    const base = { plainFile: "x.plain", scheduled: [] };
-    expect(
-      moduleStates([
-        { ...base, module: "a", code: null, conformance: undefined },
-        { ...base, module: "b", code: null, conformance: { fresh: false, add: [], patch: [], again: [], delete: [], mechanical: true } },
-        { ...base, module: "c", code: null, conformance: null, why: "pulse 1 did not land" },
-        { ...base, module: "d", code: null, conformance: null, startOver: { requires: ["base"], codebases: ["d"] } },
-        { ...base, module: "e", code: null, conformance: null, running: { jobId: "j", title: "t" } },
-      ]),
-    ).toEqual([
-      { module: "a", state: "complete" },
-      { module: "b", state: "incomplete", why: "its conformance tests are not written for what is built" },
-      { module: "c", state: "halted", why: "pulse 1 did not land" },
-      { module: "d", state: "start_over_needed", why: "built without base, which it now requires: run with --start-over" },
-      { module: "e", state: "running" },
-    ]);
-  });
-});
-
 describe("a headless run's options", () => {
-  const exits = () =>
-    vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-      throw new Error(`exit ${code}`);
-    }) as never);
-
-  it("refuses an option the command does not take, rather than eating the word after it", () => {
-    const exit = exits();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["app.plain", "--to", "3"], [], "usage")).toThrow("exit 1");
-    expect(error.mock.calls.at(-1)?.[0]).toContain("No such option: --to");
-    expect(parseArgs(["app.plain", "--report=r.json", "--coding-model", "p/m"], [], "usage", ["--report"])).toEqual({ positional: ["app.plain"], options: { report: "r.json", model: "p/m" } });
-    // An option where a value should be is not taken as the value: the run would lose it.
-    expect(() => parseArgs(["app.plain", "--report", "--start-over"], ["--start-over"], "usage", ["--report"])).toThrow("exit 1");
-    expect(error.mock.calls.at(-1)?.[0]).toContain("--report needs a value, not the option --start-over");
-    expect(() => parseArgs(["app.plain", "--report"], [], "usage", ["--report"])).toThrow("exit 1");
-    expect(parseArgs(["--report=--odd.json"], [], "usage", ["--report"]).options).toEqual({ report: "--odd.json" });
-    exit.mockRestore();
-    error.mockRestore();
-  });
-
-  it("reads --harness-model, --coding-model, --judge-model and --review as the config's keys, the config's order kept", () => {
+  it("lets an override of harness-model, coding-model, judge-model and review win over the config file, the config's order kept", () => {
     writeFileSync(join(dir, "config.yaml"), "review: true\njudge-model: p/old\nmodels:\n  judge: { model: p/own-judge, thinking: high }\nunittests-script: run_unittests.sh\n");
-    const options = { "harness-model": "p/harness", model: "p/coding:low", "judge-model": "p/judge", review: "false", report: "r.json" };
-    expect(headlessOptions(options)).toEqual({ report: "r.json" });
+    // What headlessOptions sets of these options (turri's CLI, through configKeyOptions), set as it sets them.
+    overrideConfig({ harnessModel: splitModelSpec("p/harness"), codingModel: splitModelSpec("p/coding:low"), judgeModel: splitModelSpec("p/judge"), review: false });
     const config = readProjectConfig(dir);
     expect(config).toMatchObject({
       harnessModel: { model: "p/harness" },
@@ -415,83 +370,11 @@ describe("a headless run's options", () => {
     expect(["true", "false", "off"].map(booleanOption)).toEqual([true, false, undefined]);
   });
 
-  it("takes no --conformance-tests: what is tested is the functional specs with scenarios", () => {
-    const exit = exits();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => parseArgs(["app.plain", "--conformance-tests", "all"], [], "usage", ["--report"])).toThrow("exit 1");
-    expect(error.mock.calls.at(-1)?.[0]).toContain("No such option: --conformance-tests");
-    exit.mockRestore();
-    error.mockRestore();
-  });
-
-  it("reads --mutation-testing as the config's mutation-testing, over what the file says, and refuses anything but true or false", () => {
+  it("lets an override of mutation-testing win over what the config file says", () => {
     writeFileSync(join(dir, "config.turri.yaml"), "mutation-testing: true\n");
     expect(readProjectConfig(dir).mutationTesting).toBe(true);
-    configKeyOptions({ "mutation-testing": "false" }, { review: true });
+    // What configKeyOptions sets of --mutation-testing false (turri's CLI), set as it sets it.
+    overrideConfig({ mutationTesting: false });
     expect(readProjectConfig(dir).mutationTesting).toBe(false);
-    const run = spawnSync(process.execPath, [TURRI, "regenerate", "app.plain", "--mutation-testing", "maybe"], { cwd: dir, encoding: "utf8" });
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("--mutation-testing takes true or false, not maybe");
-  });
-
-  it("refuses a value it cannot read", () => {
-    const exit = exits();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => headlessOptions({ review: "maybe" })).toThrow("exit 1");
-    expect(() => headlessOptions({ report: undefined })).toThrow("exit 1");
-    exit.mockRestore();
-    error.mockRestore();
-  });
-});
-
-describe("turri regenerate, unattended", () => {
-  it("stops, with no terminal to ask, at a codebase it would have to start over - and reports why", () => {
-    spec("base", ["Base one."]);
-    const app = spec("app", ["App one."]);
-    const code = join(dir, "plain_modules", "app", "code");
-    mkdirSync(code, { recursive: true });
-    writeFileSync(join(code, "main.py"), "print(1)\n");
-    writeCodeRecord(code, chainSpec(resolveRequiresChain(app, [], undefined, { allowNoFunctionalities: true })).tree);
-    recordHistory(code, "app pulse 1 landed");
-    // Now it requires base, which its code was not built on.
-    spec("app", ["App one."], "base");
-
-    // The whole command a benchmark runs: every model and review given on the command line.
-    const command = [
-      "regenerate", "app.plain", "--harness-model", "nowhere/big", "--coding-model", "nowhere/small",
-      "--review", "false", "--judge-model", "nowhere/judge",
-      "--build-dir", "out/build", "--report", "out/report.json",
-    ];
-    const run = spawnSync(process.execPath, [TURRI, ...command], {
-      cwd: dir,
-      stdio: ["ignore", "pipe", "pipe"],
-      encoding: "utf8",
-      timeout: 60_000,
-    });
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("--start-over");
-    const written = JSON.parse(readFileSync(join(dir, "out", "report.json"), "utf8"));
-    // --coding-model reaches the command as --model: cli.ts reads the one as the other.
-    expect(written.command).toEqual(command.map((arg) => (arg === "--coding-model" ? "--model" : arg)));
-    expect(written.models).toMatchObject({
-      harness: { model: "nowhere/big", thinking: "medium" },
-      coding: { model: "nowhere/small", thinking: "low" },
-      judge: { model: "nowhere/judge", thinking: "medium" },
-    });
-    expect(written).toMatchObject({ review: false });
-    expect(written).not.toHaveProperty("conformance_tests");
-    expect(written.build_dir_export).toMatchObject({ exported: true, module: "app" });
-    expect(readdirSync(join(dir, "out", "build"))).toEqual(["main.py"]);
-    expect(written.outcome).toMatchObject({ status: "incomplete", exit_code: 1, modules: [{ module: "app", state: "start_over_needed" }] });
-    expect(written.functionalities.total).toEqual({ specified: 2, with_scenarios: 0, completed: 1, conformance_tested: 0 });
-    expect(written.pulses.counts.total).toBe(0);
-  });
-
-  it("refuses a --build-dir that holds the project", () => {
-    const app = spec("app", ["App one."]);
-    const run = spawnSync(process.execPath, [TURRI, "regenerate", app, "--model", "nowhere/no-model", "--build-dir", dir], { cwd: dir, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", timeout: 60_000 });
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("holds the project");
-    expect(existsSync(join(dir, "app.plain"))).toBe(true);
   });
 });

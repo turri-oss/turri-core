@@ -12,7 +12,7 @@ A problem in the app - its window, its installer, its updates - belongs to [turr
 
 ## Supported versions
 
-Only the [latest release on npm](https://www.npmjs.com/package/@turri-dev/cli) is fixed: `npm install -g @turri-dev/cli` gets it.
+Only the latest release on npm is fixed - of this package, [`@turri-dev/core`](https://www.npmjs.com/package/@turri-dev/core), and of turri's CLI built on it, [`@turri-dev/cli`](https://www.npmjs.com/package/@turri-dev/cli). People get turri with `npm install -g @turri-dev/cli`.
 
 ## What turri sends
 

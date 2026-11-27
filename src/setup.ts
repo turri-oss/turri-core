@@ -1,20 +1,17 @@
 import { spawnSync } from "node:child_process";
 import { spawnAsync } from "./spawn-async.ts";
-import { existsSync, rmSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { EXTENSION_PROVIDERS, installedProviders, runtimeWithProviders } from "./installed-providers.ts";
-import { globalExtensionFile, MIN_NODE, nodeVersionOk, PACKAGE_ROOT, turriIdentity } from "./environment.ts";
+import { globalExtensionFile, MIN_NODE, nodeVersionOk, turriIdentity, turriRoot } from "./environment.ts";
 import { fetchLatest, newerThan, turrisOnPath, versionFindings } from "./turri-versions.ts";
 import { sandboxAvailable, sandboxWithAsync, type Wall } from "./regenerate/os-sandbox.ts";
 import { findTestScripts, onThisMachine } from "./regenerate/test-scripts.ts";
-import { configKeyOptions, parseArgs } from "./cli-options.ts";
 import { CONFIG_FILE, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems } from "./config.ts";
 import { checkModels, modelsInUse, piModelAccess, type ModelAccess } from "./model-check.ts";
 import { bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
 import { baseFilesAsync } from "./regenerate/base-folder.ts";
-import { brand } from "./brand.ts";
 import { readScript, scriptAgainstMachine, stackOnMachineAsync } from "./stack.ts";
 
 /**
@@ -41,9 +38,9 @@ export interface Check {
   fix?: string;
 }
 
-const MARK: Record<Level, string> = { ok: "✓", missing: "✗", limited: "!", info: "·" };
+export const MARK: Record<Level, string> = { ok: "✓", missing: "✗", limited: "!", info: "·" };
 
-function checkNode(): Check {
+export function checkNode(): Check {
   const version = process.versions.node;
   return nodeVersionOk(version)
     ? { level: "ok", name: "Node", detail: version }
@@ -181,7 +178,7 @@ async function checkTurri(): Promise<Check[]> {
         name: "turri on PATH",
         detail: "not found",
         // A clone has its sources; the package from npm has only what was compiled from them.
-        fix: existsSync(join(PACKAGE_ROOT, "src")) ? `cd ${PACKAGE_ROOT} && npm link` : "npm install -g @turri-dev/cli",
+        fix: existsSync(join(turriRoot(), "src")) ? `cd ${turriRoot()} && npm link` : "npm install -g @turri-dev/cli",
       },
     ];
   }
@@ -246,13 +243,13 @@ export interface DoctorOptions {
 }
 
 /** The CLI's own: what matters only in a terminal, and models named on the command line - asked of, a project or not. */
-interface CliOptions {
+export interface CliOptions {
   cli?: boolean;
   modelsGiven?: boolean;
 }
 
 /** Whether doctor asks the models: asked to, and a config that names them - or models named on the command line. */
-function asksModels(options: DoctorOptions & CliOptions): options is DoctorOptions & CliOptions & { dir: string } {
+export function asksModels(options: DoctorOptions & CliOptions): options is DoctorOptions & CliOptions & { dir: string } {
   return options.models === true && options.dir !== undefined && (hasProjectConfig(options.dir) || options.modelsGiven === true);
 }
 
@@ -269,7 +266,7 @@ export async function doctor(options: DoctorOptions = {}): Promise<Check[]> {
   return allChecks({ ...options, cli: false, modelsGiven: false });
 }
 
-async function allChecks(options: DoctorOptions & CliOptions): Promise<Check[]> {
+export async function allChecks(options: DoctorOptions & CliOptions): Promise<Check[]> {
   const env = options.env ?? process.env;
   // Each check that runs a command runs it without holding the thread up - a host asks on its own - side by side.
   const [bash, git, wall, provider] = await Promise.all([runs("bash", env), runs("git", env), sandboxWithAsync(env), checkProvider(options.dir)]);
@@ -407,80 +404,4 @@ export function describeChecks(checks: Check[]): string {
     ...(check.fix && check.level !== "ok" ? [`    → ${check.fix}`] : []),
   ]);
   return `${lines.join("\n")}\n\n${verdictOf(checks).text}`;
-}
-
-function report(checks: Check[]): number {
-  const paint: Record<Level, (text: string) => string> = { ok: brand.success, missing: brand.error, limited: brand.warning, info: brand.muted };
-  // The names in one column, however long the longest - `judge-model, models.judge` - is.
-  const width = Math.max(20, ...checks.map((check) => check.name.length)) + 1;
-  const under = " ".repeat(width + 4);
-  console.log("");
-  for (const check of checks) {
-    const name = check.level === "missing" ? brand.bold(check.name.padEnd(width)) : check.name.padEnd(width);
-    console.log(`  ${paint[check.level](MARK[check.level])} ${name}${check.level === "info" ? brand.muted(check.detail) : check.detail}`);
-    for (const line of check.more ?? []) console.log(`${under}${brand.muted(line)}`);
-    if (check.fix && check.level !== "ok") console.log(`${under}${brand.accent(`→ ${check.fix}`)}`);
-  }
-  const verdict = verdictOf(checks);
-  console.log("");
-  console.log((verdict.ready ? (verdict.limited ? brand.warning : brand.success) : brand.error)(verdict.text));
-  return verdict.ready ? 0 : 1;
-}
-
-/**
- * Ask a yes/no question. With --yes, yes. With no terminal to ask on, no - nothing is changed
- * without asking - and it says so, so a piped run shows what it would have done.
- */
-async function confirm(question: string, fallback: boolean, yes: boolean): Promise<boolean> {
-  if (yes) return true;
-  if (!process.stdin.isTTY) {
-    console.log(`${question} - not asked: no terminal. Run turri doctor in a terminal, or with --yes.`);
-    return false;
-  }
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = (await rl.question(`${question} ${fallback ? "[Y/n]" : "[y/N]"} `)).trim().toLowerCase();
-    return answer === "" ? fallback : answer.startsWith("y");
-  } finally {
-    rl.close();
-  }
-}
-
-/**
- * Take turri out of every `pi`: the extension file an older `turri setup` wrote. The themes it copied stay - they only
- * add turri's themes to pi's list.
- */
-function removeGlobalExtension(): void {
-  const file = globalExtensionFile();
-  if (file === undefined) return;
-  rmSync(file, { force: true });
-  console.log(`  removed ${file}`);
-}
-
-const USAGE = [
-  "usage: turri doctor [--harness-model <m>] [--coding-model <m>] [--judge-model <m>] [--no-models] [--yes]",
-  "",
-  "Check everything turri needs - in a project, what its modules need of this machine too, and that",
-  "each model its config names answers with this machine's credentials (one short request a model;",
-  "--no-models skips it). The model options are read as the config's keys, as turri regenerate reads them:",
-  "a headless run's models can be checked before it starts, with no config.turri.yaml.",
-  "It changes nothing but this, asked first: a plain pi that an older turri made load turri too is put back to",
-  "plain pi. --yes answers yes.",
-].join("\n");
-
-export async function main(args: string[]): Promise<number> {
-  const { options } = parseArgs(args, ["--no-models", "--yes", "-y"], USAGE, ["--harness-model", "--judge-model"]);
-  configKeyOptions(options);
-  console.log(brand.bold(brand.accent("Checking what turri needs.")));
-  if (!nodeVersionOk()) return report([checkNode()]);
-  const modelsGiven = ["harness-model", "model", "judge-model"].some((name) => options[name] !== undefined);
-  const checking = { dir: process.cwd(), models: options["no-models"] === undefined, cli: true, modelsGiven };
-  if (asksModels(checking)) console.log(brand.muted("Asking each model the config names for a word..."));
-  const code = report(await allChecks(checking));
-  // turri and pi are kept apart: a plain pi does not start turri. An older turri's file that made it do so goes, asked.
-  const global = globalExtensionFile();
-  if (global !== undefined && (await confirm(`\nA plain \`pi\` loads turri too, through ${global}. Remove it, so pi stays pi?`, true, options.yes !== undefined || args.includes("-y")))) {
-    removeGlobalExtension();
-  }
-  return code;
 }

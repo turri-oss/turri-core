@@ -1,10 +1,10 @@
 # Running turri in a host
 
-`turri` runs its chats in a terminal. A host - a desktop app, an editor - can run the same session itself, its chats in its own windows, and show what turri's terminal would draw in its own way: the jobs, the questions, the \*\*\*plain description. It imports turri from npm as `@turri-dev/cli/host`.
+`turri` runs its chats in a terminal. A host - a desktop app, an editor - can run the same session itself, its chats in its own windows, and show what turri's terminal would draw in its own way: the jobs, the questions, the \*\*\*plain description. It imports turri from npm as `@turri-dev/core/host`.
 
 ## What the host entry gives
 
-`@turri-dev/cli/host` is turri's compiled code (`dist/host.js`, with its types) - the conversation and what a host shows beside it:
+`@turri-dev/core/host` is turri's compiled code (`dist/host.js`, with its types) - the conversation and what a host shows beside it:
 
 | export | what it is |
 | --- | --- |
@@ -40,7 +40,7 @@ It is turri's own code, as the terminal runs it: a 0.x release may change any of
 ## A project's first config
 
 ```js
-import { initConfig, piModelCatalogue, bedrockMakers, bedrockModelsIn, bedrockDefaultModels } from "@turri-dev/cli/host";
+import { initConfig, piModelCatalogue, bedrockMakers, bedrockModelsIn, bedrockDefaultModels } from "@turri-dev/core/host";
 
 const catalogue = await piModelCatalogue();
 bedrockMakers(catalogue);                                     // [{ maker: "xai", label: "xAI", regions: ["global", "us", "in-region"] }, ...]
@@ -61,7 +61,7 @@ The message says whose models were written - "with xAI's models on Amazon Bedroc
 ## How a project stands
 
 ```js
-import { projectStanding } from "@turri-dev/cli/host";
+import { projectStanding } from "@turri-dev/core/host";
 
 for (const { plainFile, module, drift, driftError, completion, completionError } of projectStanding(projectDir, { loop: turri.loop })) {
   // drift: loop.drift(plainFile)'s reports; completion: functionalityCompletion(plainFile)'s chains.
@@ -83,7 +83,7 @@ A provider a [pi](https://pi.dev) extension registers - `claude-code`, a Claude 
 ## doctor in a host
 
 ```js
-import { doctor } from "@turri-dev/cli/host";
+import { doctor } from "@turri-dev/core/host";
 
 const checks = await doctor({ dir: project, env: engineEnv });
 // [{ level: "ok" | "missing" | "limited" | "info", name, detail, more?, fix? }, ...]
@@ -102,7 +102,7 @@ What matters only in a terminal - `turri` on the PATH, a plain `pi` an older tur
 ## The session in a host
 
 ```js
-import { createTurri, pi } from "@turri-dev/cli/host";
+import { createTurri, pi } from "@turri-dev/core/host";
 
 process.chdir(project);                // the session is the project's in the process's working folder
 const turri = await createTurri({
@@ -201,7 +201,7 @@ the chat, and the toolbar's buttons send them too.
 ## \*\*\*plain for a host
 
 ```js
-import { conceptBeingTyped, conceptsOf, findConcepts, plainGraph, stdlibTemplates, STDLIB_KINDS } from "@turri-dev/cli/host";
+import { conceptBeingTyped, conceptsOf, findConcepts, plainGraph, stdlibTemplates, STDLIB_KINDS } from "@turri-dev/core/host";
 
 const { modules, items, concepts, testPlainFiles } = plainGraph(projectDir);
 const app = modules.find((module) => module.module === "app");
@@ -228,7 +228,7 @@ concepts.find((concept) => concept.definition === "/…/base.plain:8");
 `createTurri` starts the ledger itself, in the process's working folder - the project's - so a host needs nothing to have one: its pulses are recorded as `host` runs, each event with the chat its work was asked for in, and the chats' `pulses` already tells the model of earlier sessions' pulses. What the host can do with it is show it.
 
 ```js
-import { onLedgerEvent, pulseView, readLedger, runViews } from "@turri-dev/cli/host";
+import { onLedgerEvent, pulseView, readLedger, runViews } from "@turri-dev/core/host";
 
 // Each event as it is recorded - written or not, so a project with ledger-keep: 0 is heard too.
 const stop = onLedgerEvent((entry, project) => {
@@ -252,4 +252,4 @@ const { jobs, more } = earlierPulses(ledgerProjects(projectDir), new Set(turri.j
 
 ## Running it
 
-The host entry is compiled JavaScript, so any Node from 22.19 runs it - Electron's own included; nothing strips types. It finds turri's own folders - `genome/`, `stdlib/`, `.pi/` - beside `dist/` in the package, wherever npm installed it.
+The host entry is compiled JavaScript, so any Node from 22.19 runs it - Electron's own included; nothing strips types. It finds turri's own folders - `genome/`, `stdlib/` - beside `dist/` in the package, wherever npm installed it; `.pi/`, the themes, is turri's CLI's.

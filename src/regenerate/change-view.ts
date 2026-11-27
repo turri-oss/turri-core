@@ -1,5 +1,5 @@
 import { DEFINITIONS, FUNCTIONAL_REQUIREMENTS, NON_FUNCTIONAL_REQUIREMENTS, REQUIRED_FUNCTIONAL_SPECS, TEST_REQUIREMENTS } from "../plain/spec.ts";
-import type { DiffWhere } from "./diff-view.ts";
+import type { DiffWhere } from "./diff-where.ts";
 import { diffFileTexts, resourceDiff, testPlainFileText, type SpecChange, type TestPlainPath } from "./spec-steps.ts";
 
 /**

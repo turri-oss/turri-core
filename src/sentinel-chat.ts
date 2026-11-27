@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Box, Text } from "@earendil-works/pi-tui";
 import type { ChatLink, TurriCore } from "./chats.ts";
 import { projectModels, readProjectConfig, roleModel } from "./config.ts";
 import { concludedNote, concludeTool, keepGuidanceTool, notifyTool, resumeTool, sentinelFileTools, whoHoldsTool, type Conclusion, type Notice } from "./sentinel.ts";
@@ -11,11 +10,11 @@ import { concludedNote, concludeTool, keepGuidanceTool, notifyTool, resumeTool, 
  */
 
 /** A notice in the transcript: the card. */
-const NOTICE_ENTRY = "turri_notice";
+export const NOTICE_ENTRY = "turri_notice";
 /** A notice's end, under its card: answered, dismissed, superseded by a newer one about its module. */
-const NOTICE_OVER_ENTRY = "turri_notice_over";
+export const NOTICE_OVER_ENTRY = "turri_notice_over";
 /** The sentinel done with a pulse, in the chat the person is in. */
-const CONCLUDED_ENTRY = "turri_sentinel_concluded";
+export const CONCLUDED_ENTRY = "turri_sentinel_concluded";
 
 const IGNORE = "Ignore - leave it as the build has it";
 const STEER = "Say what to do instead…";
@@ -82,54 +81,6 @@ export function noticeDialogs(
   const waiting: Notice[] = [];
   const asking = new Map<string, AbortController>();
   let open = false;
-
-  pi.registerEntryRenderer(NOTICE_ENTRY, (entry, _options, theme) => {
-    const notice = entry.data as Notice | undefined;
-    if (notice === undefined) return undefined;
-    const mark = notice.severity === "error" ? theme.fg("error", "✗") : notice.severity === "warning" ? theme.fg("warning", "!") : theme.fg("accent", "·");
-    const about = notice.module !== undefined ? `${notice.module}${notice.pulse !== undefined ? ` · pulse ${notice.pulse}` : ""}` : "";
-    const lines = [
-      `${mark} ${theme.fg("muted", `sentinel${about !== "" ? ` · ${about}` : ""}`)}`,
-      `  ${theme.fg("text", notice.summary)}`,
-      ...notice.evidence.map((line) => theme.fg("muted", `    ${line}`)),
-      ...notice.actions.map((action, index) => `  ${theme.fg("accent", `${index + 1}.`)} ${action.label}`),
-    ];
-    const box = new Box(1, 0);
-    box.addChild(new Text(lines.join("\n"), 0, 0));
-    return box;
-  });
-  pi.registerEntryRenderer(CONCLUDED_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as Conclusion | undefined;
-    if (data === undefined) return undefined;
-    const about =
-      data.check !== undefined
-        ? `${data.module !== undefined ? `${data.module} · ` : ""}check ${data.check}`
-        : data.module !== undefined
-          ? `${data.module}${data.pulse !== undefined ? ` · pulse ${data.pulse}` : ""}`
-          : (data.job ?? "");
-    const mark = data.verdict === "holds" ? theme.fg("success", "✓") : data.verdict === "unchecked" ? theme.fg("muted", "·") : theme.fg("error", "✗");
-    const said = data.verdict === "holds" ? "checked, it holds" : data.verdict === "unchecked" ? "not checked" : "found something wrong";
-    const box = new Box(1, 0);
-    box.addChild(new Text(`${mark} ${theme.fg("muted", `sentinel · ${about} · ${said}`)}\n  ${theme.fg("text", data.summary)}`, 0, 0));
-    return box;
-  });
-  pi.registerEntryRenderer(NOTICE_OVER_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { state: Notice["state"]; summary: string } | undefined;
-    if (data === undefined) return undefined;
-    const said =
-      data.state === "superseded"
-        ? "superseded by a newer notice"
-        : data.state === "dismissed"
-          ? "dismissed"
-          : data.state === "ignored"
-            ? "ignored - left as the build has it, not raised again"
-            : data.state === "steered"
-              ? "answered in your words"
-              : "accepted";
-    const box = new Box(1, 0);
-    box.addChild(new Text(theme.fg("muted", `  ${said}: ${data.summary}`), 0, 0));
-    return box;
-  });
 
   const ask = async (): Promise<void> => {
     if (open || link.session()?.isStreaming === true) return;

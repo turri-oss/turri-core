@@ -4,7 +4,7 @@ import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory, Ex
 import { currentChat, inChat, type ChatScope } from "./chat-scope.ts";
 import { adoptRun, forgetChat, forgetSessionFile, recordRun, type ChatRecord, type RunRecord } from "./chat-records.ts";
 import { createChatUi, type ChatUi } from "./chat-ui.ts";
-import { TerminalNotifications } from "./terminal-notifications.ts";
+import { TerminalNotifications } from "./notifications.ts";
 import { debugMode, type SentinelSetting } from "./config.ts";
 import type { AskUserIO } from "./ask.ts";
 import { firstLine, record } from "./regenerate/ledger.ts";
@@ -12,6 +12,7 @@ import { pulseName, formatDuration, type Job, type JobRegistry } from "./regener
 import type { Launch } from "./launch-track.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { newNotice, noticeTask, SENTINEL, sentinelStartChoice, wentWrong, type ChatRole, type Conclusion, type Notice, type NoticeAnswer, type NoticeInput, type SentinelCheck } from "./notice.ts";
+import type { TurriView } from "./view.ts";
 
 /**
  * The chats of a turri session.
@@ -199,6 +200,8 @@ export interface TurriCore {
   readonly canOpen: boolean;
   /** Whether the chats are the terminal's, switched between with /chat and its keys. */
   readonly terminal: boolean;
+  /** What a front-end draws of the session that the core does not (view.ts) - undefined for a host and a headless run. */
+  readonly view: TurriView | undefined;
   /** Only the first terminal chat shows the welcome, until a non-empty submission anywhere in the session. */
   welcomeVisible(chat: string): boolean;
   dismissWelcome(): void;
@@ -285,6 +288,8 @@ export interface CoreOptions {
   ignored?: (notice: Notice) => void;
   /** The launch track, as the sentinel waits on it (docs/sentinel.md). Not given: the sentinel waits for nothing. */
   launches?: SentinelLaunches;
+  /** What a front-end draws of the session that the core does not - the terminal's. Not given: a host's or a headless run's. */
+  view?: TurriView;
 }
 
 /**
@@ -481,6 +486,7 @@ export function createChats(options: CoreOptions): TurriCore {
     cwd,
     host,
     jobs,
+    view: options.view,
     extension: (pi) => options.extension(pi, core.attach(pi)),
     get canOpen() {
       return driver !== undefined;

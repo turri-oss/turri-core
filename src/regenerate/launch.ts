@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
 import { dirname, join, relative } from "node:path";
 import { HISTORY_DIR } from "./lineage.ts";
@@ -371,6 +371,40 @@ export function listLaunched(): LaunchedProcess[] {
 /** The ones still running. */
 export function runningLaunched(moduleName?: string): LaunchedProcess[] {
   return listLaunched().filter((info) => info.exited === undefined && (moduleName === undefined || info.moduleName === moduleName));
+}
+
+/**
+ * Follow every launched process's output - each new line of its log given to `onLine` with its name, every `pollMs`
+ * (500 by default) - until nothing a launch started runs. `turri launch` prints them, each after its name.
+ */
+export function followLaunchedLogs(onLine: (name: string, line: string) => void, options: { pollMs?: number } = {}): Promise<void> {
+  const offsets = new Map<string, number>();
+  return new Promise((done) => {
+    const tick = () => {
+      const running = runningLaunched();
+      for (const item of listLaunched()) {
+        let size = 0;
+        try {
+          size = statSync(item.log).size;
+        } catch {
+          continue;
+        }
+        const from = offsets.get(item.log) ?? 0;
+        if (size <= from) continue;
+        const buffer = Buffer.alloc(size - from);
+        const fd = openSync(item.log, "r");
+        readSync(fd, buffer, 0, buffer.length, from);
+        closeSync(fd);
+        offsets.set(item.log, size);
+        for (const line of buffer.toString("utf8").split("\n").filter((l) => l !== "")) onLine(item.name, line);
+      }
+      if (running.length === 0) {
+        clearInterval(timer);
+        done();
+      }
+    };
+    const timer = setInterval(tick, options.pollMs ?? 500);
+  });
 }
 
 /** Where what a project's launches started write their output: its scratch, not the code in dist. */

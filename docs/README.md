@@ -2,6 +2,8 @@
 
 turri is the first coding agent with the power of regenerative software: [\*\*\*plain](https://plainlang.org/docs/) captures the durable definition of what a system does, and the code is regenerated from it and validated against. The [project README](../README.md) says why, and how to install and start; these pages go into each part.
 
+They are turri's documentation of the whole product, kept here with the core that does what they describe. This package, `@turri-dev/core`, is the core; the `turri` command and the terminal are turri's CLI's, built on it - [the core](core.md) says where the line between them runs. [Installation](installation.md), [using turri](using.md), [chats](chats.md) and [theming](theming.md) describe turri's CLI and its terminal - the `turri` command, the screen, its keys, dialogs and side panel - as do the commands in the other pages (`turri regenerate`, `turri parse`, `turri launch`, `turri capture`, ...); a file they name that this repository does not have is turri's CLI's.
+
 ## Start here
 
 1. [Installation](installation.md) - get a machine ready: `turri doctor`, and what turri needs of this machine.
@@ -36,6 +38,7 @@ turri is the first coding agent with the power of regenerative software: [\*\*\*
 | how skill review gates and judges work | [skills and gates](skills-and-gates.md) |
 | how the parser matches the reference implementation | [the \*\*\*plain parser](parser.md) |
 | how a desktop app or an editor runs turri's chats itself | [running turri in a host](hosting.md) |
+| what is this package's and what is turri's CLI's, and how the CLI draws the core | [the core](core.md) |
 | where the code for something lives | [development](development.md#layout) |
 
 ## All pages
@@ -57,5 +60,6 @@ turri is the first coding agent with the power of regenerative software: [\*\*\*
 | [Skills and gates](skills-and-gates.md) | the gate syntax, what the harness enforces, what a step can do, the rules, trying the gates |
 | [The \*\*\*plain parser](parser.md) | the TypeScript port, `turri parse`, inheritance, the iterator, fidelity |
 | [Theming](theming.md) | the turri themes, contrast, backgrounds, the font |
-| [Running turri in a host](hosting.md) | `@turri-dev/cli/host`: the session and its chats in a host's own windows - their jobs, their questions - and what a host shows beside them |
+| [Running turri in a host](hosting.md) | `@turri-dev/core/host`: the session and its chats in a host's own windows - their jobs, their questions - and what a host shows beside them |
+| [The core](core.md) | this package and turri's CLI: the boundary, the view, the entries a chat keeps, unattended runs, what else the CLI takes from the core, importing it, turri-app |
 | [Development](development.md) | tests, the source layout, known edges |

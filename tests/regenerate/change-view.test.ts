@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentChanges, changeDiff, changeDiffInFiles } from "../../src/regenerate/change-view.ts";
-import { diffView, locateDiffLines } from "../../src/regenerate/diff-view.ts";
+import { locateDiffLines } from "../../src/regenerate/diff-where.ts";
 import type { SpecChange } from "../../src/regenerate/spec-steps.ts";
 
 const item = (markdown: string, extra: Record<string, unknown> = {}) => JSON.stringify({ markdown, ...extra });
@@ -31,7 +31,7 @@ const files = [
 const locate = (diff: string) => locateDiffLines(diff, files);
 
 describe("a job's change as its agent is given it", () => {
-  it("shows each item in the file it is written in - an import's in the import's - under its section, with its line", () => {
+  it("places each item in the file it is written in - an import's in the import's - under its section, with its line", () => {
     const changes = [
       add("definitions", 1, "- :Engine: draws the :Board:."),
       add("definitions", 2, "- :User: is a person."),
@@ -39,16 +39,18 @@ describe("a job's change as its agent is given it", () => {
       add("functional specs", 1, "- A :User: sees the :Board:."),
     ];
     const { diff, where } = changeDiffInFiles(changes, "app.plain", locate);
-    const shown = diffView(diff, 80, undefined, where).map((line) => line.trimEnd());
+    const lines = diff.split("\n");
+    const at = (text: string) => where[lines.indexOf(text)];
 
-    expect(shown).toContain("app.plain  +2");
-    expect(shown).toContain("template/engine.plain  +2");
-    expect(shown).toContain("3 + - :User: is a person.");
-    expect(shown).toContain("8 + - A :User: sees the :Board:.");
-    expect(shown).toContain("3 + - :Engine: draws the :Board:.");
-    expect(shown).toContain("7 + - Use the engine.");
+    // Two added lines in each file, as the panels count them.
+    const added = (file: string) => lines.filter((line, index) => line.startsWith("+") && !line.startsWith("+++") && where[index]?.file === file).length;
+    expect([added("app.plain"), added("template/engine.plain")]).toEqual([2, 2]);
+    expect(at("+- :User: is a person.")).toMatchObject({ file: "app.plain", line: 3, section: "***definitions***" });
+    expect(at("+- A :User: sees the :Board:.")).toMatchObject({ file: "app.plain", line: 8, section: "***functional specs***" });
+    expect(at("+- :Engine: draws the :Board:.")).toMatchObject({ file: "template/engine.plain", line: 3, section: "***definitions***" });
+    expect(at("+- Use the engine.")).toMatchObject({ file: "template/engine.plain", line: 7, section: "***implementation reqs***" });
     // Only what the job takes: the definition no functional spec of it uses is not there.
-    expect(shown.some((line) => line.includes(":Board: is a grid"))).toBe(false);
+    expect(diff).not.toContain(":Board: is a grid");
   });
 
   it("puts each file's items in the order the file has them, not the order the spec is read in", () => {

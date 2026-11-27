@@ -1,5 +1,6 @@
 // Builds the published package: src/ compiled to dist/ by tsc, and the files beside the sources that they read copied
-// over. A clone needs none of it - bin/turri.mjs runs the sources there.
+// over. A clone needs none of it - its tests run the sources, and so does turri's command line linked to it, under the
+// turri-source condition (package.json exports, docs/core.md).
 import { execFileSync } from "node:child_process";
 import { cpSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";

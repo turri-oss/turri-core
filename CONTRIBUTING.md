@@ -10,18 +10,19 @@ A security problem is not an issue: report it privately, as [SECURITY.md](SECURI
 
 ## Where a change belongs
 
-turri is the command line, the conversation and everything they know: the \*\*\*plain parser, the work loop and its agents, the sandbox, the skills and rules in `genome/`, the standard library in `stdlib/`. [turri desktop](https://github.com/turri-oss/turri-desktop) is turri in a native window: it runs turri through its host entry (`@turri-dev/cli/host`, [hosting](docs/hosting.md)) and owns only the window - its views, its installer and updates. A change to what turri does goes here; a change to how the app shows it goes there. If you are not sure which side something is on, open an issue and ask.
+This repository is turri's core, `@turri-dev/core`: the conversation and everything turri knows and does - the \*\*\*plain parser, the work loop and its agents, the sandbox, the skills and rules in `genome/`, the standard library in `stdlib/`. turri's CLI (`@turri-dev/cli`, the [turri](https://github.com/turri-oss/turri) repository) is to build on it: the `turri` command and everything the terminal draws ([the core](docs/core.md) says where the line between them runs). [turri desktop](https://github.com/turri-oss/turri-desktop) is turri in a native window: it is to run the core through its host entry (`@turri-dev/core/host`, [hosting](docs/hosting.md)) - it imports `@turri-dev/cli/host` until it moves - and owns only the window - its views, its installer and updates. A change to what turri does goes here; a change to how the terminal shows it goes to the CLI, and to how the app shows it, to turri desktop. If you are not sure which side something is on, open an issue and ask.
 
 ## Making a change
 
 Fork the repository, make a branch, and open a pull request against `main`.
 
 ```bash
-git clone git@github.com:<you>/turri.git && cd turri
+git clone <your fork> && cd turri-core
 npm install
-npm link           # `turri` on your PATH, pointing at this clone - edits apply at once
-turri doctor       # what this machine lacks
+npm link           # @turri-dev/core, pointing at this clone, for turri's CLI to run
 ```
+
+There is no `turri` command here. To try a change in the chat, or to see with `turri doctor` what this machine lacks, run turri's CLI on this clone: `npm link @turri-dev/core` in a clone of the CLI, and start `turri` with `NODE_OPTIONS=--conditions=turri-source`, so it runs the core's sources and an edit here applies at its next start ([importing the core](docs/core.md#importing-the-core)).
 
 You need Node 22.19 or newer, git and bash; on Linux, bubblewrap for the OS sandbox - [installation](docs/installation.md) says what to install. The TypeScript runs unbuilt, through Node's own type stripping, so there is nothing to build. [Development](docs/development.md) says how turri is laid out, and the pages in [docs/](docs/README.md) how each part behaves: read [regenerating](docs/regenerating.md), [the sandbox](docs/sandbox.md) and [skills and gates](docs/skills-and-gates.md) before changing the harness.
 
@@ -35,7 +36,7 @@ npx vitest run tests/regenerate/records.test.ts   # one file, while you work
 
 Add a test in `tests/` for what you change. No test calls a model: an agent is scripted by mocking `src/pi.ts` with a stub that calls the session's tools itself - `tests/regenerate/conformance-loop.test.ts` is the example to follow. The tests that run real commands behind the OS sandbox are skipped on a machine without one. The same typecheck and suite run on every pull request, with a check of its commits; for a contribution from outside, the maintainer starts them, and they must pass before it is merged.
 
-The tests spend nothing, but turri itself does: the conversation, `turri regenerate` and `turri doctor` in a project call the models `config.turri.yaml` names, with your keys. Check what you can with what calls none - `turri parse <file.plain>`, `turri doctor --no-models`.
+The tests spend nothing, but turri itself does - turri's CLI, run on this clone: the conversation, `turri regenerate` and `turri doctor` in a project call the models `config.turri.yaml` names, with your keys. Check what you can with what calls none - `turri parse <file.plain>`, `turri doctor --no-models`.
 
 ## Conventions
 

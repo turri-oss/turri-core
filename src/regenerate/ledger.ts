@@ -5,7 +5,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { currentChat } from "../chat-scope.ts";
 import { readProjectConfig } from "../config.ts";
 import { turriIdentity } from "../environment.ts";
-import type { DiffWhere } from "./diff-view.ts";
+import type { DiffWhere } from "./diff-where.ts";
 import type { PulseCases } from "./jobs.ts";
 import { currentPlace, onModelEvent, type ModelEvent, type UsageReport } from "./activity.ts";
 import { maskSecrets } from "./masking.ts";

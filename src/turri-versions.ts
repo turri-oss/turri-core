@@ -1,6 +1,6 @@
 import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, join, resolve, win32 } from "node:path";
-import { AGENT_DIR, PACKAGE_ROOT, turriIdentity } from "./environment.ts";
+import { AGENT_DIR, turriIdentity, turriRoot } from "./environment.ts";
 
 /**
  * Which turri runs, which is newest, and which others are on this machine - so a person who installed a new turri and
@@ -129,7 +129,7 @@ function packageOf(command: string): string | undefined {
 }
 
 /** Every turri on the PATH, in its order - the first is what a bare `turri` runs. */
-export function turrisOnPath(path: string = process.env.PATH ?? "", self: string = PACKAGE_ROOT, platform: NodeJS.Platform = process.platform): TurriOnPath[] {
+export function turrisOnPath(path: string = process.env.PATH ?? "", self: string = turriRoot(), platform: NodeJS.Platform = process.platform): TurriOnPath[] {
   // On Windows npm writes three launchers for one install - turri.cmd, turri.ps1, turri - side by side: one is taken.
   const names = platform === "win32" ? ["turri.cmd", "turri.ps1", "turri"] : ["turri"];
   const found: TurriOnPath[] = [];
@@ -192,7 +192,7 @@ export function versionFindings(options: { latest?: string; onPath?: TurriOnPath
   const identity = options.self ?? (() => {
     const own = turriIdentity();
     // An image built from a clone (docker/Dockerfile) has no .git, and is updated by building it again from a newer clone.
-    return { ...(own.version !== null ? { version: own.version } : {}), clone: own.git_commit !== null || process.env.TURRI_FROM_CLONE === "1", root: PACKAGE_ROOT };
+    return { ...(own.version !== null ? { version: own.version } : {}), clone: own.git_commit !== null || process.env.TURRI_FROM_CLONE === "1", root: turriRoot() };
   })();
   const onPath = options.onPath ?? turrisOnPath();
   const findings: VersionFinding[] = [];
@@ -235,7 +235,7 @@ export async function describeVersion(versionLine: string): Promise<string> {
   const own = turriIdentity();
   const onPath = turrisOnPath();
   const latest = own.git_commit === null ? await fetchLatest() : undefined;
-  const lines = [versionLine, `  this turri:      ${PACKAGE_ROOT}`];
+  const lines = [versionLine, `  this turri:      ${turriRoot()}`];
   if (own.git_commit === null) {
     lines.push(
       latest === undefined
@@ -252,7 +252,7 @@ export async function describeVersion(versionLine: string): Promise<string> {
   } else {
     lines.push("  turri on PATH:   none - this one was run by its path");
   }
-  const findings = versionFindings({ ...(latest !== undefined ? { latest } : {}), onPath, self: { ...(own.version !== null ? { version: own.version } : {}), clone: own.git_commit !== null, root: PACKAGE_ROOT } });
+  const findings = versionFindings({ ...(latest !== undefined ? { latest } : {}), onPath, self: { ...(own.version !== null ? { version: own.version } : {}), clone: own.git_commit !== null, root: turriRoot() } });
   for (const finding of findings) lines.push("", `! ${finding.text}`, ...finding.fixes.map((fix) => `  → ${fix}`));
   return lines.join("\n");
 }

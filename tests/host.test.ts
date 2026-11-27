@@ -124,9 +124,9 @@ describe("turri for a host that runs it itself", () => {
     }
   });
 
-  it("publishes the host entry, compiled, as @turri-dev/cli/host", () => {
+  it("publishes the host entry compiled as @turri-dev/core/host, and runs a linked clone's source under turri-source", () => {
     const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { exports: Record<string, { import?: string; types?: string }> };
-    expect(manifest.exports["./host"]).toEqual({ types: "./dist/host.d.ts", import: "./dist/host.js" });
+    expect(manifest.exports["./host"]).toEqual({ "turri-source": "./src/host.ts", types: "./dist/host.d.ts", import: "./dist/host.js" });
   });
 });
 

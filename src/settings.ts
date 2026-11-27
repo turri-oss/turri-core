@@ -1,4 +1,3 @@
-import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
@@ -21,7 +20,6 @@ import {
 } from "./config-edit.ts";
 import { PACKAGE_ROOT } from "./environment.ts";
 import { describeResolution, resolveModel } from "./regenerate/model-names.ts";
-import { openPiSettings } from "./pi-settings.ts";
 import { loadRules } from "./rules.ts";
 
 /**
@@ -54,6 +52,15 @@ export interface SettingsOptions {
   /** The chat's model, provider/id:thinking, after a change - read as the file has it now. */
   chatSpec: () => string | undefined;
   live: LiveHooks;
+  /** pi's own settings menu opened, where the screen has one: true once opened - absent, there is none. */
+  openPiMenu?: () => boolean;
+}
+
+/** A completion of a command's argument, as pi's autocomplete takes it. */
+interface AutocompleteItem {
+  value: string;
+  label: string;
+  description?: string;
 }
 
 /** The option that unsets a setting, for a setting. */
@@ -219,7 +226,7 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
     const chosen = await ctx.ui.select(`/settings - the project's ${CONFIG_FILE}. Pick a setting to change:`, lines);
     if (chosen === undefined) return undefined;
     if (chosen === PI_ENTRY) {
-      if (!openPiSettings()) ctx.ui.notify("pi's own settings open only in the terminal's chat.", "info");
+      if (!(options.openPiMenu?.() ?? false)) ctx.ui.notify("pi's own settings open only in the terminal's chat.", "info");
       return undefined;
     }
     if (chosen === ROLES_ENTRY) {

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AGENT_ROLES, CONFIG_KEYS, projectModels, readProjectConfig, ROLE_THINKING } from "../src/config.ts";
 import {
   BEDROCK_REGIONS,
@@ -13,7 +13,7 @@ import {
   bedrockNeedsAwsRegion,
   bedrockPlaceOf,
   bedrockRegionOf,
-  DEFAULTS, defaultParallel, initConfig, main, QUICK_START_CONFIG, quickStartConfig, VENDORS, vendorOf, withModels, type Vendor } from "../src/init-config.ts";
+  DEFAULTS, defaultParallel, initConfig, QUICK_START_CONFIG, quickStartConfig, VENDORS, vendorOf, withModels, type Vendor } from "../src/init-config.ts";
 import { defaultParallelJobs } from "../src/regenerate/jobs.ts";
 import { DEFAULT_COMPACT_AT, DEFAULT_TURN_LIMIT_MS } from "../src/pi.ts";
 import { DEFAULT_LEDGER_KEEP_MB } from "../src/regenerate/ledger.ts";
@@ -194,18 +194,6 @@ describe("turri init-config", () => {
     expect(bedrockMakerOf("google")).toBeUndefined();
   });
 
-  it("takes Amazon Bedrock's maker and region from --maker and --region without asking, and refuses a region the maker's models are not in", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      expect(await main([dir, "--vendor", "bedrock", "--maker", "openai", "--region=us"])).toBe(0);
-      expect(projectModels(readProjectConfig(dir)).coding?.model).toBe("amazon-bedrock/us.openai.gpt-6-luna");
-      expect(await main([dir, "--vendor", "amazon-bedrock", "--maker", "openai", "--region", "eu"])).toBe(1);
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
-
   it("fills in the vendor's own models - each read as turri reads them, every role example its vendor's too", async () => {
     for (const vendor of Object.keys(VENDORS) as Vendor[]) {
       const sub = join(dir, vendor);
@@ -289,27 +277,6 @@ describe("turri init-config", () => {
     const named = await initConfig(join(dir, "named"), { models: { harness: "claude-code/claude-opus-5-5", coding: "claude-code/claude-sonnet-5" }, catalogue: { models: () => [] } });
     expect(named.written).toBe(false);
     expect(named.message).toContain("comes with a pi extension that is not installed: turri install https://github.com/earendil-works/pi-claude-code");
-  });
-
-  it("takes the vendor from --vendor without asking - in the current folder, or the one named, either way round", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const cwd = process.cwd();
-    try {
-      process.chdir(dir);
-      expect(await main(["--vendor", "anthropic"])).toBe(0);
-      expect(projectModels(readProjectConfig(dir)).coding?.model).toBe("anthropic/claude-haiku-5-5");
-      mkdirSync(join(dir, "a"));
-      mkdirSync(join(dir, "b"));
-      expect(await main(["a", "--vendor=google"])).toBe(0);
-      expect(projectModels(readProjectConfig(join(dir, "a"))).harness?.model).toBe("google/gemini-3.1-pro-preview");
-      expect(await main(["--vendor", "openai", "b"])).toBe(0);
-      expect(projectModels(readProjectConfig(join(dir, "b"))).harness?.model).toBe("openai/gpt-6-astra");
-      expect(await main(["--vendor", "mistral", "b"])).toBe(1);
-    } finally {
-      process.chdir(cwd);
-      vi.restoreAllMocks();
-    }
   });
 });
 
@@ -413,21 +380,5 @@ describe("turri init-config with the two models given", () => {
     // The makers and geographies to choose from are the catalogue's.
     expect(bedrockMakerOf("xai", catalogue)).toBe("xai");
     expect(bedrockRegionOf("openai", "us-gov", catalogue)).toBe("us-gov");
-  });
-
-  it("takes the two models from --harness-model and --coding-model without asking", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      expect(await main([dir, "--harness-model", "amazon-bedrock/global.xai.grok-4.7", "--coding-model=amazon-bedrock/global.xai.grok-4.6"])).toBe(0);
-      expect(projectModels(readProjectConfig(dir)).coding?.model).toBe("amazon-bedrock/global.xai.grok-4.6");
-      expect(await main([dir, "--harness-model", "amazon-bedrock/global.xai.grok-4.7"])).toBe(1);
-      expect(await main([dir, "--vendor", "bedrock", "--maker", "xai", "--region", "us"])).toBe(0);
-      expect(projectModels(readProjectConfig(dir)).harness?.model).toMatch(/^amazon-bedrock\/us\.xai\./);
-      expect(await main([dir, "--harness-model", "openai/gpt-0", "--coding-model", "openai/gpt-6-luna"])).toBe(1);
-      expect(error.mock.calls.flat().join("\n")).toContain("openai/gpt-0 is not in pi's model catalogue");
-    } finally {
-      vi.restoreAllMocks();
-    }
   });
 });

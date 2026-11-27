@@ -1,13 +1,13 @@
 {
   // The published package: src/ compiled to dist/, file for file, so each file sits as deep as its source and finds
-  // turri's own folders (genome/, stdlib/, .pi/) the same way. Node does not run .ts files inside node_modules.
+  // turri's own folders (genome/, stdlib/) the same way. Node does not run .ts files inside node_modules.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
     "rootDir": "src",
     "outDir": "dist",
     "rewriteRelativeImportExtensions": true,
-    // Types for a host that imports @turri-dev/cli/host.
+    // Types for what imports the package: a host (@turri-dev/core/host) and turri's command line (package.json exports).
     "declaration": true
   },
   "include": ["src"]

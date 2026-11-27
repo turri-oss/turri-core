@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -10,8 +10,26 @@ import { fileURLToPath } from "node:url";
  * Kept free of heavy imports so the CLI can ask these questions before it has loaded pi - and so `turri doctor` can report a missing piece instead of crashing on it.
  */
 
+/** The core's own package: its genome, stdlib, docs and grammar are read from here. */
 export const PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const AGENT_DIR = join(homedir(), ".pi", "agent");
+
+/**
+ * This turri: the package the person runs - its version and clone, the turri on the PATH that is this one, its themes, a
+ * global pi extension file naming it. The core's own until the front end that runs it says it is its own, before it asks
+ * any of these: PACKAGE_ROOT stays the core's, for the files it reads.
+ */
+let thisTurri = PACKAGE_ROOT;
+
+/** Where this turri is - the core's own package unless a front end set it. */
+export function turriRoot(): string {
+  return thisTurri;
+}
+
+/** The front end that runs the core says it is this turri: its package's root, from then on, for every question about it. */
+export function setTurriRoot(root: string): void {
+  thisTurri = resolve(root);
+}
 
 /** The oldest Node that runs .ts files by itself, which is how turri runs. */
 export const MIN_NODE = [22, 19] as const;
@@ -33,7 +51,7 @@ export function globalExtensionFile(): string | undefined {
   try {
     for (const entry of readdirSync(dir)) {
       try {
-        if (readFileSync(join(dir, entry), "utf8").includes(PACKAGE_ROOT)) return join(dir, entry);
+        if (readFileSync(join(dir, entry), "utf8").includes(turriRoot())) return join(dir, entry);
       } catch {
         // Not a file we can read; not ours.
       }
@@ -50,7 +68,7 @@ export function extensionInstalledGlobally(): boolean {
 
 export function themeFiles(): string[] {
   try {
-    return readdirSync(join(PACKAGE_ROOT, ".pi", "themes")).filter((entry) => entry.endsWith(".json"));
+    return readdirSync(join(turriRoot(), ".pi", "themes")).filter((entry) => entry.endsWith(".json"));
   } catch {
     return [];
   }
@@ -95,15 +113,16 @@ export function versionLine(identity: ReturnType<typeof turriIdentity> = turriId
 
 /** turri's version, and the commit when it runs from a clone. */
 export function turriIdentity(): { version: string | null; git_commit: string | null; git_dirty: boolean | null } {
+  const root = turriRoot();
   let version: string | null = null;
   try {
-    version = (JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version?: string }).version ?? null;
+    version = (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { version?: string }).version ?? null;
   } catch {
     /* no package.json: left out */
   }
-  if (!existsSync(join(PACKAGE_ROOT, ".git"))) return { version, git_commit: null, git_dirty: null };
-  const commit = spawnSync("git", ["-C", PACKAGE_ROOT, "rev-parse", "HEAD"], { encoding: "utf8" });
-  const status = spawnSync("git", ["-C", PACKAGE_ROOT, "status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" });
+  if (!existsSync(join(root, ".git"))) return { version, git_commit: null, git_dirty: null };
+  const commit = spawnSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
+  const status = spawnSync("git", ["-C", root, "status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" });
   return {
     version,
     git_commit: commit.status === 0 ? commit.stdout.trim() : null,

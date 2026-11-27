@@ -1,18 +1,14 @@
-// Whether the terminal shows images, before anything draws: the banner's jellyfish is a picture or text.
-import "./terminal-images.ts";
 import { moduleOfTestPlainFile, refuseTestPlainFile, testPlainFileRefusal } from "./test-plain-files.ts";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { conversationCommand, conversationSettled, conversationWriting } from "./regenerate/conversation-writes.ts";
 import { fileURLToPath } from "node:url";
 import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { OverlayHandle, TUI } from "@earendil-works/pi-tui";
-import { allocateImageId, Box, type Component, getCapabilities, getPngDimensions, type ImageDimensions, isKeyRelease, isKeyRepeat, matchesKey, renderImage, Text, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { defineTool, getMarkdownTheme, UserMessageComponent } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { CODING_MODEL_ENV } from "./chat-models.ts";
-import { AGENT_ROLES, CONFIG_FILE, configForSpec, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines, type ConfigLine } from "./config.ts";
+import { AGENT_ROLES, CONFIG_FILE, configForSpec, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines } from "./config.ts";
 import { modulesRoot, projectDirOf, skillRunDir } from "./regenerate/paths.ts";
 import { sweepOrphanedGroups } from "./regenerate/shell.ts";
 import { readScript, scriptAgainstMachine, stackOnMachine, toolchainsBlock } from "./stack.ts";
@@ -27,13 +23,12 @@ import { runCapture } from "./capture/capture.ts";
 import { captureEnded, captureFailed, captureGoesOn, captureOpenQuestion, captureRefusal, captureStartedText, readReopenedAfterCapture, reopenedAfterCapture } from "./capture/chat.ts";
 import { reportFile as captureReportFile } from "./capture/state.ts";
 import { canReopen, REOPENED_AFTER_CAPTURE, reopenIn } from "./reopen.ts";
-import { captureStatusLines, duration, type CaptureStatus } from "./capture/progress.ts";
-import { highlightPlainCodeBlocks } from "./plain-code-blocks.ts";
+import { duration, type CaptureStatus } from "./capture/progress.ts";
 import { createAskUserTool } from "./tools.ts";
 import { asksFromScratch, asksWholeChain, driftTool, endWait, fromWorkingDir, haltLaunched, haltTool, loopReply, startWait, toldByWaitingCall, MODEL_PARAM, regenerateTool, stopJob, WAIT_PARAM, whenBuildable, WORKING_DIR_PARAM } from "./loop-tools.ts";
 import { createWebTools } from "./regenerate/web.ts";
 import { describeGates, interruptedRun, runSkill, type SkillMessages } from "./genome.ts";
-import { unqueue } from "./chat-waiting.ts";
+import { unqueue } from "./chat-queue.ts";
 import type { Reporter } from "./graph.ts";
 import { loadSkill, skillStatus, type Skill } from "./skill.ts";
 import { runningLaunched, stopLaunched } from "./regenerate/launch.ts";
@@ -50,19 +45,23 @@ import { changedFiles, projectFiles } from "./plain-files.ts";
 import { whyFailed } from "./regenerate/diagnose-job.ts";
 import { didNotLand } from "./regenerate/failure-reports.ts";
 import { conformanceRefusal, createWorkLoop, TestingStepsMissing, describeModules, isUpToDate, type ModuleStatus, type PlannedPulse, type WorkLoop } from "./regenerate/loop.ts";
-import { brandNeon, brandPink, plainPaint } from "./regenerate/plain-palette.ts";
-import { halfBlocks, JELLYFISH_FRAME_MS, JELLYFISH_REST, JELLYFISH_SEQUENCE, JELLYFISH_TEXT_FRAMES } from "./jellyfish.ts";
 import { didNotPass, PANEL_KEY, spinner } from "./regenerate/job-panel.ts";
-import { clickToFocus, dockedWidth, narrowChat, shade, shadeChat } from "./regenerate/panel-dock.ts";
-import { overPictureRow, PICTURE_AT } from "./picture-row.ts";
-import { padScreen, paddedColumns, paddedRows, SCREEN_PADDING } from "./screen-padding.ts";
 import { skillAboutLine, skillProgressLine } from "./skill-progress.ts";
-import { createSidePanel } from "./regenerate/side-panel.ts";
-import { createSpecMapSource, defaultMapFiles } from "./regenerate/spec-map.ts";
-import { createSpecMapState, type SpecMapState } from "./regenerate/spec-map-view.ts";
-import { notificationView } from "./terminal-notifications.ts";
-import { BANNER_ENTRY } from "./chat-tab-header.ts";
-import { createJobsTreeState, selectJob } from "./regenerate/jobs-tree.ts";
+import { defaultMapFiles } from "./regenerate/spec-map.ts";
+import {
+  BANNER_ENTRY,
+  COMMAND_OUTCOME,
+  HISTORY_ENTRY,
+  INTERVIEW_ENTRY,
+  JOB_ENTRY,
+  SIDE_ENTRY,
+  SKILL_MESSAGE_ENTRY,
+  VERSION_ENTRY,
+  type CommandOutcome,
+  type Exchange,
+  type JobAnnouncement,
+} from "./chat-entries.ts";
+import type { Declining, QuestionView, SidePanelView, TurriView } from "./view.ts";
 import { describeDiagnosis, diagnoseFailure } from "./regenerate/diagnose.ts";
 import { HISTORY_DIR, historyLog } from "./regenerate/lineage.ts";
 import { defaultBuildDir } from "./regenerate/paths.ts";
@@ -79,8 +78,7 @@ import { loadRules, renderRulesBlock } from "./rules.ts";
 import { registerSettings, ruleNames } from "./settings.ts";
 import { writeSetting } from "./config-edit.ts";
 import { describeStdlib } from "./stdlib.ts";
-import { DECLINED, peekKeyListener, runAsk, type AskUser, type AskUserIO, type AskUserRequest } from "./ask.ts";
-import { QuestionDialog } from "./question-dialog.ts";
+import { DECLINED, runAsk, type AskUser, type AskUserIO, type AskUserRequest, type DialogAsked } from "./ask.ts";
 import { catalogueLine, chosenCommand, createCommandGate, startPicked, discoverSkills, leftOutNote, startedByCommandOnly, type SkillCatalogue } from "./skills.ts";
 import { supersededByTurri } from "./chat-skills.ts";
 import { conversationIdentity } from "./identity.ts";
@@ -89,8 +87,6 @@ import { createChats, scopedToChat, type ChatLink, type TurriCore, type TurriHos
 import { ignoredGuidance, keepGuidance, landedNote, pulseEndsBlock, SENTINEL, SENTINEL_TOOLS, sentinelBrief, sentinelCheckBrief, sentinelPrompt, sentinelSetting, sentinelStartNotice, specConflictNotice, type SentinelCheck } from "./sentinel.ts";
 import { noticeDialogs, registerSentinel } from "./sentinel-chat.ts";
 import { currentChat } from "./chat-scope.ts";
-import { registerChats } from "./chat-commands.ts";
-import { buttonLabel, terminalPointer } from "./pointer-hover.ts";
 import { turriIdentity } from "./environment.ts";
 import { answerSideQuestion, askWithAsides, BTW_HOW, runningSkill, skillRunStarted, skillSessionText, transcriptOf } from "./btw.ts";
 import {
@@ -143,6 +139,8 @@ export function askUserVia(
   aside?: (question: string) => Promise<string>,
   /** A host's own dialogs (TurriHost.dialogs), the question put in them instead of the terminal's. */
   dialogs?: AskUserIO,
+  /** The view's way of asking (TurriView.questions), for a chat with a screen and no host dialogs: else pi's own dialogs. */
+  questions?: QuestionView,
 ): AskUser {
   return async (request) => {
     if (dialogs === undefined && !ctx.hasUI) {
@@ -151,11 +149,11 @@ export function askUserVia(
     // Declined - ctrl+c at it, the host's decline, or the turn that asked it stopped: the dialog open is closed, no other is
     // opened, and it comes back as DECLINED.
     const { declining, decline, done } = asking(ctx.signal);
-    // The question has the keys: ctrl+h is caught here, or it would never reach the shortcut, which only the chat's editor sees.
-    const unhook = dialogs === undefined ? hookPeekKey(ctx) : () => {};
+    // The question has the keys: what the view lets through its dialog - the side panel's peek - is caught here.
+    const unhook = dialogs === undefined ? (questions?.whileAsking?.(ctx) ?? (() => {})) : () => {};
     if (dialogs === undefined) ctx.ui.setWorkingMessage("waiting for your answer");
     try {
-      const io = dialogs !== undefined ? hostDialogs(dialogs, declining) : terminalDialogs(ctx, declining, decline);
+      const io = dialogs !== undefined ? hostDialogs(dialogs, declining) : questions !== undefined ? viewDialogs(questions.dialogs(ctx, declining, decline), declining) : uiDialogs(ctx, declining);
       const asking: AskUser = (asked) => runAsk(asked, io);
       const bare: AskUserRequest = { ...request, said: undefined };
       const given = declining.declined ? DECLINED : aside !== undefined ? await askWithAsides(bare, asking, aside) : await asking(bare);
@@ -169,12 +167,6 @@ export function askUserVia(
       if (dialogs === undefined) ctx.ui.setWorkingMessage();
     }
   };
-}
-
-/** A question being asked: declined yet, and how to close the dialog open for it. */
-interface Declining {
-  declined: boolean;
-  close: (() => void) | undefined;
 }
 
 /**
@@ -226,75 +218,44 @@ function hostDialogs(dialogs: AskUserIO, declining: Declining): AskUserIO {
 }
 
 /**
- * The terminal's dialogs: turri's own, a long brief scrolling above the question and the options always showing
- * (question-dialog.ts). ctrl+c declines the question - each one it is pressed at, however many in a row; what asked
- * goes on. The turn, and a skill asking in it, is stopped by ctrl+c with no question open.
+ * A view's dialogs (TurriView.questions), for a question that can be declined: one asked for once it is declined opens
+ * nothing and comes back with no answer, whatever the view does - a question declined at one of its dialogs is not put
+ * again in another.
  */
-function terminalDialogs(ctx: ExtensionContext, declining: Declining, decline: () => void): AskUserIO {
-  const dialog = (question: string, context: string | undefined, options?: string[], selected?: number) =>
-    declining.declined
-      ? Promise.resolve(undefined)
-      : ctx.ui.custom<string | undefined>((tui, theme, _keybindings, done) => {
-          const shown: QuestionDialog = new QuestionDialog({
-            question,
-            ...(context !== undefined ? { context } : {}),
-            ...(options !== undefined ? { options } : {}),
-            ...(selected !== undefined ? { selected } : {}),
-            rows: () => paddedRows(tui.terminal.rows),
-            style: { accent: (text) => theme.fg("accent", text), muted: (text) => theme.fg("muted", text), bold: (text) => theme.bold(text) },
-            done: (answer) => {
-              if (questionShown === shown) questionShown = undefined;
-              done(answer);
-            },
-            requestRender: () => tui.requestRender(),
-            interrupt: decline,
-          });
-          declining.close = () => shown.dismiss();
-          questionShown = shown;
-          return shown;
-        });
+function viewDialogs(io: AskUserIO, declining: Declining): AskUserIO {
   return {
-    select: (title, options, context, at) => dialog(title, context, options, at),
-    input: (title, context) => dialog(title, context),
+    select: (title, options, context, at, asked) => (declining.declined ? Promise.resolve(undefined) : io.select(title, options, context, at, asked)),
+    input: (title, context, asked) => (declining.declined ? Promise.resolve(undefined) : io.input(title, context, asked)),
   };
 }
 
-/** The side panel, as a question open in the chat reaches it: set once the extension has its panel. */
-let questionPeek:
-  | {
-      open(ctx: ExtensionContext): void;
-      /** It shows now: its own listener has the keys, ctrl+h among them. */
-      shown(): boolean;
-    }
-  | undefined;
-
 /**
- * The question open in the chat now, if any. The side panel gives the keys back to it: pi would give them to what had the
- * focus when the panel first opened, and a panel kept beside the chat outlives that question - the keys would go to a
- * dialog already answered, and nothing would take them.
+ * pi's own dialogs, for a chat with a screen that has neither a host's dialogs nor a view's: what to read put above the
+ * question, as pi's select and input have no place of their own for it. Declined - or its asker's `signal` aborted - the
+ * dialog open is closed and the question over at once; one declined already opens none.
  */
-let questionShown: Component | undefined;
-
-/** A widget with nothing to draw: below the editor, it takes no line. */
-const PEEK_KEY_WIDGET = "turri-peek-key";
-
-/**
- * While a question is open, ctrl+h opens the side panel over it - the question waits under it. pi gives an extension's
- * shortcut only the keys its editor sees, and a question has the focus: the key is caught on the terminal's input
- * instead. While the panel shows, its own listener has ctrl+h - to close it - and this lets it be.
- */
-function hookPeekKey(ctx: ExtensionContext): () => void {
-  if (questionPeek === undefined) return () => {};
-  const peek = questionPeek;
-  ctx.ui.setWidget(
-    PEEK_KEY_WIDGET,
-    (tui) => {
-      const unlisten = tui.addInputListener(peekKeyListener({ open: () => peek.open(ctx), shown: () => peek.shown() }));
-      return { render: () => [], invalidate() {}, dispose: unlisten };
-    },
-    { placement: "belowEditor" },
-  );
-  return () => ctx.ui.setWidget(PEEK_KEY_WIDGET, undefined);
+function uiDialogs(ctx: ExtensionContext, declining: Declining): AskUserIO {
+  const until = (asked: DialogAsked | undefined, open: (signal: AbortSignal) => Promise<string | undefined>) => {
+    if (declining.declined || asked?.signal.aborted === true) return Promise.resolve(undefined);
+    const over = new AbortController();
+    let close = () => {};
+    return Promise.race([
+      open(over.signal),
+      new Promise<undefined>((resolve) => {
+        close = () => {
+          over.abort();
+          resolve(undefined);
+        };
+        declining.close = close;
+        asked?.signal.addEventListener("abort", close, { once: true });
+      }),
+    ]).finally(() => asked?.signal.removeEventListener("abort", close));
+  };
+  const titled = (title: string, context: string | undefined) => (context !== undefined && context.trim() !== "" ? `${context}\n\n${title}` : title);
+  return {
+    select: (title, options, context, _at, asked) => until(asked, (signal) => ctx.ui.select(titled(title, context), options, { signal })),
+    input: (title, context, asked) => until(asked, (signal) => ctx.ui.input(titled(title, context), undefined, { signal })),
+  };
 }
 
 /**
@@ -306,10 +267,10 @@ function hookPeekKey(ctx: ExtensionContext): () => void {
  * ask_user, for the conversation. `afterAnswer` may add to what an answer tells the model - a skill the person picked,
  * to start at once.
  */
-export function chatAskUserTool(dialogs?: AskUserIO, afterAnswer?: (answer: string) => string | undefined): ReturnType<typeof createAskUserTool> {
+export function chatAskUserTool(dialogs?: AskUserIO, afterAnswer?: (answer: string) => string | undefined, questions?: QuestionView): ReturnType<typeof createAskUserTool> {
   let conversation: ExtensionContext | undefined;
   const tool = createAskUserTool(
-    (request) => (conversation !== undefined ? askUserVia(conversation, () => {}, undefined, dialogs)(request) : Promise.resolve("No user is available to answer.")),
+    (request) => (conversation !== undefined ? askUserVia(conversation, () => {}, undefined, dialogs, questions)(request) : Promise.resolve("No user is available to answer.")),
     undefined,
     undefined,
     undefined,
@@ -351,13 +312,14 @@ const hosts = new WeakMap<JobRegistry, TurriHost>();
 /**
  * A turri session: its job registry and work loop, the ledger, and its chats, each with turri's extension in it
  * (chats.ts). The terminal makes one as it starts (pi-launch.ts), a host with `createTurri` (host.ts); `persist`
- * records the open chats for `turri --continue`.
+ * records the open chats for `turri --continue`; `view` is what a front-end draws of it (view.ts) - none for a host.
  */
 export function createTurriCore(
   host: TurriHost = {},
   options: {
     persist?: boolean;
     dialogs?: (chat: string) => AskUserIO | undefined;
+    view?: TurriView;
   } = {},
 ): TurriCore {
   dropNoise();
@@ -412,8 +374,8 @@ export function createTurriCore(
       host.onJobChange?.(job);
       // Queued again as another job: that one says how it went.
       if (job.replacedBy !== undefined) return;
-      // Gone wrong: the next ctrl+h opens on it.
-      if (job.status === "failed" || job.status === "stopped" || didNotPass(job)) needsLooking.set(jobs, job.id);
+      // The view hears of it first - the side panel opens on one that went wrong at the next ctrl+h.
+      core?.view?.pulseFinished?.(job);
       core?.jobFinished(job);
     },
   });
@@ -447,6 +409,7 @@ export function createTurriCore(
     ignored: (notice) => keepGuidance(cwd, ignoredGuidance(notice)),
     ...(options.persist !== undefined ? { persist: options.persist } : {}),
     ...(options.dialogs !== undefined ? { dialogs: options.dialogs } : {}),
+    ...(options.view !== undefined ? { view: options.view } : {}),
   });
   const session = core;
   hosts.set(jobs, host);
@@ -635,9 +598,10 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
   link.live({
     plainPanel: {
       busy,
-      open: () => sidePanelOf(session).visible(),
+      open: () => sidePanelOf(session)?.visible() ?? false,
       toggle: () => {
         const panel = sidePanelOf(session);
+        if (!panel) return;
         if (panel.visible()) return panel.close();
         const ctx = contextNow();
         if (ctx?.hasUI) panel.open(ctx, "map", "beside");
@@ -801,8 +765,9 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
   pi.on("agent_end", endTurnCapture);
   pi.on("agent_settled", endTurnCapture);
 
-  registerBranding(pi, discoveredSkills, () => session.welcomeVisible(link.id));
-  registerInterviewLog(pi);
+  // What only a screen draws of the chat - its renderers, the banner's painting, the side panel's key - the view's.
+  session.view?.chat?.(pi, { session, link, context: contextNow });
+  registerBranding(pi, discoveredSkills);
   registerJobTools(pi, session);
   // The skills the person starts themselves - a project's, marked command-only: each has its command, and cultivate starts it only
   // once its command is typed, or picked among the options the conversation offers with ask_user.
@@ -813,14 +778,14 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     if (chosen === undefined) return undefined;
     gate.typed(chosen);
     return startPicked(chosen, lastUserMessage);
-  });
+  }, session.view?.questions);
   registerRegenerate(pi, cwd, jobs);
   registerDrift(pi, cwd, jobs);
   registerBind(pi, cwd, jobs, (plainFile) => turnOnConformance(session, plainFile));
   registerLaunch(pi, cwd, jobs);
   registerSideQuestions(pi, cwd, jobs);
-  // More chats beside this one, in the terminal: /chat, alt+n, alt+1…9 (chat-commands.ts).
-  if (session.terminal) registerChats(pi, session);
+  // More chats beside this one, in the terminal: /chat and its keys - the view's.
+  if (session.terminal) session.view?.chatCommands?.(pi, { session, link, context: contextNow });
 
   const { skills } = discoveredSkills;
   if (skills.length === 0) return;
@@ -848,7 +813,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     for (const controller of backgroundSkillRuns.values()) controller.abort();
   });
   // An existing codebase captured into ***plain, in the background: the person starts it, never the chat's agent.
-  registerCapture(pi, cwd, skillRunEnds);
+  registerCapture(pi, cwd, skillRunEnds, session.view);
   const startInBackground = (
     skill: (typeof skills)[number],
     params: { context?: string },
@@ -1187,7 +1152,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
           push(`  Q: ${question}`);
           push(`  A: ${answer}`);
           recordExchange(pi, { skill: skill.name, question, answer, ...(said !== undefined && said.trim() !== "" ? { said: said.trim() } : {}) });
-        }, (question) => askOnTheSide(pi, ctx, cwd, jobs, question), dialogs),
+        }, (question) => askOnTheSide(pi, ctx, cwd, jobs, question), dialogs, session.view?.questions),
         model: skill.model === "coding" ? jobModel(ctx, undefined, plainFile) : conversationModel(ctx),
         // Renders queued by a step land in the same registry as everything else, so
         // pulses sees them without knowing a skill started them.
@@ -1499,15 +1464,7 @@ export const CONFORM_REFUSED_REACTION =
   "let it start - a functional spec they named that is not there, ***plain that does not parse or would have to change its " +
   "meaning to be tested - and offer to do what is yours to do; start nothing.";
 
-export const COMMAND_OUTCOME = "turri_command_outcome";
-
-interface CommandOutcome {
-  command: string;
-  /** None: the command itself, as the person typed it. */
-  text?: string;
-  level?: "info" | "warning" | "error";
-  echoed?: boolean;
-}
+export { COMMAND_OUTCOME };
 
 /** Longer than a frame of the TUI's (16ms): an entry appended before it is drawn by its end. */
 const ONE_FRAME_MS = 20;
@@ -2184,12 +2141,6 @@ async function deliver(
 }
 
 /** Looking in on work that is still running, and collecting what finished. */
-/** By registry: what opens the side panel - for a skill's question that invites the person to peek. */
-const panelOpeners = new WeakMap<JobRegistry, (ctx: ExtensionContext) => void>();
-
-/** By registry: the last pulse that failed, stopped or did not pass, not yet looked at - ctrl+h opens on it. */
-const needsLooking = new WeakMap<JobRegistry, string>();
-
 /** What heads a pulse told from the ledger: it is not this session's, and the facts are all there is of it. */
 const pastPulseNote =
   "A pulse of an earlier session, as the ledger recorded it - facts, not its transcript. Its whole log is the file it names, " +
@@ -2345,21 +2296,13 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
     },
   });
 
-  // The side panel: the regeneration - and the pulses behind p - over the whole screen, or beside the chat (s, from one to
-  // the other). Its key (PANEL_KEY) opens it; the key again closes it and goes back to the chat, as esc does over the
-  // screen - beside the chat, the key switches sides, giving the keys to the chat or the panel, as esc gives them to the
-  // chat, the panel staying; ctrl+c closes it.
-  // While the panel has the keys, every key is its own.
-  // The side panel is the session's, one for every chat: it stays on the screen - beside the chat or over it - as
-  // another chat is shown, and what it says to a chat it says to the one shown.
+  // The side panel - the view's (TurriView.panel): the regeneration and the pulses, over the whole screen or beside the
+  // chat. It is the session's, one for every chat: it stays on the screen - beside the chat or over it - as another chat
+  // is shown, and what it says to a chat it says to the one shown.
   const sidePanel = sidePanelOf(session);
-  const openPanel = sidePanel.open;
   if (session.terminal) pi.registerCommand("notifications", {
     description: "Open the side panel on finished pulses and sentinel notices",
-    handler: async (_args, ctx) => { if (ctx.hasUI) openPanel(ctx, "notifications", "beside"); },
-  });
-  pi.on("session_start", () => {
-    sidePanel.say = (text) => pi.sendUserMessage(text, { deliverAs: "followUp" });
+    handler: async (_args, ctx) => { if (ctx.hasUI) sidePanel?.open(ctx, "notifications", "beside"); },
   });
 
   // /pulses opens the side panel on every pulse, regenerating, planned and finished, and what each regenerates; regen -
@@ -2369,26 +2312,7 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
     description: `The pulses, in the side panel: every pulse, regenerating, planned and finished, and what each regenerates. ${PANEL_KEY} opens the panel too.`,
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) return;
-      openPanel(ctx, "pulses");
-    },
-  });
-
-  panelOpeners.set(jobs, (ctx) => openPanel(ctx));
-  // A question open in the chat on the screen peeks at this chat's panel.
-  const peek = {
-    open: (ctx: ExtensionContext) => openPanel(ctx),
-    shown: () => sidePanel.shown(),
-  };
-  questionPeek = peek;
-  pi.on("session_start", () => {
-    questionPeek = peek;
-  });
-
-  pi.registerShortcut(PANEL_KEY, {
-    description: "Peek at regen and the pulses - a question waiting in the chat waits for you - or go back to it",
-    handler: async (ctx) => {
-      if (!ctx.hasUI) return;
-      openPanel(ctx);
+      sidePanel?.open(ctx, "pulses");
     },
   });
 
@@ -2398,6 +2322,8 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
     cwd,
     rules: ruleNames,
     chatSpec: () => modelSpec(projectModels(readProjectConfig(cwd)).harness),
+    // pi's own menu, last in /settings: the view opens it where the screen has one.
+    openPiMenu: () => session.view?.openPiSettings?.() ?? false,
     live: {
       chatModel: async (spec, ctx) => {
         if (spec === undefined) return "The conversation keeps the model it runs on now; turri starts on pi's own choice next time.";
@@ -2432,7 +2358,6 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
 
 export { fromWorkingDir };
 
-const WATCH_REDRAW_MS = 500;
 /**
  * What a chat's agent is told of a pulse it asked for that ended, with the sentinel off. One that landed under
  * launch-after-pulse is being launched as it is told: it says so, and offers nothing else for it - it is told once the
@@ -2492,292 +2417,16 @@ export const JOB_FINISHED_REACTION = [
   "- a credential `agent-env:` names that is not there: never make one up - tell the person where it is read from.",
 ].join("\n");
 
-/** The session's side panel: opened from any chat, and the same panel whichever chat is shown. */
-interface SidePanelHost {
-  open(ctx: ExtensionContext, view?: SpecMapState["view"], placement?: "beside"): void;
-  visible(): boolean;
-  close(): void;
-  /** It shows now, with the keys. */
-  shown(): boolean;
-  /** What it says to the chat - a module that needs the person: the chat shown says it. */
-  say?: (text: string) => void;
-}
+/** The session's side panel, as its view draws it: opened from any chat, and the same panel whichever chat is shown. */
+const sidePanels = new WeakMap<TurriCore, SidePanelView>();
 
-const sidePanels = new WeakMap<JobRegistry, SidePanelHost>();
-
-/** The side panel of the session these jobs are, made as a chat first asks for it. */
-function sidePanelOf(session: TurriCore): SidePanelHost {
-  const { jobs, cwd } = session;
-  const known = sidePanels.get(jobs);
+/** The side panel of the session, made as a chat first asks for it - none without a view that draws one. */
+function sidePanelOf(session: TurriCore): SidePanelView | undefined {
+  const known = sidePanels.get(session);
   if (known !== undefined) return known;
-  const self: SidePanelHost = {
-    open: (ctx, view, placement) => openPanel(ctx, view, placement),
-    visible: () => panel !== undefined && panel.handle?.isHidden() !== true,
-    close: () => panel?.close(),
-    shown: () => panel !== undefined && panel.keys,
-  };
-  sidePanels.set(jobs, self);
-  let panel: { handle?: OverlayHandle; view: ReturnType<typeof createSidePanel>; close: () => void; keepChatFocus: () => void; layOut: () => void; keys: boolean } | undefined;
-  // Beside the chat or over it: as the person last left it, for the conversation.
-  let panelDocked = false;
-  // The terminal the panel is drawn on, for its width: set as it opens.
-  let panelTerminal: { columns: number } | undefined;
-  /** The columns the panel takes beside the chat - 0 over the whole screen, or when the terminal is too narrow to share. */
-  const panelBeside = (): number => (panelDocked && panelTerminal !== undefined ? dockedWidth(paddedColumns(panelTerminal.columns)) : 0);
-  // What is open in the pulse list and the map, and where their cursors are: the conversation's, as left each time it opens.
-  const jobsTree = createJobsTreeState();
-  // Earlier sessions' pulses, from the ledger: read as the panel first shows them - they do not change while this one runs.
-  let earlier: Job[] | undefined;
-  const earlierJobs = (): Job[] => {
-    if (earlier !== undefined) return earlier;
-    try {
-      const found = earlierPulses(ledgerProjects(cwd), new Set(jobs.list().map((job) => job.id)));
-      earlier = found.jobs;
-      jobsTree.earlierMore = found.more;
-    } catch {
-      earlier = [];
-    }
-    return earlier;
-  };
-  const mapState = createSpecMapState();
-  // The map from the files - the .plain files asked for, else the project's - with the work loop's plan laid over them.
-  const specMap = createSpecMapSource({
-    files: () => {
-      const asked = workLoops.get(jobs)?.loop.mapPlan().files ?? [];
-      return asked.length > 0 ? asked : defaultMapFiles(cwd);
-    },
-    plan: () => workLoops.get(jobs)?.loop.mapPlan() ?? { files: [], codebases: [] },
-  });
-
-  /** Open the side panel - on the view named, or as it was left. */
-  const openPanel = (ctx: ExtensionContext, view?: SpecMapState["view"], placement?: "beside") => {
-    if (view !== undefined) mapState.view = view;
-    // A pulse that failed or stopped since the panel was last opened: opened as it is, it is on that pulse - what went
-    // wrong is what the person opens it to see.
-    else {
-      const id = needsLooking.get(jobs);
-      if (id !== undefined && selectJob(shownJobs(jobs), jobsTree, id)) mapState.view = "pulses";
-    }
-    needsLooking.delete(jobs);
-    if (placement === "beside") panelDocked = true;
-    if (panel !== undefined) {
-      panel.layOut();
-      panel.keepChatFocus();
-      panel.handle?.setHidden(false);
-      panel.keys = true;
-      panel.handle?.focus();
-      return;
-    }
-    // Not awaited: the panel lives on while the jobs it shows run.
-    void ctx.ui.custom<void>(
-      (tui, theme, _keybindings, done) => {
-        // What the chat shows when the panel takes the keys - its editor, or a pi dialog - for when it gives them back.
-        const focusedNow = () => (tui as unknown as { getFocusedComponent?(): Component | null }).getFocusedComponent?.() ?? null;
-        let chatFocus = focusedNow();
-        const keepChatFocus = () => {
-          const focused = focusedNow();
-          if (focused !== null && focused !== component && !(focused instanceof QuestionDialog)) chatFocus = focused;
-        };
-        // The keys back to the chat: to the question open there now, else to what it showed - never to a question answered
-        // while the panel was open.
-        const giveBack = () => entry.handle?.unfocus({ target: questionShown ?? chatFocus });
-        const close = () => {
-          giveBack();
-          done(undefined);
-        };
-        panelTerminal = tui.terminal;
-        let component: { render(width: number): readonly string[]; dispose?(): void } | undefined;
-        // Beside the chat: the chat drawn narrower, on the left, and a click on either side giving it the keys - undone
-        // when the panel goes over the screen, or closes.
-        let undock: (() => void) | undefined;
-        const layOut = () => {
-          if (panelDocked && undock === undefined) {
-            const widen = narrowChat(tui, panelBeside);
-            const unwatch = clickToFocus(
-              tui,
-              () => tui.terminal.columns - SCREEN_PADDING.right - panelBeside(),
-              (side) => {
-                if (panelBeside() === 0) return;
-                if (side === "chat") toChat();
-                else toPanel();
-              },
-            );
-            // The side without the keys in the shade: the chat while the panel has them.
-            const unshade = shadeChat(tui, () => panelBeside() > 0 && entry.keys);
-            undock = () => {
-              unshade();
-              unwatch();
-              widen();
-            };
-          } else if (!panelDocked && undock !== undefined) {
-            undock();
-            undock = undefined;
-          }
-        };
-        // Beside the chat, back to it: the chat has the keys, the panel stays.
-        const toChat = () => {
-          entry.keys = false;
-          giveBack();
-          tui.requestRender();
-        };
-        const toPanel = () => {
-          keepChatFocus();
-          entry.keys = true;
-          entry.handle?.focus();
-          tui.requestRender();
-        };
-        const back = () => (panelBeside() > 0 ? toChat() : close());
-        // Opened, it reads the files again at once: they may have changed while it was closed.
-        specMap.refresh();
-        const view = createSidePanel({
-          ...(session.terminal ? { notifications: notificationView(session, {
-            accent: (text) => theme.fg("accent", text), muted: (text) => theme.fg("muted", text), bold: (text) => theme.bold(text),
-            warning: (text) => theme.fg("warning", text), button: (text, selected) => buttonLabel(theme, text, selected, false, "panel"),
-          }, back) } : {}),
-          pointer: terminalPointer(tui.terminal),
-          tabLabel: (text, active, hovered, role) => buttonLabel(theme, text, active, hovered, role),
-          jobs: () => shownJobs(jobs),
-          earlier: earlierJobs,
-          tree: jobsTree,
-          map: () => specMap.read(),
-          mapState,
-          rows: () => paddedRows(tui.terminal.rows),
-          key: PANEL_KEY,
-          dock: {
-            docked: () => panelBeside() > 0,
-            toggle: () => {
-              panelDocked = panelBeside() === 0;
-              layOut();
-              tui.requestRender();
-            },
-          },
-          style: {
-            heading: (text) => theme.bold(theme.fg("accent", text)),
-            muted: (text) => theme.fg("muted", text),
-            accent: (text) => theme.fg("accent", text),
-            error: (text) => theme.fg("error", text),
-            success: (text) => theme.fg("success", text),
-            warning: (text) => theme.fg("warning", text),
-            added: (text) => theme.fg("toolDiffAdded", text),
-            removed: (text) => theme.fg("toolDiffRemoved", text),
-            // A spec diff's ***plain highlighted by turri's grammar, and its added and removed lines filled.
-            diff: plainPaint(theme),
-            // What conformance tests show does what its spec says: neon.
-            conforms: brandNeon(theme),
-          },
-          back,
-          close,
-          // A module that needs the person: the chat takes it up with them, in their words - what went wrong, and what now.
-          discuss: (page) => {
-            back();
-            const why = page.codebase?.stuck?.why;
-            self.say?.(
-              `regen says ${page.module} needs me: ${page.status}. What went wrong, and what do we do about it?${why !== undefined ? `\n\n(turri's reason: ${why})` : ""}`,
-            );
-          },
-          // Something took the keys' focus while the panel showed - a question in the chat - and waits there.
-          waiting: () => {
-            if (!entry.keys) return false;
-            const focused = (tui as unknown as { getFocusedComponent?(): unknown }).getFocusedComponent?.() ?? null;
-            return focused !== null && focused !== component;
-          },
-        });
-        const entry: NonNullable<typeof panel> = { view, close, keepChatFocus, layOut, keys: true };
-        panel = entry;
-        layOut();
-        // Every key goes to the panel while it shows, whatever has the focus: a question the chat model asks in the
-        // background takes the focus, but no key reaches it - an enter never answers it unseen. It waits in the chat
-        // until the panel closes, and has the keys then. Mouse events are the screen's, before this sees them.
-        // Only while it is on the screen: up in the TUI's overlays and not hidden. An overlay taken off without the panel
-        // being disposed - another one closed over it - leaves no panel to take keys for: it lets them go, and goes.
-        const shown = (): boolean | "gone" => {
-          const overlays = (tui as unknown as { overlayStack?: Array<{ component: unknown }> }).overlayStack;
-          if (entry.handle === undefined || component === undefined) return false;
-          if (overlays !== undefined && !overlays.some((overlay) => overlay.component === component)) return "gone";
-          return entry.handle.isHidden() !== true;
-        };
-        const unlisten = tui.addInputListener((data) => {
-          const state = shown();
-          if (state === "gone") {
-            component?.dispose?.();
-            return undefined;
-          }
-          if (!state) return undefined;
-          // Beside the chat, with the chat's keys: they are the chat's - PANEL_KEY among them, for the shortcut that gives
-          // them to the panel. A click on the panel gives it the focus, and the keys with it.
-          if (!entry.keys && entry.handle?.isFocused() !== true) return undefined;
-          entry.keys = true;
-          // A terminal on the Kitty keyboard protocol reports a key's release, and listeners are given it: the release of
-          // the ctrl+h that opened the panel would close it again at once, and every arrow would move twice. Only
-          // presses count - and ctrl+h held down, repeating, does not open and close it over and over.
-          if (isKeyRelease(data) || (isKeyRepeat(data) && matchesKey(data, PANEL_KEY))) return { consume: true };
-          // PANEL_KEY goes back: beside the chat, to the chat, the panel staying - the switch between the sides, as it is
-          // from the chat to the panel - and over the screen, closing it. ctrl+c closes it either way: whatever else goes
-          // wrong, a key always leads back to the chat.
-          if (matchesKey(data, "ctrl+c")) close();
-          else if (matchesKey(data, PANEL_KEY)) back();
-          else {
-            try {
-              view.handleInput(data);
-            } catch {
-              /* a key the panel fails on is dropped, never the panel's hold on the keys */
-            }
-          }
-          tui.requestRender();
-          return { consume: true };
-        });
-        // Jobs keep writing; redraw so the panel follows them while it shows.
-        const timer = setInterval(() => {
-          if (entry.handle?.isHidden() !== true) tui.requestRender();
-        }, WATCH_REDRAW_MS);
-        timer.unref?.();
-        component = {
-          // Beside the chat, a rule down its left edge between them - and the panel in the shade while the chat has the keys.
-          render: (width: number) => {
-            if (panelBeside() === 0) return view.render(width);
-            const lines = view.render(width - 2).map((line) => `${theme.fg("borderMuted", "│")} ${line}`);
-            return entry.keys ? lines : lines.map(shade);
-          },
-          // Reached only if the listener above is gone: the same, so the panel never passes a key on.
-          handleInput: (data: string) => {
-            if (isKeyRepeat(data) && matchesKey(data, PANEL_KEY)) return;
-            if (matchesKey(data, "ctrl+c")) close();
-            else if (matchesKey(data, PANEL_KEY)) back();
-            else view.handleInput(data);
-            tui.requestRender();
-          },
-          handleMouse: (event: Parameters<NonNullable<ReturnType<typeof createSidePanel>["handleMouse"]>>[0]) =>
-            view.handleMouse(panelBeside() > 0 ? { ...event, x: event.x - 2, width: event.width - 2 } : event),
-          invalidate: () => view.invalidate(),
-          dispose: () => {
-            unlisten();
-            clearInterval(timer);
-            undock?.();
-            if (panel === entry) panel = undefined;
-          },
-        } as { render(width: number): readonly string[]; dispose?(): void };
-        return component as never;
-      },
-      {
-        overlay: true,
-        // The whole screen, or the columns on the right beside the chat - read at each frame, so it follows the terminal -
-        // inside the screen's padding.
-        overlayOptions: {
-          get width() {
-            return panelBeside() > 0 ? panelBeside() : "100%";
-          },
-          maxHeight: "100%",
-          anchor: "top-right",
-          margin: { ...SCREEN_PADDING },
-        },
-        onHandle: (handle) => {
-          if (panel !== undefined) panel.handle = handle;
-        },
-      },
-    );
-  };
-
-  return self;
+  const made = session.view?.panel?.(session);
+  if (made !== undefined) sidePanels.set(session, made);
+  return made;
 }
 
 /** Opens the side panel, and goes back to it from the conversation. */
@@ -2800,8 +2449,18 @@ function launchedLabel(name: string, what: string): string {
 }
 
 /** The jobs as the person is shown them: those started, and those the work loop has planned after them. */
-function shownJobs(jobs: JobRegistry): Job[] {
+export function shownJobs(jobs: JobRegistry): Job[] {
   return [...(workLoops.get(jobs)?.loop.planned() ?? []), ...jobs.list()];
+}
+
+/** The work loop of a session's jobs, once a chat has made it - never made here: what the side panel's map lays over the files. */
+export function plannedLoop(jobs: JobRegistry): WorkLoop | undefined {
+  return workLoops.get(jobs)?.loop;
+}
+
+/** A session's launches, by its jobs: the launch track every chat's launch tool and every pulse's launch share. */
+export function sessionLaunchesOf(jobs: JobRegistry): SessionLaunches | undefined {
+  return sessionLaunches.get(jobs);
 }
 
 function listJobs(jobs: JobRegistry, cwd: string, runs = EARLIER_RUNS): string {
@@ -2880,20 +2539,13 @@ function jobLines(all: Job[]): string {
  * so it needs no external tool, no API key and no credits - and it is the only honest way
  * to answer "is this spec valid?" without generating anything.
  */
-function registerCheckPlain(pi: ExtensionAPI, cwd: string, dialogs?: AskUserIO, afterAnswer?: (answer: string) => string | undefined) {
+function registerCheckPlain(pi: ExtensionAPI, cwd: string, dialogs?: AskUserIO, afterAnswer?: (answer: string) => string | undefined, questions?: QuestionView) {
   pi.registerTool(checkPlainTool(cwd));
-  pi.registerTool(chatAskUserTool(dialogs, afterAnswer));
+  pi.registerTool(chatAskUserTool(dialogs, afterAnswer, questions));
   // The web, for the conversation too - a library's documentation, an API, an error; curl is its
   // bash. Run here, like the rendering agents' (see render/web.ts).
   for (const tool of createWebTools()) pi.registerTool(tool);
 }
-
-const SIDE_ENTRY = "turri_btw";
-/** A message the person sent while a skill ran in the chat, read by the skill's agent: drawn as the message it is. */
-const SKILL_MESSAGE_ENTRY = "turri_skill_message";
-
-/** The capture's lines above the input while it runs. */
-const CAPTURE_WIDGET = "turri-capture";
 
 /**
  * /capture [path]: the codebase at path - the chat's folder by default - captured into ***plain in <path>/plain, in the
@@ -2901,7 +2553,7 @@ const CAPTURE_WIDGET = "turri-capture";
  * which the person alone does. One at a time; its end comes back to this chat as a background skill's does, its report
  * for the chat's agent to pass on.
  */
-function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRunEnd): void }) {
+function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRunEnd): void }, view: TurriView | undefined) {
   let running: { root: string; controller: AbortController } | undefined;
   pi.on("session_shutdown", (event) => {
     if (event.reason === "quit") running?.controller.abort();
@@ -2926,35 +2578,13 @@ function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRu
       running = { root, controller };
       const model = conversationModel(ctx);
       shownAfterCommand(pi, ctx, command, captureStartedText(root, captureGoesOn(root)), "info", true);
-      // Above the input while it runs: where it is, each agent at work and what it did last - a capture at work
-      // is told from one that hangs.
+      // Above the input while it runs, drawn by the view: where it is, each agent at work and what it did last - a capture
+      // at work is told from one that hangs.
       let status: CaptureStatus | undefined;
-      let redrawNow: (() => void) | undefined;
-      if (ctx.hasUI) {
-        ctx.ui.setWidget(CAPTURE_WIDGET, (tui, theme) => {
-          // The spinner and the clocks move.
-          const redraw = setInterval(() => tui.requestRender(), 1000);
-          redraw.unref?.();
-          redrawNow = () => tui.requestRender();
-          const style = {
-            heading: (text: string) => theme.bold(theme.fg("accent", text)),
-            done: (text: string) => theme.fg("success", text),
-            now: (text: string) => theme.bold(theme.fg("accent", text)),
-            muted: (text: string) => theme.fg("muted", text),
-          };
-          return {
-            render: (width: number) => (status === undefined ? [] : captureStatusLines(status, { frame: spinner(Date.now()), now: Date.now(), width }, style)),
-            invalidate: () => {},
-            dispose: () => {
-              clearInterval(redraw);
-              redrawNow = undefined;
-            },
-          };
-        });
-      }
+      const shown = ctx.hasUI ? view?.captureProgress?.(ctx) : undefined;
       const watch = (next: CaptureStatus) => {
         status = next;
-        redrawNow?.();
+        shown?.update(next);
       };
       // The same milestones as the CLI, kept in the chat that started the capture. Tool activity stays in the widget.
       const started = Date.now();
@@ -2974,7 +2604,7 @@ function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRu
       };
       void captureConsole(() => runCapture({ root, signal: controller.signal, progress, watch, ...configured }))
         .then(async ({ result }) => {
-          if (ctx.hasUI) ctx.ui.setWidget(CAPTURE_WIDGET, undefined);
+          shown?.close();
           // A chat works on the project of its own folder, and the capture wrote one of its own: turri in a terminal
           // can open again there, on the chat's model, the report told there.
           if (ctx.hasUI && canReopen()) {
@@ -3000,7 +2630,7 @@ function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRu
         })
         .finally(() => {
           running = undefined;
-          if (ctx.hasUI) ctx.ui.setWidget(CAPTURE_WIDGET, undefined);
+          shown?.close();
         });
     },
   });
@@ -3022,31 +2652,6 @@ function registerSideQuestions(pi: ExtensionAPI, cwd: string, jobs: JobRegistry)
         ctx.ui.notify(`The side question could not be answered: ${error instanceof Error ? error.message : String(error)}`, "error"),
       );
     },
-  });
-
-  pi.registerEntryRenderer(COMMAND_OUTCOME, (entry, _options, theme) => {
-    const data = entry.data as CommandOutcome | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    // The command as typed; what it said, under it - or, said without it above, with it.
-    const said = data.text !== undefined ? theme.fg(data.level === undefined || data.level === "info" ? "text" : data.level, data.text) : undefined;
-    const lines = data.text === undefined ? [theme.bold(theme.fg("accent", data.command))] : data.echoed === true ? [said!] : [theme.fg("muted", data.command), said!];
-    box.addChild(new Text(lines.join("\n"), 0, 0));
-    return box;
-  });
-
-  pi.registerEntryRenderer(SKILL_MESSAGE_ENTRY, (entry) => {
-    const data = entry.data as { text: string } | undefined;
-    if (data === undefined) return undefined;
-    return new UserMessageComponent(data.text, getMarkdownTheme());
-  });
-
-  pi.registerEntryRenderer(SIDE_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { question: string; answer: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(new Text([theme.fg("muted", `btw: ${data.question}`), theme.fg("text", data.answer)].join("\n"), 0, 0));
-    return box;
   });
 }
 
@@ -3122,25 +2727,6 @@ function registerLaunch(pi: ExtensionAPI, cwd: string, jobs: JobRegistry) {
   });
 }
 
-const MILESTONE_ENTRY = "turri_milestone";
-/** A newer turri out, found once turri had started (turri-versions.ts). */
-const VERSION_ENTRY = "turri_version";
-const JOB_ENTRY = "turri_job";
-const JOBS_LIST_ENTRY = "turri_jobs";
-const HISTORY_ENTRY = "turri_history";
-
-interface JobAnnouncement {
-  id: string;
-  summary: string;
-  status: "succeeded" | "failed" | "stopped";
-  /** The job ran to its end, and what it built did not pass - a build that stopped at a gate. */
-  incomplete?: boolean;
-  duration: string;
-  /** Tokens and cost, when any were spent. */
-  spent?: string;
-  text: string;
-}
-
 function announceJob(pi: ExtensionAPI, job: Job): void {
   if (job.status !== "succeeded" && job.status !== "failed" && job.status !== "stopped") return;
   const announcement: JobAnnouncement = {
@@ -3191,28 +2777,10 @@ function specConflictTask(conflict: SpecConflict): string {
   ].join("\n");
 }
 
-const INTERVIEW_ENTRY = "turri_exchange";
+export type { Exchange };
 
 /**
- * A skill's question as the transcript keeps it: who asked, what it said before asking - a brief to confirm, the choices
- * it weighed, shown in the dialog that is gone once answered - the question, and the answer.
- */
-export function exchangeLines(data: Exchange, fg: (color: "muted" | "text" | "dim" | "accent", text: string) => string): string[] {
-  const said = data.said !== undefined ? data.said.split("\n").map((line) => fg("text", line)) : [];
-  const answer = data.answer.trim() === "" ? fg("dim", "> (no answer)") : fg("accent", `> ${data.answer}`);
-  return [fg("muted", `${data.skill} asked`), ...said, ...(said.length > 0 ? [""] : []), fg("text", data.question), answer];
-}
-
-export interface Exchange {
-  skill: string;
-  /** What the skill's agent said before asking - a brief to confirm, the choices it weighed: shown in the dialog, kept here. */
-  said?: string;
-  question: string;
-  answer: string;
-}
-
-/**
- * Show each question and answer in the transcript, where the person can see it.
+ * Each question and answer kept in the transcript, where the person can see it.
  *
  * A skill runs inside one tool call and asks through dialogs, so its interview leaves no
  * trace in the conversation - the questions vanish once answered. These are custom
@@ -3220,69 +2788,6 @@ export interface Exchange {
  * not enter the model's context, so a long interview is readable without being paid for
  * twice.
  */
-function registerInterviewLog(pi: ExtensionAPI) {
-  pi.registerEntryRenderer(JOB_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as JobAnnouncement | undefined;
-    if (data === undefined) return undefined;
-    // A job that ran to its end but whose build did not pass is not a success: it says so.
-    const header =
-      data.status === "succeeded" && data.incomplete === true
-        ? `${theme.fg("error", "✗")} ${theme.fg("text", data.summary)} ${theme.fg("error", `did not pass - stopped after ${data.duration}`)}`
-        : data.status === "succeeded"
-        ? `${theme.fg("success", "✓")} ${theme.fg("text", data.summary)} ${theme.fg("muted", `finished after ${data.duration}`)}`
-        : data.status === "stopped"
-          ? `${theme.fg("warning", "■")} ${theme.fg("text", data.summary)} ${theme.fg("warning", `stopped after ${data.duration}`)}`
-          : `${theme.fg("error", "✗")} ${theme.fg("text", data.summary)} ${theme.fg("error", `failed after ${data.duration}`)}`;
-    const spent = data.spent ? ` ${theme.fg("muted", `· ${data.spent}`)}` : "";
-    // Its headline only: the chat has the whole report, and says what it means - or does what the project says to. One
-    // that went wrong says where to see why: the live panel, which said it, is gone with the last pulse.
-    const wrong = data.status !== "succeeded" || data.incomplete === true;
-    const box = new Box(1, 0);
-    box.addChild(new Text(header + spent + (wrong ? `\n${theme.fg("muted", `  ${PANEL_KEY} shows this pulse - its stages, what its agents did, its log`)}` : ""), 0, 0));
-    return box;
-  });
-
-  pi.registerEntryRenderer(HISTORY_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { module: string; text: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(new Text([theme.fg("muted", `history of ${data.module}`), theme.fg("text", data.text)].join("\n"), 0, 0));
-    return box;
-  });
-
-  pi.registerEntryRenderer(JOBS_LIST_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { text: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(new Text([theme.fg("muted", "pulses"), theme.fg("text", data.text)].join("\n"), 0, 0));
-    return box;
-  });
-
-  pi.registerEntryRenderer(MILESTONE_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { module: string; text: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(
-      new Text(`${theme.fg("success", "●")} ${theme.fg("muted", data.module)} ${theme.fg("text", data.text)}`, 0, 0),
-    );
-    return box;
-  });
-
-  pi.registerEntryRenderer(INTERVIEW_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as Exchange | undefined;
-    if (data === undefined) return undefined;
-
-    // Two details of the TUI components matter here. Box's third argument is a
-    // *background* function - passing a foreground colour into it tints every line, which
-    // is what made these unreadable. And Text pads by 1 on both axes unless told
-    // otherwise, so one Text per line puts a blank line between each. Hence a single Text
-    // with explicit zero padding, coloured per line.
-    const box = new Box(1, 0);
-    box.addChild(new Text(exchangeLines(data, (color, text) => theme.fg(color, text)).join("\n"), 0, 0));
-    return box;
-  });
-}
-
 function recordExchange(pi: ExtensionAPI, exchange: Exchange): void {
   try {
     pi.appendEntry(INTERVIEW_ENTRY, exchange);
@@ -3342,13 +2847,6 @@ function recentUserMessages(ctx: ExtensionContext, limit: number): string[] {
 
 
 /**
- * The name on the door.
- *
- * Pi's own startup header is a built-in component an extension cannot replace, so this
- * adds a wordmark of its own at the top of the session. `turri` starts pi without
- * its header (see pi-launch.ts), leaving only this one.
- */
-/**
  * The ***plain rules as the conversation has them in its system prompt, every turn - the standard library's
  * inventory among them, in its rule, so the conversation knows what a spec can import from the start.
  */
@@ -3356,7 +2854,11 @@ export function chatRulesBlock(rules = loadRules(join(PACKAGE_ROOT, "genome", "r
   return renderRulesBlock(rules);
 }
 
-function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, welcomeVisible: () => boolean) {
+/**
+ * /stdlib, and the banner at the top of every chat - what it says, appended once a chat (BannerData); the view draws it
+ * (TurriView.chat), and a host reads it.
+ */
+function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue) {
   pi.registerCommand("stdlib", {
     description: "List the ***plain standard library: the stacks a spec can import instead of writing its implementation reqs.",
     handler: async (_args, ctx) => {
@@ -3364,60 +2866,8 @@ function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, welcomeVisib
     },
   });
 
-  pi.registerEntryRenderer(BANNER_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as
-      | {
-          version: string;
-          /** The commit, when turri runs from a clone - and whether the clone has changes on it. */
-          commit?: string;
-          changed?: boolean;
-          /** How many skills failed to load. */
-          pending: number;
-          sandbox?: ReturnType<typeof sandboxSummary>;
-          /** A newer turri out, or installed and hidden behind this one on the PATH: a line each (turri-versions.ts). */
-          versions?: string[];
-          /** What turri says of the config files: a key it renamed in one, an old name left, keys it does not read. */
-          config?: ConfigLine[];
-        }
-      | undefined;
-    if (data === undefined) return undefined;
-
-    const lines = [
-      `${brandPink(theme)("turri")}  ${theme.fg("muted", `v${data.version}`)}` +
-        (data.commit !== undefined ? theme.fg("dim", `  from a clone, ${data.commit}${data.changed ? " with changes" : ""}`) : ""),
-      // A newer turri out, or one installed and hidden behind this one: said first, under the version it is about.
-      ...(data.versions ?? []).map((line) => theme.fg("warning", line)),
-      // A key renamed is information; one that does not parse stops everything that reads it; the rest are the person's to take out.
-      ...(data.config ?? []).map((line) => theme.fg(line.kind === "renamed" ? "muted" : line.kind === "broken" ? "error" : "warning", line.text)),
-      `${theme.fg("text", "the first coding agent with the power of ")}${brandPink(theme)("regenerative software")}`,
-      // Where the settings are changed, without leaving the chat.
-      theme.fg("muted", "configure with /settings"),
-      // Only what is wrong: skills that did not load, and agents' commands less fenced than they should be.
-      ...(data.pending > 0 ? [theme.fg("warning", `${data.pending} skill${data.pending === 1 ? "" : "s"} failed to load`)] : []),
-      ...(data.sandbox !== undefined && data.sandbox.level !== "ok" ? [theme.fg(data.sandbox.level === "limited" ? "warning" : "error", data.sandbox.text)] : []),
-    ];
-    // The jellyfish turri is named after, regenerating, in ink for the theme's background: a picture
-    // where the terminal shows images, drawn in text where it does not.
-    return new Banner(lines, (rule) => theme.fg("borderMuted", rule), jellyfishArt(theme.appearance, (theme.getColorMode?.() ?? "truecolor") === "truecolor"));
-  });
-
-  // A newer turri, found once turri had started: a line, as the banner would have said it.
-  pi.registerEntryRenderer(VERSION_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { text: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(new Text(theme.fg("warning", data.text), 0, 0));
-    return box;
-  });
-
   let bannered = false;
   pi.on("session_start", (_event, ctx) => {
-    if (ctx.hasUI) {
-      padTheScreen(ctx);
-      if (welcomeVisible()) animateJellyfish(ctx, welcomeVisible);
-      // ***plain an agent shows in the chat, highlighted in the theme of the moment.
-      highlightPlainCodeBlocks(() => ctx.ui.theme);
-    }
     // Once a chat: it starts again each time it is shown.
     if (bannered) return;
     bannered = true;
@@ -3446,217 +2896,4 @@ function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, welcomeVisib
       // Branding is the least important thing here; never let it stop a session starting.
     }
   });
-}
-
-/**
- * How many rows the banner's picture takes at most: its frame reaches down to the sea floor the polyp stands on, so it
- * is given more than the jellyfish drawn in text, ten.
- */
-const JELLYFISH_ROWS = 14;
-
-
-/** How far along its sequence the jellyfish every banner shows is, moved on by `animateJellyfish`. */
-let jellyfishFrame = 0;
-
-/** The frame the jellyfish is on: the one its sequence has at this point. */
-export const shownFrame = () => JELLYFISH_SEQUENCE[jellyfishFrame % JELLYFISH_SEQUENCE.length]!;
-let jellyfishTimer: ReturnType<typeof setInterval> | undefined;
-
-/**
- * Moves the jellyfish on a frame every JELLYFISH_FRAME_MS while the banner is on the screen. An entry's
- * renderer is given no TUI to redraw, so an empty widget below the editor - which pi gives no
- * spacer - hands it over. Once the conversation is taller than the screen the banner has scrolled off,
- * and a line changing up there would have pi-tui clear and redraw everything, frame after frame: the
- * jellyfish stops for the rest of the session - swimming, whole, drawn once more if it was not, rather than on whatever
- * frame it was at, a polyp half grown.
- */
-export function animateJellyfish(ctx: ExtensionContext, visible = () => true): void {
-  if (jellyfishTimer !== undefined) clearInterval(jellyfishTimer);
-  jellyfishTimer = undefined;
-  ctx.ui.setWidget(
-    JELLYFISH_CLOCK_KEY,
-    (tui) => {
-      drawOverlaysBesidePicture(tui);
-      const timer = setInterval(() => {
-        if (!visible()) {
-          clearInterval(timer);
-          return;
-        }
-        if (tui.render(tui.terminal.columns).length > tui.terminal.rows) {
-          clearInterval(timer);
-          if (shownFrame() !== JELLYFISH_SEQUENCE[JELLYFISH_REST]) {
-            jellyfishFrame = JELLYFISH_REST;
-            tui.requestRender();
-          }
-          return;
-        }
-        jellyfishFrame++;
-        tui.requestRender();
-      }, JELLYFISH_FRAME_MS);
-      timer.unref?.();
-      jellyfishTimer = timer;
-      return {
-        render: () => [],
-        invalidate: () => {},
-        dispose: () => clearInterval(timer),
-      };
-    },
-    { placement: "belowEditor" },
-  );
-}
-
-const JELLYFISH_CLOCK_KEY = "turri-jellyfish";
-
-/**
- * The whole screen inside its padding (`screen-padding.ts`). An extension is given pi's screen only through what it
- * draws, so an empty widget below the editor hands it over - at each frame, as pi starts a new screen when it changes
- * how it draws.
- */
-function padTheScreen(ctx: ExtensionContext): void {
-  ctx.ui.setWidget(
-    SCREEN_PADDING_KEY,
-    (tui) => {
-      padScreen(tui);
-      return {
-        render: () => {
-          padScreen(tui);
-          return [];
-        },
-        invalidate: () => {},
-      };
-    },
-    { placement: "belowEditor" },
-  );
-}
-
-const SCREEN_PADDING_KEY = "turri-padding";
-
-/** The columns the banner's picture takes from the left edge, while it shows one; 0 when it does not. */
-let pictureRight = 0;
-
-/**
- * pi-tui draws no overlay over a line holding an image: it leaves the line as it is, and the side panel
- * would have a gap on the banner's row that carries the picture. So that row's text gets the overlay as
- * any other does, and the picture goes back on after it - unless the overlay reaches over the picture,
- * which is then left out of that row until it no longer does.
- */
-function drawOverlaysBesidePicture(tui: TUI): void {
-  const target = tui as unknown as { compositeLineAt?: (base: string, overlay: string, col: number, width: number, total: number) => string; turriPicture?: true };
-  if (target.turriPicture === true || typeof target.compositeLineAt !== "function") return;
-  target.turriPicture = true;
-  const original = target.compositeLineAt.bind(tui);
-  target.compositeLineAt = (base, overlay, col, width, total) => overPictureRow(base, overlay, col, width, total, pictureRight) ?? original(base, overlay, col, width, total);
-}
-
-/** Columns between the jellyfish and the lines beside it. */
-const JELLYFISH_GAP = 3;
-
-/** The fewest columns the lines keep beside the jellyfish; a terminal narrower than that gets the lines alone. */
-const BANNER_TEXT_MIN = 30;
-
-/**
- * The banner: the jellyfish on the left at the frame `animateJellyfish` has it on, its lines beside it in
- * the middle of its height, and a rule the width of the terminal under them both.
- *
- * pi-tui writes a line holding an image as it is. So the picture goes on one of the rows after that
- * row's text: back to the jellyfish's column (`CSI G`), then the image's escape sequence. Kitty places
- * the image there without moving the cursor, from the first row; iTerm2 moves the cursor past what it
- * draws, so it goes on the last row and climbs back up to start, as pi-tui's Image does.
- */
-class Banner implements Component {
-  private readonly lines: string[];
-  private readonly rule: (text: string) => string;
-  private readonly art: JellyfishArt | undefined;
-  private kittyImageId: number | undefined;
-
-  /** Without `art` the banner is its lines alone. */
-  constructor(lines: string[], rule: (text: string) => string, art: JellyfishArt | undefined) {
-    this.lines = lines;
-    this.rule = rule;
-    this.art = art;
-  }
-
-  invalidate(): void {}
-
-  render(width: number): string[] {
-    const inner = Math.max(1, width - 2);
-    const art = this.art;
-    const placed =
-      art?.kind === "image" ? this.placeImage(art, Math.max(JELLYFISH_ROWS, this.lines.length), width - 2 - JELLYFISH_GAP - BANNER_TEXT_MIN) : art?.kind === "text" && art.columns <= width - 2 - JELLYFISH_GAP - BANNER_TEXT_MIN ? art : undefined;
-    const left = placed !== undefined ? 1 + placed.columns + JELLYFISH_GAP : 1;
-    // Wrapped in the columns beside the picture, never cut short - the chat beside the docked panel is narrow.
-    const text = this.lines.flatMap((line) => wrapTextWithAnsi(line, Math.max(1, width - 1 - left)));
-    const height = Math.max(text.length, placed?.rows ?? 0);
-    const above = Math.floor((height - text.length) / 2);
-    const drawn = placed?.kind === "text" ? placed.frames[shownFrame()]! : undefined;
-    const rows = Array.from({ length: height }, (_, row) => {
-      const line = text[row - above];
-      const jellyfish = drawn !== undefined ? (drawn[row] ?? " ".repeat(placed!.columns)) : " ".repeat(placed?.columns ?? 0);
-      const before = placed !== undefined ? ` ${jellyfish}${" ".repeat(JELLYFISH_GAP)}` : " ";
-      return line !== undefined ? `${before}${line}` : placed?.kind === "text" ? ` ${jellyfish}` : "";
-    });
-    // The side panel is drawn beside the picture (drawOverlaysBesidePicture), which goes on showing.
-    pictureRight = placed?.kind === "image" ? SCREEN_PADDING.left + 1 + placed.columns : 0;
-    if (placed?.kind === "image") {
-      const at = placed.onLastRow ? placed.rows - 1 : 0;
-      rows[at] = `${rows[at]}${PICTURE_AT}${placed.sequence}`;
-    }
-    return [...rows, ` ${this.rule("─".repeat(inner))}`];
-  }
-
-  private placeImage(
-    art: Extract<JellyfishArt, { kind: "image" }>,
-    rows: number,
-    room: number,
-  ): { kind: "image"; sequence: string; columns: number; rows: number; onLastRow: boolean } | undefined {
-    if (room < 4) return undefined;
-    const kitty = getCapabilities().images === "kitty";
-    if (kitty && this.kittyImageId === undefined) this.kittyImageId = allocateImageId();
-    const result = renderImage(art.frames[shownFrame()]!, art.dimensions, {
-      maxWidthCells: room,
-      maxHeightCells: rows,
-      imageId: this.kittyImageId,
-      moveCursor: false,
-    });
-    if (result === null || result.columns > room) return undefined;
-    const sequence = kitty ? result.sequence : `${result.rows > 1 ? `\x1b[${result.rows - 1}A` : ""}${result.sequence}`;
-    return { kind: "image", sequence, columns: result.columns, rows: result.rows, onLastRow: !kitty };
-  }
-}
-
-/**
- * The jellyfish as the banner draws it: frames of a picture, for a terminal that shows images, or the same
- * pixels drawn in half blocks (`src/jellyfish.ts`), for one that does not.
- */
-type JellyfishArt =
-  | { kind: "image"; frames: string[]; dimensions: ImageDimensions }
-  | { kind: "text"; frames: string[][]; columns: number; rows: number };
-
-const jellyfishFrameCache = new Map<string, string[]>();
-
-/**
- * The banner's jellyfish for this terminal: where it shows images, the picture's frames
- * (scripts/jellyfish-frames.mjs writes them), in the colours for the theme's background; where it does not, the
- * small one in half blocks. None when the pictures cannot be read.
- */
-function jellyfishArt(appearance: "dark" | "light", truecolor: boolean): JellyfishArt | undefined {
-  const dir = join(PACKAGE_ROOT, "assets", "jellyfish");
-  try {
-    if (getCapabilities().images === null) {
-      const frames = JELLYFISH_TEXT_FRAMES.map((pixels) => halfBlocks(pixels, appearance, truecolor));
-      return { kind: "text", frames, columns: JELLYFISH_TEXT_FRAMES[0]![0]!.length, rows: frames[0]!.length };
-    }
-    let frames = jellyfishFrameCache.get(appearance);
-    if (frames === undefined) {
-      frames = readdirSync(dir)
-        .filter((name) => name.startsWith(`${appearance}-`) && name.endsWith(".png"))
-        .sort()
-        .map((name) => readFileSync(join(dir, name)).toString("base64"));
-      jellyfishFrameCache.set(appearance, frames);
-    }
-    const dimensions = frames.length > 0 ? getPngDimensions(frames[0]!) : null;
-    return dimensions !== null ? { kind: "image", frames, dimensions } : undefined;
-  } catch {
-    return undefined;
-  }
 }

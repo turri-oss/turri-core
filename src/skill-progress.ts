@@ -1,4 +1,4 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "./text-width.ts";
 
 /**
  * A skill's run as one line above the input: every phase by name, in order - the ones done ticked, the one it is in

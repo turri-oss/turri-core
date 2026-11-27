@@ -52,7 +52,7 @@ export interface Job {
   /** The spec change a render spec diff job renders, as its diff. Shown while it waits and runs. */
   diff?: string;
   /** Where its diff's lines are in the .plain files - their files and line numbers there - when they could be placed. */
-  diffWhere?: import("./diff-view.ts").DiffWhere;
+  diffWhere?: import("./diff-where.ts").DiffWhere;
   /** The functional specs it covers, by case: what it does to each. */
   cases?: PulseCases;
   /** For a conformance job: the render job it is the conformance of. */
@@ -144,7 +144,7 @@ export interface StartJobInput {
   /** For a render spec diff job: the diff, to show in the panel and the transcript. */
   diff?: string;
   /** Where the diff's lines are in the .plain files, when they could be placed. */
-  diffWhere?: import("./diff-view.ts").DiffWhere;
+  diffWhere?: import("./diff-where.ts").DiffWhere;
   /** The functional specs it covers, by case. */
   cases?: PulseCases;
   /** "provider/model-id" its agents run on, to show where the job is shown. */
@@ -179,7 +179,7 @@ export interface JobRegistry {
   /** Resolves when the job settles. Used by callers that asked to wait. */
   wait(id: string): Promise<Job>;
   /** A job's ***plain diff, moved - its pulse steered: shown and recorded in the ledger as it is now. */
-  setDiff(id: string, diff: string, where?: import("./diff-view.ts").DiffWhere): void;
+  setDiff(id: string, diff: string, where?: import("./diff-where.ts").DiffWhere): void;
 }
 
 const DEFAULT_TAIL_CHARS = 4000;

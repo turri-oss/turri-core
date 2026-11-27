@@ -39,7 +39,7 @@ import { describeSpecChange } from "./prompt.ts";
 import { resolveTemplateDirs } from "./paths.ts";
 import { builtTips, copyRequiredCode, copyRequiredTests, importingModules, isImportModule, newlyRequired, resolveRequiresChain, startFromScratch, type ChainEntry } from "./requires.ts";
 import { describeSpecDiff, renderSpecDiff, specFilesOf, type SpecSnapshot } from "./regenerate.ts";
-import { locateDiffLines, type DiffWhere } from "./diff-view.ts";
+import { locateDiffLines, type DiffWhere } from "./diff-where.ts";
 import { agentChanges, changeDiffInFiles } from "./change-view.ts";
 import { createSteering, MAX_STEERS, markTold, steer, waitingSteer, type JobSteering } from "./steering.ts";
 import { isWithin, projectDirOf, slashed } from "./paths.ts";

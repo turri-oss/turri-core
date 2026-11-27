@@ -1,11 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { availableParallelism, homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
 import { load as loadYaml } from "js-yaml";
 import { adoptLegacyConfig, CONFIG_FILE, CONFIG_KEYS, LEGACY_CONFIG_FILE, ROLE_THINKING, type AgentRole } from "./config.ts";
 import { currentValue, withSetting, withTopLevelValue } from "./config-edit.ts";
-import { brand } from "./brand.ts";
 import { closestModels, piModelCatalogue, type CatalogueModel, type ModelCatalogue } from "./model-check.ts";
 import { EXTENSION_PROVIDERS } from "./installed-providers.ts";
 import { captureDefaults } from "./capture/models.ts";
@@ -158,7 +156,7 @@ export function bedrockModelsIn(catalogue: ModelCatalogue, choice: Required<Bedr
 }
 
 /** Whether turri's own pair for the maker is served in the geography. */
-function hasPreset(choice: BedrockChoice): choice is { maker?: PresetMaker; region: string } {
+export function hasPreset(choice: BedrockChoice): choice is { maker?: PresetMaker; region: string } {
   const maker = choice.maker ?? BEDROCK_DEFAULT.maker;
   return (maker === "anthropic" || maker === "openai") && BEDROCK_REGIONS[maker].includes(choice.region);
 }
@@ -511,16 +509,16 @@ function shellProfile(): string {
 }
 
 /** How to sign in to the vendor's models, as pi takes them: a key in the environment, or /login - a few lines. */
-function signInText(vendor: Vendor, bedrock?: BedrockChoice, models?: ModelSet): string[] {
+function signInText(vendor: Vendor, bedrock?: BedrockChoice, models?: ModelSet, paint: Paint = PLAIN_PAINT): string[] {
   // Models given on another vendor's terms - other's, a provider of their own: the keys of the providers they name.
   const providers = models !== undefined && vendor === "other" ? [...new Set([models.harness, models.coding].map((model) => model.split("/")[0]!))] : [];
   // A provider a pi extension brings - a Claude subscription through Claude Code: no key, its extension and its own sign-in.
   const extensions = (vendor === "other" ? providers : [vendor]).flatMap((provider) => (EXTENSION_PROVIDERS[provider] !== undefined ? [EXTENSION_PROVIDERS[provider]!] : []));
   if (extensions.length > 0 && (vendor !== "other" || extensions.length === providers.length)) {
     return extensions.flatMap((extension) => [
-      brand.bold(`Set up ${extension.label}`),
-      `  ${brand.accent(extension.install)}   ${brand.muted("its pi extension: turri finds what pi has installed")}`,
-      `  ${brand.muted(extension.signIn)}`,
+      paint.bold(`Set up ${extension.label}`),
+      `  ${paint.accent(extension.install)}   ${paint.muted("its pi extension: turri finds what pi has installed")}`,
+      `  ${paint.muted(extension.signIn)}`,
     ]);
   }
   const keys =
@@ -528,7 +526,7 @@ function signInText(vendor: Vendor, bedrock?: BedrockChoice, models?: ModelSet):
       ? providers.flatMap((provider) => (provider in VENDORS && provider !== "other" && provider !== "amazon-bedrock" ? VENDORS[provider as Vendor].keys : [{ vendor: makerLabel(provider), variable: "" }]))
       : VENDORS[vendor].keys;
   const windows = process.platform === "win32";
-  const set = (variable: string, value = "...") => brand.accent(windows ? `setx ${variable} "${value}"` : `export ${variable}=${value}`);
+  const set = (variable: string, value = "...") => paint.accent(windows ? `setx ${variable} "${value}"` : `export ${variable}=${value}`);
   // Bedrock's are several; a vendor's own key is one, or the mix's two.
   const several = vendor === "amazon-bedrock" || keys.length > 1;
   const keep = windows
@@ -538,24 +536,24 @@ function signInText(vendor: Vendor, bedrock?: BedrockChoice, models?: ModelSet):
     const geography = (bedrock ?? BEDROCK_DEFAULT).region;
     const region = bedrockAwsRegion(geography);
     return [
-      brand.bold("Sign in to AWS"),
-      `  ${set("AWS_PROFILE")}   ${brand.muted("your profile (aws configure, or aws sso login)")}`,
-      `  ${brand.muted("or, instead of a profile, a Bedrock API key:")} ${set("AWS_BEARER_TOKEN_BEDROCK")}`,
+      paint.bold("Sign in to AWS"),
+      `  ${set("AWS_PROFILE")}   ${paint.muted("your profile (aws configure, or aws sso login)")}`,
+      `  ${paint.muted("or, instead of a profile, a Bedrock API key:")} ${set("AWS_BEARER_TOKEN_BEDROCK")}`,
       "",
-      brand.muted(keep),
+      paint.muted(keep),
       // The region is turri's to set (bedrock-region.ts): said, not asked for.
       ...(bedrockNeedsAwsRegion(geography)
-        ? [brand.muted(`turri calls ${geography}'s models in ${region}. AWS_REGION, set, overrides it - and so does your AWS profile's region, when it is in ${geography}.`)]
+        ? [paint.muted(`turri calls ${geography}'s models in ${region}. AWS_REGION, set, overrides it - and so does your AWS profile's region, when it is in ${geography}.`)]
         : []),
-      brand.muted("Your AWS account needs access to the models: Bedrock console, model access."),
+      paint.muted("Your AWS account needs access to the models: Bedrock console, model access."),
     ];
   }
   return [
-    brand.bold(`Sign in to ${keys.map((key) => key.vendor).join(" and ")}`),
-    ...keys.map((key) => (key.variable !== "" ? `  ${set(key.variable)}` : `  ${brand.muted(`the key pi reads for ${key.vendor} - https://pi.dev`)}`)),
+    paint.bold(`Sign in to ${keys.map((key) => key.vendor).join(" and ")}`),
+    ...keys.map((key) => (key.variable !== "" ? `  ${set(key.variable)}` : `  ${paint.muted(`the key pi reads for ${key.vendor} - https://pi.dev`)}`)),
     "",
-    brand.muted(`${keep} Or start turri and type /login.`),
-    ...(vendor === "other" && models === undefined ? [brand.muted("Another provider: change the two models to any pi supports, and set its key - https://pi.dev.")] : []),
+    paint.muted(`${keep} Or start turri and type /login.`),
+    ...(vendor === "other" && models === undefined ? [paint.muted("Another provider: change the two models to any pi supports, and set its key - https://pi.dev.")] : []),
   ];
 }
 
@@ -672,6 +670,17 @@ export function sharedWithLegacy(folder: string): { carried: Array<[string, unkn
   return { carried, left };
 }
 
+/** How what init-config says is coloured: what to look at, what was done, what can be skimmed, and bold. */
+export interface Paint {
+  accent: (text: string) => string;
+  success: (text: string) => string;
+  muted: (text: string) => string;
+  bold: (text: string) => string;
+}
+
+/** No colour at all: the text as it is. */
+export const PLAIN_PAINT: Paint = { accent: (text) => text, success: (text) => text, muted: (text) => text, bold: (text) => text };
+
 export interface InitConfigOptions {
   /** Write the whole file again, not only the two models of one already there. */
   force?: boolean;
@@ -683,6 +692,8 @@ export interface InitConfigOptions {
   models?: ModelChoice;
   /** pi's catalogue, to check the models against - read from pi when it is needed and not given. */
   catalogue?: ModelCatalogue;
+  /** How the message is coloured: plain unless given - `turri init-config` gives turri's colours for a terminal. */
+  paint?: Paint;
 }
 
 /**
@@ -693,6 +704,7 @@ export interface InitConfigOptions {
 export async function initConfig(dir: string, options: InitConfigOptions = {}): Promise<{ written: boolean; message: string }> {
   const chosen = await chosenModels(options);
   if ("problem" in chosen) return { written: false, message: chosen.problem };
+  const paint = options.paint ?? PLAIN_PAINT;
   const { vendor, bedrock, models, given } = chosen;
   const folder = resolve(dir);
   // The modules' old files, config.<module>.yaml, copied to their new names; config.turri.yaml is written below.
@@ -717,253 +729,43 @@ export async function initConfig(dir: string, options: InitConfigOptions = {}): 
     written: true,
     message: [
       "",
-      `${brand.success("✓")} ${existing ? `Set the two models in ${brand.bold(path)}` : `Wrote ${brand.bold(path)}`}`,
-      `  ${brand.muted(`with ${whose(vendor, models, given)}${existing ? " - missing capture tiers filled in, everything else in it left as it was (--force writes it all again)" : ""}`)}`,
+      `${paint.success("✓")} ${existing ? `Set the two models in ${paint.bold(path)}` : `Wrote ${paint.bold(path)}`}`,
+      `  ${paint.muted(`with ${whose(vendor, models, given)}${existing ? " - missing capture tiers filled in, everything else in it left as it was (--force writes it all again)" : ""}`)}`,
       "",
-      `  ${brand.muted("you talk to")}   ${talk}`,
-      `  ${brand.muted("it codes")}      ${code}`,
-      ...(["capture-exploration", "capture-analysis", "capture"] as const).map(role => `  ${brand.muted(role)}   ${currentValue(config, `models.${role}`)}`),
+      `  ${paint.muted("you talk to")}   ${talk}`,
+      `  ${paint.muted("it codes")}      ${code}`,
+      ...(["capture-exploration", "capture-analysis", "capture"] as const).map(role => `  ${paint.muted(role)}   ${currentValue(config, `models.${role}`)}`),
       ...(shared.carried.length > 0
         ? [
             "",
-            brand.muted(
+            paint.muted(
               `Took from ${LEGACY_CONFIG_FILE} what turri reads too - ${shared.carried.map(([key]) => key).join(", ")}.` +
                 (shared.left.length > 0 ? ` Not taken, turri does not read them: ${shared.left.join(", ")}.` : ""),
             ),
           ]
         : []),
       "",
-      ...signInText(vendor, bedrock, given ? models : undefined),
+      ...signInText(vendor, bedrock, given ? models : undefined, paint),
       "",
-      brand.bold("Then"),
-      ...(here ? [] : [`  ${brand.accent(`cd ${folder}`)}`]),
-      `  ${brand.accent("turri doctor")}   ${brand.muted("validates your login, and checks everything else turri needs")}`,
-      `  ${brand.accent("turri")}`,
+      paint.bold("Then"),
+      ...(here ? [] : [`  ${paint.accent(`cd ${folder}`)}`]),
+      `  ${paint.accent("turri doctor")}   ${paint.muted("validates your login, and checks everything else turri needs")}`,
+      `  ${paint.accent("turri")}`,
       "",
-      brand.muted(`turri reads this config when it starts in ${here ? "this folder" : folder} or one below it.`),
-      brand.muted(`Every other setting is in the file at its default - docs/config.md has them all.`),
+      paint.muted(`turri reads this config when it starts in ${here ? "this folder" : folder} or one below it.`),
+      paint.muted(`Every other setting is in the file at its default - docs/config.md has them all.`),
       "",
     ].join("\n"),
   };
 }
 
-const USAGE = [
-  "usage: turri init-config [--vendor anthropic|openai|google|amazon-bedrock|other] [--maker <maker>] [--region <geography>]",
-  "                         [--harness-model <spec> --coding-model <spec> [--judge-model <spec>]] [--force] [folder]",
-  "",
-  "Write a quick start config.turri.yaml in the folder, the current one by default: the model you talk to and the one that",
-  "writes the code, from the vendor you use. Asked when --vendor is not given and this is a terminal; otherwise other -",
-  "a mix of Anthropic and Google, the starting point for any provider pi supports. On amazon-bedrock, --maker and",
-  "--region say whose models and where - any maker and geography pi's catalogue has there (anthropic, openai, xai, meta,",
-  "...; global, us, eu, jp, au, apac, in, ca, us-gov, or in-region) - asked when not given, then which two, turri's own",
-  "pair or the catalogue's offered first. --harness-model and --coding-model name the two instead, as provider/model-id",
-  "without a thinking level - amazon-bedrock/global.xai.grok-4.7 - any pi's catalogue has; --judge-model the strong one",
-  "the judging examples name, the harness model unless given. The vendor, maker and region are read from them.",
-  "A config.turri.yaml already there keeps everything but its two models; --force writes the whole of it again. A new",
-  "one takes from a config.yaml beside it - another tool's, say - the keys turri reads too, its testing scripts say, and leaves",
-  "config.yaml as it is.",
-].join("\n");
-
-/** Ask until the answer is one `read` takes. */
-async function askUntil<T>(rl: ReturnType<typeof createInterface>, prompt: string, read: (answer: string) => T | undefined, again: string): Promise<T> {
-  for (;;) {
-    const chosen = read(await rl.question(prompt));
-    if (chosen !== undefined) return chosen;
-    console.log(again);
-  }
-}
-
 /** A model's price, as the list of models shows it: dollars a million tokens in and out. */
-const priced = (model: CatalogueModel) => `$${model.cost.input}/$${model.cost.output} a million tokens in/out${model.reasoning ? "" : ", no reasoning"}`;
+export const priced = (model: CatalogueModel) => `$${model.cost.input}/$${model.cost.output} a million tokens in/out${model.reasoning ? "" : ", no reasoning"}`;
 
 /** What the choice of vendor asked: the vendor, and for Amazon Bedrock whose, where and which two. */
-interface Asked {
+export interface Asked {
   /** Left out with the models named: read from them. */
   vendor?: Vendor;
   bedrock?: BedrockChoice;
   models?: ModelChoice;
-}
-
-/**
- * Ask which vendor's models to use - a number or a name - and, for Amazon Bedrock, whose and where, from pi's catalogue,
- * then which two: the pair offered taken with Enter, or chosen from the maker's models there. What is given is not asked.
- */
-async function askVendor(given: { vendor?: Vendor; maker?: BedrockMaker; region?: string }, catalogue: () => Promise<ModelCatalogue>): Promise<Asked> {
-  const names = Object.keys(VENDORS) as Vendor[];
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  /** A question: a blank line before it, its choices numbered, each with what it is. */
-  const ask = (question: string, choices: Array<[string, string]>) => {
-    console.log(`\n${brand.bold(brand.accent(question))}`);
-    const width = Math.max(...choices.map(([label]) => label.length)) + 3;
-    choices.forEach(([label, what], index) => console.log(`  ${brand.accent(`${String(index + 1).padStart(String(choices.length).length)}`)}  ${label.padEnd(width)}${brand.muted(what)}`));
-  };
-  const choose = (count: number) => `\n${brand.muted(`Choose 1-${count}:`)} `;
-  try {
-    let vendor = given.vendor;
-    if (vendor === undefined) {
-      ask(
-        "Which vendor's models do you use?",
-        names.map((name) => {
-          const { label, harness, coding } = VENDORS[name];
-          const what =
-            name === "amazon-bedrock"
-              ? "Anthropic's, OpenAI's, xAI's, Meta's... models on AWS"
-              : name === "claude-code"
-                ? `your Claude Pro or Max, through Claude Code - ${harness.split("/")[1]} to talk to, ${coding.split("/")[1]} to code`
-              : `${name === "other" ? "a mix - " : ""}${harness.split("/")[1]} to talk to, ${coding.split("/")[1]} to code`;
-          return [label, what];
-        }),
-      );
-      vendor = await askUntil(rl, choose(names.length), vendorOf, `Type a number from 1 to ${names.length}, or a vendor's name.`);
-    }
-    if (vendor !== "amazon-bedrock") return { vendor };
-    const known = await catalogue();
-    const makers = bedrockMakers(known);
-    let maker = given.maker;
-    if (maker === undefined) {
-      ask(
-        "Whose models, on Amazon Bedrock?",
-        makers.map((offer) => {
-          const own = offer.maker === "anthropic" || offer.maker === "openai" ? bedrockModels({ maker: offer.maker, region: "global" }) : undefined;
-          return [offer.label, own !== undefined ? `${own.harness.split(".").slice(2).join(".")} to talk to, ${own.coding.split(".").slice(2).join(".")} to code` : offer.regions.join(", ")];
-        }),
-      );
-      maker = await askUntil(rl, choose(makers.length), (answer) => bedrockMakerOf(answer, known), `Type a number from 1 to ${makers.length}, or a maker's name.`);
-    }
-    const regions = makers.find((offer) => offer.maker === maker)?.regions ?? [];
-    let region = given.region !== undefined ? bedrockRegionOf(maker, given.region, known) : undefined;
-    if (region === undefined) {
-      ask(
-        "Which region?",
-        regions.map((entry) => [entry, entry === "global" ? "wherever Bedrock has room" : entry === BEDROCK_IN_REGION ? "the AWS region it is called in" : ""]),
-      );
-      region = await askUntil(rl, choose(regions.length), (answer) => bedrockRegionOf(maker!, answer, known), `Type a number from 1 to ${regions.length}, or one of ${regions.join(", ")}.`);
-    }
-    const bedrock = { maker, region };
-    const offered = bedrockDefaultModels(known, bedrock);
-    const models = bedrockModelsIn(known, bedrock);
-    if (offered === undefined || models.length < 2) return { vendor, bedrock };
-    const bare = (spec: string) => spec.replace(/^amazon-bedrock\//, "");
-    console.log(`\n${brand.bold(brand.accent("Which models?"))}`);
-    console.log(`  ${bare(offered.harness)} ${brand.muted("to talk to,")} ${bare(offered.coding)} ${brand.muted("to code")}`);
-    const keep = (await rl.question(`\n${brand.muted("Enter takes them; c chooses others:")} `)).trim().toLowerCase();
-    if (keep !== "c") return { vendor, bedrock };
-    ask("The model you talk to - it writes the specs and plans the work", models.map((model) => [model.id, priced(model)]));
-    const pick = (fallback: string) => (answer: string) => {
-      const typed = answer.trim();
-      if (typed === "") return fallback;
-      const model = (/^\d+$/.test(typed) ? models[Number(typed) - 1] : undefined) ?? models.find((entry) => entry.id === typed);
-      return model !== undefined ? `amazon-bedrock/${model.id}` : undefined;
-    };
-    const atOf = (spec: string) => models.findIndex((model) => `amazon-bedrock/${model.id}` === spec) + 1;
-    const again = `Type a number from 1 to ${models.length}, or Enter for the one offered.`;
-    const harness = await askUntil(rl, `\n${brand.muted(`Choose 1-${models.length}, Enter for ${atOf(offered.harness)}:`)} `, pick(offered.harness), again);
-    ask("The model that writes the code - a smaller, cheaper one", models.map((model) => [model.id, priced(model)]));
-    const coding = await askUntil(rl, `\n${brand.muted(`Choose 1-${models.length}, Enter for ${atOf(offered.coding)}:`)} `, pick(offered.coding), again);
-    return { vendor, bedrock, models: { harness, coding, ...(harness === offered.harness ? { strong: offered.strong } : {}) } };
-  } finally {
-    rl.close();
-  }
-}
-
-/** A flag's value: `--name value` or `--name=value`, and where the value was, to leave it out of the folder. */
-function flagOf(args: string[], name: string): { value?: string; at: number[] } {
-  const index = args.findIndex((arg) => arg === `--${name}` || arg.startsWith(`--${name}=`));
-  if (index === -1) return { at: [] };
-  return args[index]!.includes("=") ? { value: args[index]!.slice(args[index]!.indexOf("=") + 1), at: [index] } : { value: args[index + 1], at: [index, index + 1] };
-}
-
-/** `turri init-config [--vendor <vendor>] [--maker <maker>] [--region <geography>] [--harness-model <spec> --coding-model <spec>] [--force] [folder]`. */
-export async function main(args: string[]): Promise<number> {
-  if (args.includes("-h") || args.includes("--help")) {
-    console.log(USAGE);
-    return 0;
-  }
-  const flags = {
-    vendor: flagOf(args, "vendor"),
-    maker: flagOf(args, "maker"),
-    region: flagOf(args, "region"),
-    harness: flagOf(args, "harness-model"),
-    coding: flagOf(args, "coding-model"),
-    judge: flagOf(args, "judge-model"),
-  };
-  const taken = new Set(Object.values(flags).flatMap((flag) => flag.at));
-  const rest = args.filter((arg, index) => !arg.startsWith("-") && !taken.has(index));
-  const folder = rest[0] ?? process.cwd();
-  if (!existsSync(folder)) {
-    console.error(`${folder} does not exist.`);
-    return 1;
-  }
-  let vendor: Vendor | undefined;
-  if (flags.vendor.value !== undefined) {
-    vendor = vendorOf(flags.vendor.value);
-    if (vendor === undefined) {
-      console.error(`Not a vendor: ${flags.vendor.value}. One of ${Object.keys(VENDORS).join(", ")}.\n\n${USAGE}`);
-      return 1;
-    }
-  }
-  // pi's catalogue, read once and only when it is needed: models named, or a maker or region beyond turri's own pair.
-  let read: ModelCatalogue | undefined;
-  const catalogue = async () => (read ??= await piModelCatalogue());
-  const [harness, coding, judge] = [flags.harness.value, flags.coding.value, flags.judge.value];
-  if ((harness === undefined) !== (coding === undefined) || (judge !== undefined && harness === undefined)) {
-    console.error(`Name both models - --harness-model and --coding-model - or neither.\n\n${USAGE}`);
-    return 1;
-  }
-  const named: ModelChoice | undefined = harness !== undefined && coding !== undefined ? { harness, coding, ...(judge !== undefined ? { strong: judge } : {}) } : undefined;
-  let maker: BedrockMaker | undefined;
-  if (flags.maker.value !== undefined) {
-    const typed = flags.maker.value.trim().toLowerCase();
-    maker = bedrockMakerOf(typed, ["anthropic", "openai"].includes(typed) ? undefined : await catalogue());
-    if (maker === undefined) {
-      console.error(`Not a maker pi's catalogue has on Amazon Bedrock: ${flags.maker.value}. One of ${bedrockMakers(await catalogue()).map((offer) => offer.maker).join(", ")}.\n\n${USAGE}`);
-      return 1;
-    }
-  }
-  const region = flags.region.value?.trim().toLowerCase();
-  if (region !== undefined && named === undefined) {
-    const of = maker ?? BEDROCK_DEFAULT.maker;
-    if (!hasPreset({ maker: of, region }) && bedrockRegionOf(of, region, await catalogue()) === undefined) {
-      const regions = bedrockMakers(await catalogue()).find((offer) => offer.maker === of)?.regions ?? [];
-      console.error(`Not a region ${makerLabel(of)}'s models run in on Bedrock: ${region}. One of ${regions.join(", ")}.`);
-      return 1;
-    }
-  }
-  const force = args.includes("--force");
-  const asking = process.stdin.isTTY && process.stdout.isTTY && named === undefined;
-  let chosen: Asked;
-  try {
-    chosen = await chooseVendor();
-  } catch (error) {
-    // Ctrl+C or Ctrl+D at a question: stopped, nothing written - not a crash.
-    if ((error as { code?: string }).code === "ABORT_ERR") {
-      console.log(`\n${brand.muted("Stopped - nothing written.")}`);
-      return 1;
-    }
-    throw error;
-  }
-  async function chooseVendor(): Promise<Asked> {
-    if (named !== undefined) {
-      return {
-        ...(vendor !== undefined ? { vendor } : {}),
-        ...(maker !== undefined || region !== undefined ? { bedrock: { ...(maker !== undefined ? { maker } : {}), region: region ?? bedrockPlaceOf(named.harness).geography } } : {}),
-        models: named,
-      };
-    }
-    return asking && (vendor === undefined || (vendor === "amazon-bedrock" && (maker === undefined || region === undefined)))
-      ? await askVendor({ ...(vendor !== undefined ? { vendor } : {}), ...(maker !== undefined ? { maker } : {}), ...(region !== undefined ? { region } : {}) }, catalogue)
-      : {
-          vendor: vendor ?? "other",
-          ...(vendor === "amazon-bedrock" ? { bedrock: { maker: maker ?? BEDROCK_DEFAULT.maker, region: region ?? BEDROCK_DEFAULT.region } } : {}),
-        };
-  }
-  const result = await initConfig(folder, {
-    force,
-    ...(chosen.vendor !== undefined ? { vendor: chosen.vendor } : {}),
-    ...(chosen.bedrock !== undefined ? { bedrock: chosen.bedrock } : {}),
-    ...(chosen.models !== undefined ? { models: chosen.models } : {}),
-    ...(read !== undefined ? { catalogue: read } : {}),
-  });
-  (result.written ? console.log : console.error)(result.message);
-  return result.written ? 0 : 1;
 }

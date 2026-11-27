@@ -2,11 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createTurriCore } from "../src/extension.ts";
-import { createSidePanel } from "../src/regenerate/side-panel.ts";
-import { notificationView } from "../src/terminal-notifications.ts";
 
 const cwd = process.cwd();
 let dir: string;
@@ -64,36 +61,21 @@ it("shows evidence beside pulses and only starts the chat on an accepted, still-
   core.concluded({ job: job.id, verdict: "wrong", summary: "No greeting on stdout" });
   const input = { module: "app", job: job.id, severity: "warning" as const, summary: "Missing greeting", evidence: ["stdout was empty"], actions: [{ label: "Fix greeting", task: "Restore the greeting" }] };
   const notice = core.notice(input)!;
-  const text = (value: string) => value;
-  const style = { bold: text, accent: text, muted: text, warning: (value: string) => `\x1b[38;2;255;122;61m${value}\x1b[39m`, button: (value: string) => `\x1b[7m${value}\x1b[27m` };
-  const panel = createSidePanel({ jobs: () => [], map: () => [], style: new Proxy({}, { get: () => text }) as never, rows: () => 30, key: "ctrl+h", back() {}, close() {}, notifications: notificationView(core, style, () => {}) });
-  const width = 70;
-  const click = (label: string) => {
-    const lines = panel.render(width).map(stripTerminalSequences);
-    const y = lines.findIndex((line) => line.includes(label));
-    expect(y).toBeGreaterThanOrEqual(0);
-    const x = lines[y]!.indexOf(label);
-    for (const type of ["press", "click"] as const) panel.handleMouse({ type, button: "left", x, y, width, height: 30, screenX: x, screenY: y, shift: false, alt: false, ctrl: false });
-  };
-  click("notifications 2");
-  expect(panel.render(width).join("\n")).toContain(style.button(" mark all as read "));
-  expect(panel.render(width).find((line) => line.includes("Missing greeting"))).toContain("\x1b[38;2;255;122;61m");
-  click("mark all as read");
+  // The panel's "notifications 2": the pulse and the sentinel's review of it, neither seen.
+  expect(core.notifications.count).toBe(2);
+  // What the panel's "mark all as read" does (turri's notificationView): every row seen - the notice still open counted.
+  for (const item of core.notifications.items) item.seen = true;
   expect(core.notifications.count).toBe(1);
-  click("Missing greeting");
-  expect(panel.render(width).join("\n")).toContain("stdout was empty");
-  expect(panel.render(width).join("\n")).toContain("No greeting on stdout");
-  expect(panel.render(width).join("\n")).toContain(style.button(" Back "));
-  click("Back");
+  // What the panel draws of "Missing greeting" - in the warning colour - and shows in its detail: the evidence, beside the conclusion.
+  expect(core.notifications.items.find((item) => item.notice === notice)).toMatchObject({ warning: true, detail: "stdout was empty", conclusion: expect.stringContaining("No greeting on stdout") });
+  // Seen - as opening its detail and going back marks it - it is still open: only an answer closes it.
   expect(notice.state).toBe("open");
-  click("Missing greeting");
   core.notice({ ...input, job: "later-pulse", summary: "Missing prefix" });
   expect(notice.state).toBe("superseded");
-  expect(panel.render(width).join("\n")).toContain("[superseded]");
-  click("Missing prefix");
   expect(sendMessage.mock.calls.every(([, options]) => options.triggerTurn === false)).toBe(true);
   expect(appendEntry).not.toHaveBeenCalled();
-  click("1. Fix greeting");
+  // What the panel's "1. Fix greeting" answers on the notice still open (turri's notificationView): its first action.
+  core.answer(core.notifications.items.find((item) => item.notice?.state === "open")!.notice!.id, { action: 0 });
   expect(sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({ customType: "turri_notice_answer", content: expect.stringContaining("Restore the greeting") }), expect.objectContaining({ triggerTurn: true }));
   expect(core.notices()).toHaveLength(0);
   expect(appendEntry).not.toHaveBeenCalled();

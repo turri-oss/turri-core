@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
  * them in its own order and hides an import cycle that leaves a constant uninitialised when another module is first.
  */
 const FIRST = [
-  "src/chat-terminal.ts",
   "src/extension.ts",
   "src/host.ts",
   "src/chats.ts",

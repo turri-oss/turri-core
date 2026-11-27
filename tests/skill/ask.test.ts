@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CHAT_OPTION, DONE_OPTION, OTHER_OPTION, TICKED, UNTICKED, isChat, missingOptions, peekKeyListener, runAsk, type AskUserIO } from "../../src/ask.ts";
+import { CHAT_OPTION, DONE_OPTION, OTHER_OPTION, TICKED, UNTICKED, isChat, missingOptions, runAsk, type AskUserIO } from "../../src/ask.ts";
 
 /** A scripted user: each select/input call returns the next queued reply. */
 function scriptedUser(replies: Array<string | undefined>): AskUserIO & { calls: string[][]; at: Array<number | undefined> } {
@@ -234,22 +234,5 @@ describe("tool-call markup a model leaks into a question", () => {
     const answer = await runAsk({ question: "Pick one", options: ["</parameter>", "<parameter name=\"options\">[\"a\"]"] }, io);
     expect(answer).toContain("This question was not asked: its question or options held tool-call markup");
     expect(shown).toEqual([]);
-  });
-});
-
-describe("peeking while a question waits", () => {
-  it("opens the panel on ctrl+h while a question has the keys - unless the panel shows, whose own ctrl+h closes it - and lets every other key through", () => {
-    let shown = false;
-    const opened: string[] = [];
-    const listen = peekKeyListener({ open: () => opened.push("panel"), shown: () => shown });
-    expect(listen("\x08")).toEqual({ consume: true });
-    expect(opened).toEqual(["panel"]);
-    // Any other key is the question's.
-    expect(listen("a")).toBeUndefined();
-    expect(listen("\r")).toBeUndefined();
-    // The panel shows: its listener has ctrl+h.
-    shown = true;
-    expect(listen("\x08")).toBeUndefined();
-    expect(opened).toEqual(["panel"]);
   });
 });

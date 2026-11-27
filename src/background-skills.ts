@@ -1,6 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { basename } from "node:path";
-import { Box, Text } from "@earendil-works/pi-tui";
 import { chatBusy } from "./chat-idle.ts";
 import type { ChatLink } from "./chats.ts";
 import type { ScriptKind } from "./regenerate/test-scripts.ts";
@@ -98,10 +97,10 @@ export function failedTask(skill: string, why: string, output: string | undefine
 }
 
 /** The line drawn for a background run, in the transcript and in no model's context. */
-const SKILL_RUN_ENTRY = "turri_skill_run";
+export const SKILL_RUN_ENTRY = "turri_skill_run";
 
 /** What a background run that did its work has for the chat's agent, unseen. */
-const SKILL_REPORT_ENTRY = "turri_skill_report";
+export const SKILL_REPORT_ENTRY = "turri_skill_report";
 
 /** How long an end waits before the chat is looked at again, while the person types or it cannot be told yet. */
 const RECHECK_MS = 2000;
@@ -110,14 +109,6 @@ const RECHECK_MS = 2000;
 export function skillRunDelivery(pi: ExtensionAPI, link: ChatLink, context: () => ExtensionContext | undefined): { put(end: SkillRunEnd): void } {
   const waiting: SkillRunEnd[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
-
-  pi.registerEntryRenderer(SKILL_RUN_ENTRY, (entry, _options, theme) => {
-    const data = entry.data as { text: string } | undefined;
-    if (data === undefined) return undefined;
-    const box = new Box(1, 0);
-    box.addChild(new Text(theme.fg("muted", data.text), 0, 0));
-    return box;
-  });
 
   const later = (ms: number) => {
     if (timer !== undefined) return;

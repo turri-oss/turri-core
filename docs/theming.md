@@ -1,6 +1,6 @@
 # Theming
 
-Two brand themes ship in `.pi/themes/`, built from the brand tokens. `turri` starts in `turri-dark`, the dark one; `--use-theme` picks another for that run:
+Two brand themes ship in turri's CLI's `.pi/themes/`, built from the brand tokens. `turri` starts in `turri-dark`, the dark one; `--use-theme` picks another for that run:
 
 ```bash
 turri                                       # turri-dark
@@ -8,7 +8,7 @@ turri --use-theme turri-light/turri-dark    # follows terminal appearance
 turri --use-theme dark                      # pi's own
 ```
 
-The second form follows your terminal's light/dark appearance. The default is for `turri` only: [pi](https://pi.dev)'s settings are left alone, so a plain `pi` keeps its theme. With the themes copied to `~/.pi/agent/themes/` (`cp .pi/themes/*.json ~/.pi/agent/themes/`), `{"theme": "turri-dark"}` in `~/.pi/agent/settings.json` gives a plain `pi` the same one.
+The second form follows your terminal's light/dark appearance. The default is for `turri` only: [pi](https://pi.dev)'s settings are left alone, so a plain `pi` keeps its theme. With the themes copied to `~/.pi/agent/themes/` (`cp .pi/themes/*.json ~/.pi/agent/themes/` in a clone of turri's CLI), `{"theme": "turri-dark"}` in `~/.pi/agent/settings.json` gives a plain `pi` the same one.
 
 If the same turri theme is installed in both places, the project's `.pi/themes/` copy takes precedence over the one in `~/.pi/agent/themes/`. turri does not warn about these expected copies. Theme files that fail to load and name clashes with other themes still appear in pi's startup diagnostics.
 
@@ -53,7 +53,7 @@ Half the palette is unusable on the other background. Contrast against abyss and
 | blue whale | 1.48 | 12.92 |
 | eggplant | 1.93 | 9.91 |
 
-So `turri-light` is drawn from the design system's deep colours: abyss for text, eggplant for the accent, headings, what is done and the wordmark, blue whale for links and regen's `◆`, path for what is muted. Its pale colours become backgrounds - siesta tan for a selection, neon for a search hit, white for your messages. Orange stays the error and the warning at 2.59:1 - the palette has nothing warm that reads on white. The wordmark and regen's `◆` are painted outside the theme's slots (`brandPink` and `brandNeon` in `src/regenerate/plain-palette.ts`). **Path is never text that matters in the dark theme** - at 2.63:1 it is for rules and what is meant to recede.
+So `turri-light` is drawn from the design system's deep colours: abyss for text, eggplant for the accent, headings, what is done and the wordmark, blue whale for links and regen's `◆`, path for what is muted. Its pale colours become backgrounds - siesta tan for a selection, neon for a search hit, white for your messages. Orange stays the error and the warning at 2.59:1 - the palette has nothing warm that reads on white. The wordmark and regen's `◆` are painted outside the theme's slots (`brandPink` and `brandNeon` in turri's CLI's `src/regenerate/plain-palette.ts`). **Path is never text that matters in the dark theme** - at 2.63:1 it is for rules and what is meant to recede.
 
 ## Backgrounds
 
@@ -70,7 +70,7 @@ With tool rows carrying no background, their state is signalled by the title and
 
 ## \*\*\*plain diffs
 
-A \*\*\*plain diff in the panels - and \*\*\*plain fenced as ` ```plain ` in the chat - is not painted with the theme's colours for code: those are made for code, and the turri themes' backgrounds are all the surface colour, so a diff drawn with them would have no fills and hardly any highlighting. It has a palette of its own (`src/regenerate/plain-palette.ts`), one for a dark theme and one for a light, picked by the theme's appearance: a hue for each piece of \*\*\*plain - a section's header, the `# <id>` heading of a functional spec or a scenario (neon, bold; eggplant, bold, on a light theme), a concept, a link, text in quotes or backticks, a front matter key, a module, a comment - at least 7:1 on the surface, and a fill behind each added and removed line: on a dark theme blue whale and eggplant, on a light one neon hover and siesta tan. Every colour reads at least 4.8:1 on blue whale and 5:1 on the light fills; eggplant, the design system's only warm dark fill, takes the pinks and grauzone down to 3.7:1.
+A \*\*\*plain diff in the panels - and \*\*\*plain fenced as ` ```plain ` in the chat - is not painted with the theme's colours for code: those are made for code, and the turri themes' backgrounds are all the surface colour, so a diff drawn with them would have no fills and hardly any highlighting. It has a palette of its own (turri's CLI: `src/regenerate/plain-palette.ts`), one for a dark theme and one for a light, picked by the theme's appearance: a hue for each piece of \*\*\*plain - a section's header, the `# <id>` heading of a functional spec or a scenario (neon, bold; eggplant, bold, on a light theme), a concept, a link, text in quotes or backticks, a front matter key, a module, a comment - at least 7:1 on the surface, and a fill behind each added and removed line: on a dark theme blue whale and eggplant, on a light one neon hover and siesta tan. Every colour reads at least 4.8:1 on blue whale and 5:1 on the light fills; eggplant, the design system's only warm dark fill, takes the pinks and grauzone down to 3.7:1.
 
 ## The font
 

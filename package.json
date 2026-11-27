@@ -1,5 +1,5 @@
 {
-  "name": "@turri-dev/cli",
+  "name": "@turri-dev/core",
   "version": "0.1.1",
   "license": "MIT",
   "type": "module",
@@ -9,32 +9,33 @@
   },
   "homepage": "https://github.com/turri-oss/turri#readme",
   "bugs": "https://github.com/turri-oss/turri/issues",
-  "description": "An agent that builds code from ***plain specifications, with harness-enforced review and conformance gates.",
+  "description": "turri's core: the harness that builds code from ***plain specifications, with harness-enforced review and conformance gates - its sessions, chats, work loop and agents, without the terminal UI or the command line.",
   "engines": {
     "node": ">=22.19"
   },
-  "bin": {
-    "turri": "bin/turri.mjs"
-  },
   "exports": {
+    ".": {
+      "turri-source": "./src/extension.ts",
+      "types": "./dist/extension.d.ts",
+      "import": "./dist/extension.js"
+    },
     "./host": {
+      "turri-source": "./src/host.ts",
       "types": "./dist/host.d.ts",
       "import": "./dist/host.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./*": {
+      "turri-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    }
   },
   "scripts": {
-    "cultivate": "tsx src/cultivate-cli.ts",
     "typecheck": "tsc --noEmit",
-    "chat": "pi -e ./src/extension.ts",
-    "ask": "pi -p --no-session -e ./src/extension.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "mutation": "node scripts/mutation.mjs",
-    "conform": "tsx src/conform-cli.ts",
-    "regenerate": "tsx src/regenerate-cli.ts",
-    "parse": "tsx src/parse-cli.ts",
-    "doctor": "node bin/turri.mjs doctor",
     "build": "node scripts/build.mjs",
     "prepack": "npm run build"
   },
@@ -65,10 +66,7 @@
     "access": "public"
   },
   "files": [
-    "assets",
-    "bin",
     "dist",
-    ".pi",
     "genome",
     "stdlib",
     "docs",
