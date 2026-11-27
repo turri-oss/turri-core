@@ -131,6 +131,32 @@ describe("the banner of each chat", () => {
   });
 });
 
+describe("what the model reads of a chat", () => {
+  it("reads each of turri's own messages inside a note, and the person's next message beside it as theirs", async () => {
+    const { session, pis } = withChats();
+    try {
+      await session.open({ hidden: true });
+      // A conclusion told with no turn of its own, then the person's next message: one turn as the model reads it.
+      const concluded = { role: "custom", customType: "turri_sentinel_concluded", content: "The sentinel is done with tidy pulse 1: it holds.", display: false, timestamp: 1 };
+      const person = { role: "user", content: [{ type: "text", text: ".json goes under documents, not code." }], timestamp: 2 };
+      const theirs = { role: "custom", customType: "another_extension", content: "Not turri's.", display: false, timestamp: 3 };
+      const parts = { role: "custom", customType: "turri_job_landed", content: [{ type: "text", text: "Pulse 1 landed." }], display: false, timestamp: 4 };
+      const [handler] = pis[0]!.handlers.get("context") ?? [];
+      const { messages } = (await handler!({ type: "context", messages: [concluded, person, theirs, parts] }, contextOf(false))) as { messages: unknown[] };
+      expect(messages).toEqual([
+        { ...concluded, content: "<turri-note>\nThe sentinel is done with tidy pulse 1: it holds.\n</turri-note>" },
+        person,
+        theirs,
+        { ...parts, content: [{ type: "text", text: "<turri-note>" }, { type: "text", text: "Pulse 1 landed." }, { type: "text", text: "</turri-note>" }] },
+      ]);
+      // As it was sent, in the transcript.
+      expect(concluded.content).toBe("The sentinel is done with tidy pulse 1: it holds.");
+    } finally {
+      await session.dispose();
+    }
+  });
+});
+
 describe("/pulses", () => {
   it("asks the front end to show the pulses, and lists them in the chat when it shows none", async () => {
     const revealed: Array<[unknown, unknown]> = [];

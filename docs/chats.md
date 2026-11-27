@@ -21,6 +21,8 @@ The session's, shared by every chat:
 
 Each finished pulse appears in the session's notifications. When the [sentinel](sentinel.md) is on, it checks the pulse in the background and puts its findings and conclusion there too. Your conversation stays on what you asked; accepting a notice's action starts work in the chat it names. Closing a chat stops its turn, never its pulses.
 
+What turri tells a chat's agent itself - a pulse that ended, the sentinel's conclusion, a launch, the notice you answered - is a hidden message the model reads inside a `<turri-note>`. pi gives the model every such message as the person's; one told with no turn of its own (a pulse end or conclusion a front end shows itself) goes with your next message, in the same turn, and without the note the model read your words as turri's. The transcript keeps the message as it was sent.
+
 ## In the terminal
 
 | | |

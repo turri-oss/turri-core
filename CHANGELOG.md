@@ -39,6 +39,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 
 ### Fixed
 
+- The person's message after a note turri told a chat with no turn of its own - a pulse end or the sentinel's conclusion, under `shows.pulseEnds` - was read by the model as part of that note: pi gives the model every custom message as the person's. Each of turri's own messages now reaches the model inside a `<turri-note>`, and the chat's prompt says what is outside one is the person's.
 - A pulse that stopped at its tests is said to have stopped there: `stoppedAt` reaches its job, and a job that failed for good keeps its last attempt's details.
 - A front end's question dialog declined while it opened is closed.
 - `doctor` asking the models, `runCapture` and `launchModule` set `AWS_REGION` for the project's Bedrock models, as a session does as it opens: with no session open, a model of a geography that needs a region of its own was called in pi's default.

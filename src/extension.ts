@@ -52,7 +52,7 @@ import { lookAhead } from "./preview.ts";
 import { defaultMapFiles } from "./regenerate/spec-map.ts";
 import {
   BANNER_ENTRY,
-  appendChatEntry, sendChatMessage,
+  appendChatEntry, framedForModel, sendChatMessage,
   COMMAND_OUTCOME,
   HISTORY_ENTRY,
   INTERVIEW_ENTRY,
@@ -652,6 +652,8 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
   pi.on("before_agent_start", (_event, ctx) => {
     lastContext = ctx;
   });
+  // turri's own messages framed as its notes, as the model reads them - never mistaken for the person's next message.
+  pi.on("context", (event) => ({ messages: framedForModel(event.messages) }));
 
   // The ***plain rules go into the system prompt in full, every turn. The block is
   // identical each time, so it sits inside the cached prefix rather than invalidating it.

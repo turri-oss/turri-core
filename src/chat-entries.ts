@@ -266,3 +266,23 @@ type Outgoing = WithoutType<{ [K in keyof ChatMessageMap]: ChatMessageOf<K> }[ke
 export function sendChatMessage(pi: ExtensionAPI, message: Outgoing, options?: Parameters<ExtensionAPI["sendMessage"]>[1]): void {
   pi.sendMessage<unknown>(message, options);
 }
+
+/**
+ * What the model reads of a chat: each message of turri's own inside a `<turri-note>`. pi hands a custom message to the
+ * model as one of the person's, and one sent with no turn of its own goes with the person's next message, in the same
+ * turn - framed, the model tells turri's note from what the person said. The transcript keeps each as it was sent, and
+ * a session saved before is framed the same. Another extension's messages, and everything else, are left as they are.
+ */
+export function framedForModel<M>(messages: readonly M[]): M[] {
+  return messages.map((message) => {
+    const sent = message as { role?: unknown; customType?: unknown; content?: unknown };
+    if (sent.role !== "custom" || typeof sent.customType !== "string" || !Object.hasOwn(MESSAGE_SCHEMAS, sent.customType)) return message;
+    const content =
+      typeof sent.content === "string"
+        ? `<turri-note>\n${sent.content}\n</turri-note>`
+        : Array.isArray(sent.content)
+          ? [{ type: "text", text: "<turri-note>" }, ...(sent.content as unknown[]), { type: "text", text: "</turri-note>" }]
+          : sent.content;
+    return { ...message, content };
+  });
+}
