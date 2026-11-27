@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { AGENT_ROLES, CONFIG_KEYS, projectModels, readProjectConfig, ROLE_THINKING } from "../src/config.ts";
+import { AGENT_ROLES, CONFIG_KEYS, configFileProblem, projectModels, readProjectConfig, ROLE_THINKING } from "../src/config.ts";
 import {
   BEDROCK_REGIONS,
   bedrockAwsRegion,
@@ -89,7 +89,7 @@ describe("turri init-config", () => {
     expect(Object.keys(config.models ?? {}).sort()).toEqual(["default", ...AGENT_ROLES].sort());
   });
 
-  it("sets only the two models in a config.turri.yaml already there - everything else left as it was - unless told to write it all again", async () => {
+  it("sets the project and capture models in an existing config without resetting its other settings", async () => {
     writeFileSync(join(dir, "config.turri.yaml"), "module: app.plain\nharness-model:\n  model: old/one\n  thinking: high\nmutation-testing: false\n");
     const result = await initConfig(dir, { vendor: "openai" });
     expect(result).toMatchObject({ written: true });
@@ -105,15 +105,25 @@ describe("turri init-config", () => {
     expect(readFileSync(join(dir, "config.turri.yaml"), "utf8")).toBe(QUICK_START_CONFIG);
   });
 
-  it("adds missing capture tiers in the selected Bedrock geography without clobbering a person's analysis model", async () => {
-    writeFileSync(join(dir, "config.turri.yaml"), "models:\n  capture-analysis: custom/analysis:high\n  capture: { turn-limit: 280 }\n");
+  it("switches existing capture models to the selected Bedrock geography and keeps turn limits and other roles", async () => {
+    writeFileSync(join(dir, "config.turri.yaml"), [
+      "models:", "  capture-analysis: custom/analysis:high", "  capture: { turn-limit: 280 }", "#   default: custom/default", "",
+      "  chat: custom/chat", "  coding: { model: custom/code, turn-limit: 180 }", "  reviewer: custom/reviewer:high", "",
+    ].join("\n"));
     const { message } = await initConfig(dir, { vendor: "amazon-bedrock", bedrock: { region: "eu", maker: "anthropic" } });
     expect(readProjectConfig(dir).models).toMatchObject({
       "capture-exploration": { model: "amazon-bedrock/eu.anthropic.claude-haiku-5-5", thinking: "low" },
-      "capture-analysis": { model: "custom/analysis", thinking: "high" },
+      "capture-analysis": { model: "amazon-bedrock/eu.anthropic.claude-sonnet-5-5", thinking: "low" },
       capture: { model: "amazon-bedrock/eu.anthropic.claude-opus-5-5", thinking: "medium", turnLimit: 280 },
+      chat: { model: "amazon-bedrock/eu.anthropic.claude-opus-5-5", thinking: "medium" },
+      coding: { model: "amazon-bedrock/eu.anthropic.claude-haiku-5-5", thinking: "low", turnLimit: 180 },
+      reviewer: { model: "custom/reviewer", thinking: "high" },
     });
-    expect(message).toContain("custom/analysis:high");
+    expect(message).toContain("amazon-bedrock/eu.anthropic.claude-sonnet-5-5:low");
+    // Read back as YAML, not read as empty: the roles below the comment and blank line are not written a second time.
+    const written = readFileSync(join(dir, "config.turri.yaml"), "utf8");
+    expect(configFileProblem(join(dir, "config.turri.yaml"))).toBeUndefined();
+    for (const role of ["capture-analysis", "chat", "coding", "reviewer"]) expect(written.match(new RegExp(`^ {2}${role}:`, "gm"))).toHaveLength(1);
   });
 
   it("takes from another tool's config.yaml the keys turri reads too - each in its place in the quick start - and leaves the rest, and config.yaml, as they were", async () => {

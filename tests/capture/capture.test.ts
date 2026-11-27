@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NOTES_APP, writeCodebase } from "./fixture.ts";
 import { newState, saveState } from "../../src/capture/state.ts";
 import { projectModels, readProjectConfig } from "../../src/config.ts";
+import { initConfig } from "../../src/init-config.ts";
 import { findTestScripts } from "../../src/regenerate/test-scripts.ts";
 
 /**
@@ -411,6 +412,33 @@ describe("a capture", () => {
     expect(asked).not.toContain("divide notes");
     expect(asked).not.toContain("check notes");
     expect(asked.filter((label) => label.startsWith("feature"))).toEqual(["feature notes/api#list-notes"]);
+  });
+
+  it("resumes on the models selected by init-config after capture started, without losing its work or output settings", async () => {
+    const plain = join(root, "plain");
+    // Started on US Bedrock Claude, and stopped after the survey: by the first agent after it.
+    crashes.add("check notes");
+    await expect(runCapture({ root, configFrom: root, model: "amazon-bedrock/us.anthropic.claude-opus-5-5" })).rejects.toThrow("stopped");
+    expect(agentModels.get("survey")).toEqual({ role: "capture", model: "amazon-bedrock/us.anthropic.claude-opus-5-5:medium" });
+    expect(agentModels.get("check notes")).toEqual({ role: "capture-analysis", model: "amazon-bedrock/us.anthropic.claude-sonnet-5-5:low" });
+    const outputConfig = join(plain, "config.turri.yaml");
+    writeFileSync(outputConfig, `${readFileSync(outputConfig, "utf8")}module: kept.plain\n`);
+
+    // The source project initialised since: direct OpenAI first, then OpenAI on global Bedrock over it.
+    await initConfig(root, { vendor: "openai" });
+    expect(readProjectConfig(root).models?.capture).toMatchObject({ model: "openai/gpt-6-astra" });
+    await initConfig(root, { vendor: "amazon-bedrock", bedrock: { maker: "openai", region: "global" } });
+    const astra = "amazon-bedrock/global.openai.gpt-6-astra";
+    const luna = "amazon-bedrock/global.openai.gpt-6-luna";
+    crashes.clear();
+    agentModels.clear();
+    await runCapture({ root, configFrom: root });
+    expect(agentModels.has("survey")).toBe(false);
+    expect(agentModels.get("reference notes")).toEqual({ role: "capture-exploration", model: `${luna}:low` });
+    expect(agentModels.get("check notes")).toEqual({ role: "capture-analysis", model: `${luna}:low` });
+    expect(agentModels.get("compact notes")).toEqual({ role: "capture", model: `${astra}:medium` });
+    expect(projectModels(readProjectConfig(plain))).toMatchObject({ harness: { model: astra }, coding: { model: luna } });
+    expect(readProjectConfig(plain)).toMatchObject({ module: "kept.plain", conformanceTests: true });
   });
 
   it("says where it is while it runs: its stage, each agent at work and what it did last, the features done and the cost", async () => {

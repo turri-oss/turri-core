@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { CONFIG_FILE, CONFIG_KEYS, configFileProblem, projectConfigFile, splitModelSpec } from "../config.ts";
+import { CONFIG_FILE, CONFIG_KEYS, configFileProblem, modelSpec, projectConfigFile, projectModels, readConfigFile, splitModelSpec } from "../config.ts";
 import { quickStartForCapture } from "../init-config.ts";
 import { currentValue, shownValue, withSetting } from "../config-edit.ts";
 import { isProjectDir } from "../regenerate/paths.ts";
+import { CAPTURE_ROLES } from "./models.ts";
 
 /**
  * The captured project's config. It starts as the config in use where the capture was started - the person's models,
@@ -35,17 +36,28 @@ export function configInUseProblem(file: string | undefined): string | undefined
 }
 
 /**
- * The text the captured project's config starts as: the config in use - config.turri.yaml, never another tool's
- * config.yaml - without what was the original project's own, conformance tests on, and the models given for the capture
- * where the config in use says otherwise.
+ * Start from the config in use. On resume, keep the capture's own settings (including any scripts already written)
+ * but take the project and capture models from the current source config, which may have been initialised since.
  */
-export async function startingConfig(source: string | undefined, given: { harnessModel?: string; codingModel?: string }): Promise<string> {
-  const carried = source !== undefined && basename(source) === CONFIG_FILE && existsSync(source) ? readFileSync(source, "utf8") : "";
-  let text = carried || await quickStartForCapture(splitModelSpec(given.harnessModel).model, splitModelSpec(given.codingModel).model);
-  for (const key of ORIGINAL_ONLY) text = withSetting(text, key, undefined);
-  text = withSetting(text, CONFIG_KEYS.conformanceTests, true);
-  // A model given - the chat's own, or one named on the command line - is written where the config in use says another:
-  // under models: when it names the role there, which wins over the key.
+export async function captureConfig(source: string | undefined, given: { harnessModel?: string; codingModel?: string }, saved?: string): Promise<string> {
+  const project = source !== undefined && basename(source) === CONFIG_FILE ? source : undefined;
+  let text: string;
+  if (saved === undefined) {
+    const carried = project !== undefined ? readFileSync(project, "utf8") : "";
+    text = carried || await quickStartForCapture(splitModelSpec(given.harnessModel).model, splitModelSpec(given.codingModel).model);
+    for (const key of ORIGINAL_ONLY) text = withSetting(text, key, undefined);
+    text = withSetting(text, CONFIG_KEYS.conformanceTests, true);
+    const header = [
+      "# Written by turri capture.",
+      ...(carried !== "" ? [`# It started as the config in use where the capture was started - ${source} - without what was that project's own:`, "# its module, testing scripts, base folder and test folder."] : []),
+      "# Every key is in turri's docs/config.md.",
+    ];
+    text = `${header.join("\n")}\n${text.replace(/^\s*\n/, "")}`;
+  } else text = saved;
+
+  const refreshed = saved !== undefined && project !== undefined ? readConfigFile(project) : undefined;
+  const pair = projectModels(refreshed ?? {});
+  // Write where the setting takes effect: under models: if that role overrides the top-level key.
   const set = (role: "chat" | "coding", key: string, value: string | undefined) => {
     if (value === undefined) return;
     const target = currentValue(text, `models.${role}`) !== undefined ? `models.${role}` : key;
@@ -55,12 +67,12 @@ export async function startingConfig(source: string | undefined, given: { harnes
     if (current === value || (spec.thinking === undefined && splitModelSpec(current).model === spec.model)) return;
     text = withSetting(text, target, value);
   };
-  set("chat", CONFIG_KEYS.harnessModel, given.harnessModel);
-  set("coding", CONFIG_KEYS.codingModel, given.codingModel);
-  const header = [
-    "# Written by turri capture.",
-    ...(carried !== "" ? [`# It started as the config in use where the capture was started - ${source} - without what was that project's own:`, "# its module, testing scripts, base folder and test folder."] : []),
-    "# Every key is in turri's docs/config.md.",
-  ];
-  return `${header.join("\n")}\n${text.replace(/^\s*\n/, "")}`;
+  set("chat", CONFIG_KEYS.harnessModel, given.harnessModel ?? modelSpec(pair.harness));
+  set("coding", CONFIG_KEYS.codingModel, given.codingModel ?? modelSpec(pair.coding));
+  for (const role of CAPTURE_ROLES) {
+    const value = modelSpec(refreshed?.models?.[role]);
+    const key = `models.${role}`;
+    if (value !== undefined && currentValue(text, key) !== value) text = withSetting(text, key, value);
+  }
+  return text;
 }

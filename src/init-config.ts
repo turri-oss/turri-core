@@ -6,7 +6,7 @@ import { adoptLegacyConfig, CONFIG_FILE, CONFIG_KEYS, LEGACY_CONFIG_FILE, ROLE_T
 import { currentValue, withSetting, withTopLevelValue } from "./config-edit.ts";
 import { closestModels, piModelCatalogue, type CatalogueModel, type ModelCatalogue } from "./model-check.ts";
 import { EXTENSION_PROVIDERS } from "./installed-providers.ts";
-import { captureDefaults } from "./capture/models.ts";
+import { CAPTURE_ROLES, captureDefaults } from "./capture/models.ts";
 
 /**
  * `turri init-config`: a project's first config.turri.yaml - the two models, a strong one to talk to and a smaller one to
@@ -21,7 +21,7 @@ import { captureDefaults } from "./capture/models.ts";
  * Amazon Bedrock serves many makers' models - Anthropic's, OpenAI's, xAI's, Meta's... - each in a geography, an inference
  * profile its id starts with (`global.`, `us.`, `eu.`, ...), or in the AWS region it is called in: it asks whose, where, and
  * which two, from pi's catalogue - turri's own pair offered where it has one. The two models can be given instead, any pair
- * pi's catalogue has, and are checked against it. A config.turri.yaml already there keeps everything but the two models; a
+ * pi's catalogue has, and are checked against it. An existing file gets the chosen pair and its three capture tiers; a
  * new one takes from a config.yaml beside it the keys turri reads too.
  */
 
@@ -682,7 +682,7 @@ export interface Paint {
 export const PLAIN_PAINT: Paint = { accent: (text) => text, success: (text) => text, muted: (text) => text, bold: (text) => text };
 
 export interface InitConfigOptions {
-  /** Write the whole file again, not only the two models of one already there. */
+  /** Write the whole file again, not only the project and capture models. */
   force?: boolean;
   /** Whose models: read from the models when they are given, other when nothing says. */
   vendor?: Vendor;
@@ -698,7 +698,7 @@ export interface InitConfigOptions {
 
 /**
  * Write the quick start config.turri.yaml in `dir`, with what a config.yaml beside it says that turri reads too. One already
- * there keeps everything but its two models, which are set to the vendor's - or the ones given - and `force` writes the
+ * there gets the new project and capture models, keeping turn limits and other settings; `force` writes the
  * whole of it again. Says what it did; a model pi's catalogue does not have writes nothing and says so.
  */
 export async function initConfig(dir: string, options: InitConfigOptions = {}): Promise<{ written: boolean; message: string }> {
@@ -718,9 +718,16 @@ export async function initConfig(dir: string, options: InitConfigOptions = {}): 
   let config = existing
     ? withModels(readFileSync(path, "utf8"), lines)
     : shared.carried.reduce((text, [key, value]) => withTopLevelValue(text, key, value), quickStartConfig(vendor, bedrock, models));
+  // Active chat/coding entries take precedence over the top-level pair. The pair just selected must take effect there too.
+  for (const [role, value] of [["chat", `${harness}:${HARNESS_THINKING}`], ["coding", `${coding}:${ROLE_THINKING.coding}`]] as const) {
+    const key = `models.${role}`;
+    const old = currentValue(config, key);
+    if (old !== undefined && old !== value) config = withSetting(config, key, value);
+  }
   for (const [role, choice] of Object.entries(captureDefaults(harness, coding))) {
     const key = `models.${role}`;
-    if (currentValue(config, key) === undefined) config = withSetting(config, key, `${choice.model}:${choice.thinking}`);
+    const value = `${choice.model}:${choice.thinking}`;
+    if (currentValue(config, key) !== value) config = withSetting(config, key, value);
   }
   writeFileSync(path, config);
   const here = resolve(process.cwd()) === folder;
@@ -729,12 +736,12 @@ export async function initConfig(dir: string, options: InitConfigOptions = {}): 
     written: true,
     message: [
       "",
-      `${paint.success("✓")} ${existing ? `Set the two models in ${paint.bold(path)}` : `Wrote ${paint.bold(path)}`}`,
-      `  ${paint.muted(`with ${whose(vendor, models, given)}${existing ? " - missing capture tiers filled in, everything else in it left as it was (--force writes it all again)" : ""}`)}`,
+      `${paint.success("✓")} ${existing ? `Set the project and capture models in ${paint.bold(path)}` : `Wrote ${paint.bold(path)}`}`,
+      `  ${paint.muted(`with ${whose(vendor, models, given)}${existing ? " - everything else in it left as it was (--force writes it all again)" : ""}`)}`,
       "",
       `  ${paint.muted("you talk to")}   ${talk}`,
       `  ${paint.muted("it codes")}      ${code}`,
-      ...(["capture-exploration", "capture-analysis", "capture"] as const).map(role => `  ${paint.muted(role)}   ${currentValue(config, `models.${role}`)}`),
+      ...CAPTURE_ROLES.map(role => `  ${paint.muted(role)}   ${currentValue(config, `models.${role}`)}`),
       ...(shared.carried.length > 0
         ? [
             "",

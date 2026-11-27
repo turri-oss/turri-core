@@ -2576,7 +2576,6 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
       if (refusal !== undefined) return refuse(refusal);
       const controller = new AbortController();
       running = { root, controller };
-      const model = conversationModel(ctx);
       shownAfterCommand(pi, ctx, command, captureStartedText(root, captureGoesOn(root)), "info", true);
       // Above the input while it runs, drawn by the view: where it is, each agent at work and what it did last - a capture
       // at work is told from one that hangs.
@@ -2596,12 +2595,11 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
         const spent = status && status.cost > 0 ? ` · $${status.cost.toFixed(2)}` : "";
         showCommandEntry(pi, ctx, { command, text: `capture · ${elapsed}${spent} · ${line}`, level: "info", echoed: true });
       };
-      // The captured project starts as the config in use here, with the chat's model and thinking of the moment, and the
-      // coding model turri was started with, where it says otherwise.
+      // The chat may be on pi's fallback model. Capture uses the project's configured models, as the CLI does; only a coding
+      // model turri was started with overrides the project's.
       const codingModel = process.env[CODING_MODEL_ENV];
       const configured = {
         configFrom: cwd,
-        ...(model !== undefined ? { model, harnessModel: `${model}:${pi.getThinkingLevel()}` } : {}),
         ...(codingModel !== undefined && codingModel !== "" ? { codingModel } : {}),
       };
       const capture = captureConsole(() => runCapture({ root, signal: controller.signal, progress, watch, ...configured }));
@@ -2615,18 +2613,10 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
         .then(async ({ result }) => {
           shown?.close();
           // A chat works on the project of its own folder, and the capture wrote one of its own: turri in a terminal
-          // can open again there, on the chat's model, the report told there.
+          // can open again there, on that project's models, the report told there.
           if (ctx.hasUI && canReopen()) {
             const question = captureOpenQuestion(cwd, result);
-            const chatModel = conversationModel(ctx);
-            const codingModel = process.env[CODING_MODEL_ENV];
-            const args = [
-              ...(chatModel !== undefined ? ["--model", chatModel] : []),
-              "--thinking",
-              pi.getThinkingLevel(),
-              ...(codingModel !== undefined && codingModel !== "" ? ["--coding-model", codingModel] : []),
-            ];
-            if ((await ctx.ui.confirm(question.title, question.message)) && reopenIn(result.plainDir, { args, env: { [REOPENED_AFTER_CAPTURE]: reopenedAfterCapture(result.summary) } })) {
+            if ((await ctx.ui.confirm(question.title, question.message)) && reopenIn(result.plainDir, { env: { [REOPENED_AFTER_CAPTURE]: reopenedAfterCapture(result.summary) } })) {
               ctx.shutdown();
               return;
             }

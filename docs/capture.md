@@ -37,7 +37,7 @@ capture shorty  ✓ survey ━ ✓ outline ━ ⠋ features ─ ○ concepts ─
 
 `turri capture` prints a line as each step ends.
 
-When it ends, turri asks whether to open the captured project. A chat works on the project of the folder it was opened in, and `plain/` is a project of its own. So on yes, the chat closes and `turri` starts it again in `plain/`, as it started the first - turri's theme, its screen, that folder's config - on the chat's model and thinking (`src/reopen.ts`). There, `ctrl+h` shows its \*\*\*plain, `/regenerate` builds it, and the chat tells you its report. On no, the chat tells you the report where you are, and `cd plain && turri` opens it later. A host - a desktop app - opens projects itself, so it is not asked.
+When it ends, turri asks whether to open the captured project. A chat works on the project of the folder it was opened in, and `plain/` is a project of its own. On yes, the chat closes and `turri` starts again in `plain/` with that project's configured model and thinking. There, `ctrl+h` shows its \*\*\*plain, `/regenerate` builds it, and the chat tells you its report. On no, the chat tells you the report where you are, and `cd plain && turri` opens it later. A host - a desktop app - opens projects itself, so it is not asked.
 
 ## What it aims for
 
@@ -166,7 +166,7 @@ my-app/
 - **The codebase is never written to.** Capture's agents only read it - read, grep, find, ls, and no shell - but for those that try the scenarios, which run the original in a copy of it, removed once they are done.
 - **Assets.** The assets are copied rather than linked, so the original can be deleted without breaking anything. `base-folder: assets` puts them in the first module's code before its first pulse, at the paths they had.
 - **The config.** Capture inherits `config.turri.yaml` from the project in which the chat or `turri capture` was started. That keeps the person's models, thinking, reviews and limits. With no config to inherit, capture writes the full `turri init-config` template. A named harness model selects its vendor's pair: for example, a global Bedrock Claude harness gets Haiku low for coding. `--coding-model` overrides that choice. A custom provider with no preset keeps its named model. The capture agents use their [own three tiers](#models).
-- **Capture-specific settings.** Capture turns on `conformance-tests` and wires up the captured project's own unit and conformance runners. The original project's script paths, `module`, `base-folder` and `test-dir` do not carry over. In the chat, the current chat model and thinking and any coding model given at startup take precedence; on the command line, `--harness-model` and `--coding-model` do. A config that does not parse stops capture before anything is written ([details](config.md#a-config-that-does-not-parse)).
+- **Capture-specific settings.** Capture turns on `conformance-tests` and wires up the captured project's own unit and conformance runners. The original project's script paths, `module`, `base-folder` and `test-dir` do not carry over. `/capture` uses the project's models, independently of the model the chat is on. A coding model given at chat startup, or `--harness-model` and `--coding-model` on `turri capture`, override the corresponding project model. A config that does not parse stops capture before anything is written ([details](config.md#a-config-that-does-not-parse)).
 
 ## The report
 
@@ -194,7 +194,7 @@ Its first lines are the summary the command line and the chat show. In the chat,
 
 ## Stopped, finished, run again
 
-- **Stopped part-way.** Every answer is saved in `state.json` as it comes. Running the capture again goes on from where it was and asks no agent twice. This covers a quit, a crash, or a provider down for good.
+- **Stopped part-way.** Every answer is saved in `state.json` as it comes. Run `turri init-config` in the project to change models after a provider failure, then run `/capture` or `turri capture` there again. The remaining agents use the project's current model settings. The checkpoint, generated files and testing-script paths stay in place.
 - **Finished.** A finished capture is never run over. To capture again, move `plain/` out of the way.
 - **A folder that is not a capture.** Capture refuses a `plain/` that holds anything but its own state, and `--into <folder>` names another folder.
 
@@ -206,7 +206,7 @@ Its first lines are the summary the command line and the chat show. In the chat,
 | `capture-analysis` | Check conventions, reference entries and the module's interface against the code, split and outline areas, divide features, and try draft scenarios against the original. | **Sonnet, low** |
 | `capture` | Reason about the stack and requirements, write the specs, organise modules, reconcile concepts, revise the text and write custom testing scripts. | **Opus, medium** |
 
-`init-config` writes all three entries as active configuration. For example, with Anthropic:
+`init-config` sets all three entries each time it runs. The table shows the Claude defaults; other model families use the selected coding model for exploration and analysis and the harness model for writing. For example, with Anthropic:
 
 ```yaml
 models:

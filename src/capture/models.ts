@@ -1,6 +1,7 @@
 import { modelOnly, type ModelChoice } from "../config.ts";
 
-export type CaptureRole = "capture-exploration" | "capture-analysis" | "capture";
+export const CAPTURE_ROLES = ["capture-exploration", "capture-analysis", "capture"] as const;
+export type CaptureRole = (typeof CAPTURE_ROLES)[number];
 
 /** One set of defaults for init-config and capture, including headless captures with no project config. */
 export function captureDefaults(harness?: string, coding?: string): Record<CaptureRole, ModelChoice> {

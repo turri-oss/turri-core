@@ -16,7 +16,7 @@ import { buildMap, INTERFACE_KINDS, type CodeMap } from "./map.ts";
 import { CaptureTracker, findingLine, type CaptureStatus } from "./progress.ts";
 import { capturePlan } from "./plan.ts";
 import { pythonInterface } from "./python-interface.ts";
-import { configInUse, configInUseProblem, startingConfig } from "./config.ts";
+import { captureConfig, configInUse, configInUseProblem } from "./config.ts";
 import { renderReport, summaryOf } from "./report.ts";
 import { writeTestingScript, type ScriptWriter } from "./scripts.ts";
 import { runnerChoices, reuseRunner } from "./runners.ts";
@@ -135,8 +135,8 @@ export async function runCapture(options: CaptureOptions): Promise<CaptureResult
   if (found.kind === "taken") throw new CaptureError(`Nothing captured: ${found.why}. Capture writes into a folder of its own - name another.`);
   const source = options.configFrom !== undefined ? configInUse(options.configFrom) : undefined;
   const configPath = join(plainDir, CONFIG_FILE);
-  const needsConfig = !existsSync(configPath);
-  const unusable = needsConfig ? configInUseProblem(source) : undefined;
+  const savedConfig = existsSync(configPath) ? readFileSync(configPath, "utf8") : undefined;
+  const unusable = configInUseProblem(source) ?? (savedConfig !== undefined ? configInUseProblem(configPath) : undefined);
   if (unusable !== undefined) throw new CaptureError(unusable);
   const tracker = new CaptureTracker(root, options.progress, options.watch);
   const map = buildMap(root, { exclude: [plainDir] });
@@ -148,12 +148,12 @@ export async function runCapture(options: CaptureOptions): Promise<CaptureResult
     saveState(plainDir, state);
     tracker.counted(state);
   };
-  const initialConfig = needsConfig ? await startingConfig(source, { harnessModel: options.harnessModel ?? options.model, codingModel: options.codingModel }) : undefined;
+  const config = await captureConfig(source, { harnessModel: options.harnessModel ?? options.model, codingModel: options.codingModel }, savedConfig);
   save();
   tracker.said(`${state.plan.kind} capture: ${state.plan.reason}`);
   // The config in use, from the start - after the state, so a capture stopped here goes on: its agents run on its models,
   // and the project it writes keeps them.
-  if (initialConfig !== undefined) writeFileSync(configPath, initialConfig);
+  if (config !== savedConfig) writeFileSync(configPath, config);
   const inUse = projectModels(readProjectConfig(plainDir));
   const model = options.model ?? options.harnessModel ?? modelSpec(inUse.harness);
   const codingModel = options.codingModel ?? modelSpec(inUse.coding);

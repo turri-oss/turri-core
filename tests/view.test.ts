@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -345,6 +345,31 @@ describe("a capture's progress", () => {
       for (const handler of pis[1]!.handlers.get("session_shutdown") ?? []) await handler({ reason: "quit" }, contextOf(false));
       await vi.waitFor(() => expect(events.at(-1)).toEqual({ type: "captureEnded", chat: second.id, root: project, state: "stopped" }));
     } finally {
+      await session.dispose();
+    }
+  });
+
+  it("runs on the project's models, not the chat's, and opens the captured project on its own config", async () => {
+    const reopenFile = join(project, "reopen.json");
+    process.env.TURRI_REOPEN_FILE = reopenFile;
+    const { session, pis } = withChats(undefined);
+    try {
+      await session.open();
+      const run = vi.mocked((await import("../src/capture/capture.ts")).runCapture);
+      run.mockClear();
+      let shutdown = 0;
+      // The chat on pi's fallback model: none of it reaches the capture, or turri opened again in what it wrote.
+      const ctx = { ...contextOf(true, { confirm: async () => true }), model: { provider: "anthropic", id: "claude-fallback" }, shutdown: () => void shutdown++ };
+      await pis[0]!.commands.get("capture")!.handler("", ctx);
+      await vi.waitFor(() => expect(shutdown).toBe(1));
+      expect(run).toHaveBeenCalledTimes(1);
+      const options = run.mock.calls[0]![0];
+      expect(options).toMatchObject({ root: project, configFrom: project });
+      expect(options).not.toHaveProperty("model");
+      expect(options).not.toHaveProperty("harnessModel");
+      expect(JSON.parse(readFileSync(reopenFile, "utf8"))).toMatchObject({ dir: join(project, "plain"), args: [] });
+    } finally {
+      delete process.env.TURRI_REOPEN_FILE;
       await session.dispose();
     }
   });

@@ -217,7 +217,14 @@ function blockOf(lines: string[], key: string): { at: number; end: number } | un
   const at = lines.findIndex((line) => line.startsWith(`${key}:`));
   if (at === -1) return undefined;
   let end = at + 1;
-  while (end < lines.length && /^\s+\S/.test(lines[end]!) && !/^\s*#/.test(lines[end]!)) end += 1;
+  // Commented examples and blank lines can separate active roles in models:. Stop at the next key,
+  // leaving trailing comments alone, or writing the mapping back would duplicate the roles below them.
+  for (let i = end; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^\s*(?:#|$)/.test(line)) continue;
+    if (!/^\s/.test(line)) break;
+    end = i + 1;
+  }
   return { at, end };
 }
 
