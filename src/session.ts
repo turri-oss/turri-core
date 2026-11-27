@@ -324,6 +324,8 @@ export interface SkillResult {
   artifacts: Record<string, string>;
   /** The last step's artifact. */
   output: string;
+  /** The run's folder: each step's artifact, and what an interrupted run resumes from. */
+  runDir: string;
 }
 
 export interface Turri {
@@ -1004,6 +1006,7 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
   const models = projectModels(readProjectConfig(cwd));
   const model = options.model ?? modelSpec(skill.model === "coding" ? models.coding : models.harness);
   const io = ask !== undefined ? frontendDialogs(ask, undefined) : undefined;
+  const runDir = skillRunDir(cwd, skill.name);
   // What the run says, to the caller as it says it: a caller's throw is a warning, never the run's end.
   const tell = (report: SkillReport) => {
     try {
@@ -1021,7 +1024,7 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
     const result = await runSkill({
       skillDir: skill.dir,
       cwd,
-      runDir: skillRunDir(cwd, skill.name),
+      runDir,
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       ...(options.context !== undefined ? { context: options.context } : {}),
       ...(model !== undefined ? { model } : {}),
@@ -1045,7 +1048,7 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
       ...(io !== undefined ? { askUser: (request) => runAsk(request, io) } : {}),
       escalate: async ({ question, critique }) => (ask !== undefined ? (await askYesNo(ask, undefined, `Review gate: ${skill.name} - ${question}`, critique)) === true : false),
     });
-    return { ok: result.ok, artifacts: result.artifacts, output: result.output };
+    return { ok: result.ok, artifacts: result.artifacts, output: result.output, runDir };
   } finally {
     progress(null);
   }

@@ -134,6 +134,9 @@ describe("a skill run outside any chat", () => {
       const result = await turri.skills.run({ dir: "own/drafting" });
       expect(result).toMatchObject({ ok: false, output: "the draft" });
       expect(runs[0]!.skillDir).toBe(join(dir, "own", "drafting"));
+      // Where its artifacts are, and what an interrupted run resumes from.
+      expect(result.runDir).toBe(runs[0]!.runDir);
+      expect(result.runDir.startsWith(join(dir, ".turri"))).toBe(true);
       // Not in the catalogue: a folder is not a name.
       await expect(turri.skills.run("drafting")).rejects.toSatisfy(code("not-found"));
     } finally {

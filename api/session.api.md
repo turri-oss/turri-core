@@ -1755,6 +1755,7 @@ export interface SkillResult {
     // (undocumented)
     ok: boolean;
     output: string;
+    runDir: string;
 }
 
 // @public (undocumented)
