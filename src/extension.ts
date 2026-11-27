@@ -15,7 +15,6 @@ import { sandboxAvailable, sandboxSummary } from "./regenerate/os-sandbox.ts";
 import { findTestScripts, scriptKindOfSkill } from "./regenerate/test-scripts.ts";
 import { writingScript } from "./regenerate/scripts-being-written.ts";
 import { applyBedrockRegion } from "./bedrock-region.ts";
-import { bannerWarnings } from "./turri-versions.ts";
 import { CONFORMANCE_OFF_REFUSAL, conformanceBlock, conformanceTestsOn, conformanceTestsOnIn, turnOnConformanceTests } from "./conformance-switch.ts";
 import { BACKGROUND_NOTE, doneLine, failedTask, ownChanges, runDetails, skillRunDelivery, startedText, type SkillRunEnd } from "./background-skills.ts";
 import { runCapture } from "./capture/capture.ts";
@@ -59,7 +58,6 @@ import {
   JOB_ENTRY,
   SIDE_ENTRY,
   SKILL_MESSAGE_ENTRY,
-  VERSION_ENTRY,
   SPEC_CONFLICT_MESSAGE,
   SENTINEL_PULSE_MESSAGE,
   SENTINEL_CHECK_MESSAGE,
@@ -83,7 +81,7 @@ import { describeSpecConflict } from "./regenerate/stop-report.ts";
 import { inheritProviders, inheritThinkingLevel } from "./pi.ts";
 import { LOADING_PROVIDERS } from "./installed-providers.ts";
 import { machineChange, machineChangeReason, runsBuiltCode, writesPlain } from "./regenerate/command-check.ts";
-import { beginCapture, captureConsole, describeCaptured, dropNoise } from "./quiet.ts";
+import { beginCapture, captureConsole, describeCaptured } from "./quiet.ts";
 import { loadRules, renderRulesBlock } from "./rules.ts";
 import { registerSettings, ruleNames } from "./settings.ts";
 import { writeSetting } from "./config-edit.ts";
@@ -97,7 +95,7 @@ import { createChats, scopedToChat, type ChatLink, type TurriCore, type TurriHos
 import { ignoredGuidance, keepGuidance, landedNote, pulseEndsBlock, SENTINEL, SENTINEL_TOOLS, sentinelBrief, sentinelCheckBrief, sentinelPrompt, sentinelSetting, sentinelStartNotice, specConflictNotice, type SentinelCheck } from "./sentinel.ts";
 import { noticeDialogs, registerSentinel } from "./sentinel-chat.ts";
 import { currentChat } from "./chat-scope.ts";
-import { turriIdentity } from "./environment.ts";
+import { clientIdentity, setClient, type ClientInfo } from "./client.ts";
 import { answerSideQuestion, askWithAsides, BTW_HOW, runningSkill, skillRunStarted, skillSessionText, transcriptOf } from "./btw.ts";
 import {
   createJobRegistry,
@@ -332,9 +330,11 @@ export function createTurriCore(
     view?: TurriView;
     /** A host can run the session without supplying any callbacks. */
     mode?: "chat" | "host";
+    /** Who runs turri: the front end's name and version, for the banner, the ledger and run reports. Default: the core. */
+    client?: ClientInfo;
   } = {},
 ): TurriCore {
-  dropNoise();
+  setClient(options.client);
   const cwd = process.cwd();
   const mode = options.mode ?? (Object.keys(host).length > 0 ? "host" : "chat");
   // The AWS region the project's Bedrock models need, before any model is called - a host has no shell to export it in.
@@ -412,12 +412,12 @@ export function createTurriCore(
   const spending = createSessionSpending();
   core = createChats({
     spending,
-    onDispose: () => { stopModelEvents(); closeLedger?.(); },
+    onDispose: () => { stopModelEvents(); closeLedger?.(); setClient(undefined); },
     cwd,
     launches,
     host,
     jobs,
-    extension: (pi, link) => turriExtension(pi, core!, link, busy, mode),
+    extension: (pi, link) => turriExtension(pi, core!, link, busy),
     // A finished pulse goes to the sentinel when the project wants one - read as each pulse finishes - the person asked
     // first under `sentinel: ask`, and what they choose for the project written.
     sentinel: () => sentinelSetting(cwd),
@@ -497,7 +497,7 @@ export function sessionLoop(session: TurriCore): WorkLoop {
  * turri's extension, built into one chat of the session: its tools, commands and handlers run in the chat's scope -
  * its id on the pulses it asks for - on the session's job registry and work loop.
  */
-function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, busy: () => boolean, mode: "chat" | "host") {
+function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, busy: () => boolean) {
   const pi = scopedToChat(api, link.scope);
   const { cwd, host, jobs } = session;
   // The session's sentinel: its own prompt and tools - the project to read, notices, its guidance - and nothing that
@@ -794,7 +794,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
 
   // What only a screen draws of the chat - its renderers, the banner's painting, the side panel's key - the view's.
   session.view?.chat?.(pi, { session, link, context: contextNow });
-  registerBranding(pi, discoveredSkills, mode);
+  registerBranding(pi, discoveredSkills);
   registerJobTools(pi, session);
   // The skills the person starts themselves - a project's, marked command-only: each has its command, and cultivate starts it only
   // once its command is typed, or picked among the options the conversation offers with ask_user.
@@ -2870,7 +2870,7 @@ export function chatRulesBlock(rules = loadRules(join(PACKAGE_ROOT, "genome", "r
  * /stdlib, and the banner at the top of every chat - what it says, appended once a chat (BannerData); the view draws it
  * (TurriView.chat), and a host reads it.
  */
-function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, mode: "chat" | "host") {
+function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue) {
   pi.registerCommand("stdlib", {
     description: "List the ***plain standard library: the stacks a spec can import instead of writing its implementation reqs.",
     handler: async (_args, ctx) => {
@@ -2884,25 +2884,15 @@ function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, mode: "chat"
     if (bannered) return;
     bannered = true;
     try {
-      const identity = turriIdentity();
-      // The installed CLI and the latest CLI on npm are unrelated to the version a desktop embeds.
-      const versions = mode === "chat" ? bannerWarnings() : undefined;
-      // A newer turri npm says is out only now - the banner read what it said last time: said under the banner once it does.
-      void versions?.later.then((line) => {
-        if (line === undefined) return;
-        try {
-          appendChatEntry(pi, VERSION_ENTRY, { text: line });
-        } catch {
-          /* the chat let go meanwhile: the next start's banner says it */
-        }
-      });
+      // Who runs turri - the session's front end, else the core - as it said it.
+      const identity = clientIdentity();
       appendChatEntry(pi, BANNER_ENTRY, {
+        name: identity.name,
         version: identity.version ?? "0.0.0",
-        commit: identity.git_commit?.slice(0, 7),
+        ...(identity.git_commit !== null ? { commit: identity.git_commit.slice(0, 7) } : {}),
         changed: identity.git_dirty === true,
         pending: skills.pending.length,
         sandbox: sandboxSummary(),
-        versions: versions?.lines ?? [],
         config: configLines(ctx.cwd),
       });
     } catch {

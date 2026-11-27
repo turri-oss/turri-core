@@ -60,6 +60,7 @@ type Tool = { name: string; execute: (...args: unknown[]) => Promise<{ content: 
 /** pi as a chat's extension is built into it: what is registered and appended kept, in order, and nothing else done. */
 function recordingPi() {
   const order: string[] = [];
+  const entries: Array<{ type: string; data: unknown }> = [];
   const commands = new Map<string, Command>();
   const tools = new Map<string, Tool>();
   const handlers = new Map<string, Handler[]>();
@@ -74,7 +75,7 @@ function recordingPi() {
           };
         if (key === "registerTool") return (tool: Tool) => void tools.set(tool.name, tool);
         if (key === "on") return (event: string, handler: Handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]);
-        if (key === "appendEntry") return (type: string) => void order.push(`entry ${type}`);
+        if (key === "appendEntry") return (type: string, data: unknown) => (order.push(`entry ${type}`), entries.push({ type, data }));
         return () => undefined;
       },
     },
@@ -83,7 +84,7 @@ function recordingPi() {
   const start = async (ctx: unknown) => {
     for (const handler of handlers.get("session_start") ?? []) await handler({}, ctx);
   };
-  return { pi, order, commands, tools, handlers, start };
+  return { pi, order, entries, commands, tools, handlers, start };
 }
 
 /** A session whose chats are opened by a driver of the test's: each built into a pi of its own, kept in `pis`. */
@@ -108,20 +109,19 @@ const contextOf = (hasUI: boolean, ui: Record<string, unknown> = {}) => ({ hasUI
 const settled = () => new Promise((resolve) => setTimeout(resolve, 60));
 
 describe("the view's part of each chat", () => {
-  it("keeps CLI upgrade and PATH checks out of an embedded host, including one with no callbacks", async () => {
-    const versions = vi.spyOn(await import("../src/turri-versions.ts"), "bannerWarnings");
-    try {
-      for (const mode of ["host", "chat"] as const) {
-        const session = createTurriCore({}, { mode });
-        const { pi, start, order } = recordingPi();
-        try {
-          await session.extension(pi);
-          await start(contextOf(false));
-          expect(order).toContain("entry turri_banner");
-          expect(versions).toHaveBeenCalledTimes(mode === "host" ? 0 : 1);
-        } finally { await session.dispose(); }
-      }
-    } finally { versions.mockRestore(); }
+  it("names in the banner who runs turri - the front end as it said it, else the core", async () => {
+    const { coreIdentity } = await import("../src/environment.ts");
+    for (const client of [undefined, { name: "turri", version: "9.9.9", commit: "abcdef1234", changed: true }]) {
+      const session = createTurriCore({}, client !== undefined ? { client } : {});
+      const { pi, start, entries } = recordingPi();
+      try {
+        await session.extension(pi);
+        await start(contextOf(false));
+        const banner = entries.find((entry) => entry.type === "turri_banner")?.data;
+        expect(banner).toMatchObject(client !== undefined ? { name: "turri", version: "9.9.9", commit: "abcdef1", changed: true } : { name: "@turri-dev/core", version: coreIdentity().version });
+        expect(banner).not.toHaveProperty("versions");
+      } finally { await session.dispose(); }
+    }
   });
   it("is built into each chat once, in the chat's scope, just before the banner - its session_start before the banner's", async () => {
     const built: ViewChat[] = [];

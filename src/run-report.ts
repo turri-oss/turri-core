@@ -1,7 +1,7 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { debugMode } from "./config.ts";
-import { turriIdentity } from "./environment.ts";
+import { clientIdentity } from "./client.ts";
 import { onModelEvent, type ModelEvent, type UsageReport } from "./regenerate/activity.ts";
 import { firstRegeneration, type Job } from "./regenerate/jobs.ts";
 import type { SpecGap } from "./regenerate/notes.ts";
@@ -162,7 +162,7 @@ export function writeAtomically(file: string, text: string): void {
 export function startRunReport(options: RunReportOptions): RunReporter {
   const file = resolve(options.file);
   const startedAt = Date.now();
-  const identity = turriIdentity();
+  const identity = clientIdentity();
   const events: ModelEvent[] = [];
   const stopListening = onModelEvent((event) => events.push(event));
   let sources: ReportSources = { jobs: () => [] };

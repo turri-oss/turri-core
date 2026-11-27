@@ -10,7 +10,7 @@ import { runHeadless as run, type HeadlessOptions, type HeadlessView } from "../
 
 export { moduleStates, type HeadlessView, type HeadlessEnd, type HeadlessResult } from "../headless.ts";
 export { describeDrift, describeModules } from "../regenerate/loop.ts";
-export { allChecks, asksModels, MARK, verdictOf } from "../setup.ts";
+export { doctor, asksModels, MARK, verdictOf } from "../setup.ts";
 export { runCapture, CaptureError, DEFAULT_PARALLEL, type CaptureOptions, type CaptureResult } from "../capture/capture.ts";
 export { runSkill, describeGates } from "../genome.ts";
 export { discoverSkills } from "../skills.ts";
@@ -19,12 +19,9 @@ export { runAsk } from "../ask.ts";
 export type { Decision, Reporter } from "../graph.ts";
 export { skillRunDir, defaultBuildDir } from "../regenerate/paths.ts";
 export { historyLog, historyShow } from "../regenerate/lineage.ts";
-export { PACKAGE_ROOT, setTurriRoot, turriRoot, versionLine, themeFiles, extensionInstalledGlobally, themesInstalledGlobally } from "../environment.ts";
-export { describeVersion } from "../turri-versions.ts";
+export { PACKAGE_ROOT } from "../environment.ts";
 export { applyBedrockRegion } from "../bedrock-region.ts";
 export { bedrockMakerOf, bedrockRegionOf, vendorOf, priced, type Asked, type Paint } from "../init-config.ts";
-export { globalExtensionFile } from "../environment.ts";
-export { dropNoise } from "../quiet.ts";
 export { followLaunchedLogs, runningLaunched, stopLaunched } from "../regenerate/launch.ts";
 
 export type HeadlessRun = HeadlessOptions & (

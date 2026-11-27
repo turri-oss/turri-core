@@ -29,7 +29,7 @@ export const SIDE_ENTRY = "turri_btw";
 export const SKILL_MESSAGE_ENTRY = "turri_skill_message";
 
 export const MILESTONE_ENTRY = "turri_milestone";
-/** A newer turri out, found once turri had started (turri-versions.ts). */
+/** A newer turri out: appended by an earlier turri, and still in the chats it saved. */
 export const VERSION_ENTRY = "turri_version";
 export const JOB_ENTRY = "turri_job";
 export const JOBS_LIST_ENTRY = "turri_jobs";
@@ -61,14 +61,16 @@ export interface Exchange {
 
 /** What the banner says, appended once a chat. */
 export interface BannerData {
+  /** Who runs turri: the session's front end as it named itself, else the core. Absent in an earlier turri's banner. */
+  name?: string;
   version: string;
-  /** The commit, when turri runs from a clone - and whether the clone has changes on it. */
+  /** The commit, when it runs from a clone - and whether the clone has changes on it. */
   commit?: string;
   changed?: boolean;
   /** How many skills failed to load. */
   pending: number;
   sandbox?: ReturnType<typeof sandboxSummary>;
-  /** A newer turri out, or installed and hidden behind this one on the PATH: a line each (turri-versions.ts). */
+  /** An earlier turri's: a newer turri out, or one hidden behind it on the PATH, a line each. */
   versions?: string[];
   /** What turri says of the config files: a key it renamed in one, an old name left, keys it does not read. */
   config?: ConfigLine[];

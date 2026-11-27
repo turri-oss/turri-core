@@ -91,6 +91,8 @@ It checks, in order, and says exactly what to run for anything missing:
 | `turri` on PATH | so it runs from any project - and every turri on the PATH, with its version: an older one in front of a newer one is a problem, the newer one hidden behind it | `npm install -g @turri-dev/cli`, or `npm link` in a clone - and, for an older one in front, the command that takes it off, by where it is (another Node version of nvm, a linked clone, an npm prefix) |
 | turri and `pi` apart | `turri` starts [pi](https://pi.dev) with turri; a plain `pi` stays [pi](https://pi.dev) | an older `turri setup` wrote a file that loads turri into every `pi` - `doctor` offers to remove it |
 
+The last three are the command line's own; the rest are the core's, and every front end that checks the machine runs them.
+
 In a project - a folder with `config.turri.yaml` (or the old `config.yaml`) or `plain_modules` - it checks what the project needs of this machine too:
 
 | what | |

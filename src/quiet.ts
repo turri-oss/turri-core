@@ -26,20 +26,6 @@ function isNoise(args: unknown[]): boolean {
   return args.length === 1 && typeof args[0] === "string" && NOISE.some((pattern) => pattern.test(args[0] as string));
 }
 
-let noiseDropped = false;
-
-/** Drop the NOISE warnings for good, from here on - captured or not. Safe to call more than once. */
-export function dropNoise(): void {
-  if (noiseDropped) return;
-  noiseDropped = true;
-  for (const method of ["warn", "error", "log", "info", "debug"] as const) {
-    const print = console[method];
-    console[method] = (...args: unknown[]) => {
-      if (!isNoise(args)) print.apply(console, args);
-    };
-  }
-}
-
 /** Buffers currently collecting. Nested and concurrent captures all see the same writes. */
 const active = new Set<string[]>();
 const original = new Map<ConsoleMethod, (...args: unknown[]) => void>();

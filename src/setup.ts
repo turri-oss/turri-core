@@ -4,12 +4,10 @@ import { existsSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { EXTENSION_PROVIDERS, installedProviders, runtimeWithProviders } from "./installed-providers.ts";
-import { globalExtensionFile, turriIdentity, turriRoot } from "./environment.ts";
 import { checkNode, type Check, type Level } from "./node-check.ts";
-import { fetchLatest, newerThan, turrisOnPath, versionFindings } from "./turri-versions.ts";
 import { sandboxAvailable, sandboxWithAsync, type Wall } from "./regenerate/os-sandbox.ts";
 import { findTestScripts, onThisMachine } from "./regenerate/test-scripts.ts";
-import { CONFIG_FILE, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems } from "./config.ts";
+import { CONFIG_FILE, configOverrides, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems } from "./config.ts";
 import { checkModels, modelsInUse, piModelAccess, type ModelAccess } from "./model-check.ts";
 import { bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
 import { baseFilesAsync } from "./regenerate/base-folder.ts";
@@ -128,67 +126,6 @@ async function checkProvider(project: string = process.cwd()): Promise<Check> {
 }
 
 /**
- * turri itself: whether it is the newest npm has - asked now - and every turri on the PATH, which runs, and what hides a
- * newer one behind an older (turri-versions.ts). What to do, said under each.
- */
-async function checkTurri(): Promise<Check[]> {
-  const own = turriIdentity();
-  const onPath = turrisOnPath();
-  const latest = own.git_commit === null ? await fetchLatest() : undefined;
-  const findings = versionFindings({ ...(latest !== undefined ? { latest } : {}), onPath });
-  const version = own.version ?? "?";
-  const outdated = findings.find((finding) => finding.kind === "outdated");
-  const versionCheck: Check =
-    own.git_commit !== null
-      ? { level: "info", name: "turri version", detail: `${version}, from a clone - not compared with npm` }
-      : outdated !== undefined
-        ? { level: "limited", name: "turri version", detail: outdated.text, fix: outdated.fixes.join("; ") }
-        : latest === undefined
-          ? { level: "info", name: "turri version", detail: `${version} - npm did not answer, so it is not compared` }
-          : own.version !== null && newerThan(latest, own.version)
-            ? // Older than npm's, with a newer turri installed already: the PATH check says which, and what hides it.
-              { level: "limited", name: "turri version", detail: `${version} - npm has ${latest}, and a newer turri is installed already: see turri on PATH` }
-            : { level: "ok", name: "turri version", detail: `${version} - the newest on npm` };
-  if (onPath.length === 0) {
-    return [
-      versionCheck,
-      {
-        level: "limited",
-        name: "turri on PATH",
-        detail: "not found",
-        // A clone has its sources; the package from npm has only what was compiled from them.
-        fix: existsSync(join(turriRoot(), "src")) ? `cd ${turriRoot()} && npm link` : "npm install -g @turri-dev/cli",
-      },
-    ];
-  }
-  const copies = onPath.map((turri) => `${turri.path}  turri ${turri.version ?? "?"}  (${[turri.runs ? "runs" : "hidden", ...(turri.self ? ["this one"] : []), ...(turri.clone ? ["a clone"] : [])].join(", ")})`);
-  const hidden = findings.filter((finding) => finding.kind !== "outdated");
-  const pathCheck: Check =
-    hidden.length > 0
-      ? // Every turri, then what to do, in order: a step a line.
-        { level: "missing", name: "turri on PATH", detail: hidden[0]!.text, more: [...copies, ...hidden.flatMap((finding) => finding.fixes).map((fix) => `→ ${fix}`)] }
-      : { level: "ok", name: "turri on PATH", detail: onPath.length === 1 ? onPath[0]!.path : `${onPath.length} turris - the first, which runs, is the newest`, ...(onPath.length > 1 ? { more: copies } : {}) };
-  return [versionCheck, pathCheck];
-}
-
-/**
- * turri loaded into every `pi` - a file an older `turri setup` wrote into pi's extensions. turri and pi are kept apart
- * now: `turri` starts pi with turri, and a plain `pi` stays pi. Said only when the file is there, for doctor to remove.
- */
-function checkGlobal(): Check[] {
-  const file = globalExtensionFile();
-  if (file === undefined) return [];
-  return [
-    {
-      level: "limited",
-      name: "turri in every pi",
-      detail: `${file} loads turri into every plain pi too`,
-      fix: "turri doctor offers to remove it, below - turri keeps starting with turri",
-    },
-  ];
-}
-
-/**
  * In a project: each model its config.turri.yaml names - or the module config pinned, its file's over it - tried with one short
  * request. A model that answers is ready; one that does not says what the provider said, and what to do about it.
  */
@@ -221,15 +158,11 @@ export interface DoctorOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-/** The CLI's own: what matters only in a terminal, and models named on the command line - asked of, a project or not. */
-export interface CliOptions {
-  cli?: boolean;
-  modelsGiven?: boolean;
-}
-
-/** Whether doctor asks the models: asked to, and a config that names them - or models named on the command line. */
-export function asksModels(options: DoctorOptions & CliOptions): options is DoctorOptions & CliOptions & { dir: string } {
-  return options.models === true && options.dir !== undefined && (hasProjectConfig(options.dir) || options.modelsGiven === true);
+/** Whether doctor asks the models: asked to, and a config that names them - or a session's own models in the project. */
+export function asksModels(options: DoctorOptions): options is DoctorOptions & { dir: string } {
+  if (options.models !== true || options.dir === undefined) return false;
+  const given = configOverrides(options.dir);
+  return hasProjectConfig(options.dir) || given.harnessModel !== undefined || given.codingModel !== undefined || given.judgeModel !== undefined;
 }
 
 /** Whether `command` runs with `env` - its PATH looked in, as the agents' shells and the testing scripts would. Never holds a host's thread up. */
@@ -242,15 +175,10 @@ async function runs(command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
  * nothing, so a host can show them in its own way; `turri doctor` prints the same.
  */
 export async function doctor(options: DoctorOptions = {}): Promise<Check[]> {
-  return allChecks({ ...options, cli: false, modelsGiven: false });
-}
-
-export async function allChecks(options: DoctorOptions & CliOptions): Promise<Check[]> {
   const env = options.env ?? process.env;
   // Each check that runs a command runs it without holding the thread up - a host asks on its own - side by side.
   const [bash, git, wall, provider] = await Promise.all([runs("bash", env), runs("git", env), sandboxWithAsync(env), checkProvider(options.dir)]);
   const checks: Check[] = [checkNode(), checkShell(bash), checkGit(git), checkSandbox(wall), provider];
-  if (options.cli === true) checks.push(...(await checkTurri()), ...checkGlobal());
   // In a project: what it needs of this machine, and whether its models answer.
   const project = options.dir;
   if (project === undefined) return checks;

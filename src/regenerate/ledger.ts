@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { currentChat } from "../chat-scope.ts";
 import { readProjectConfig } from "../config.ts";
-import { turriIdentity } from "../environment.ts";
+import { clientIdentity } from "../client.ts";
 import type { DiffWhere } from "./diff-where.ts";
 import type { PulseCases } from "./jobs.ts";
 import { currentPlace, onModelEvent, type ModelEvent, type UsageReport } from "./activity.ts";
@@ -52,7 +52,7 @@ export interface AgentRef {
 /** Every event's own fields, by kind. */
 export type LedgerEvent =
   // A run: one turri process writing to the project.
-  | { kind: "run.started"; mode: string; version: string | null; commit: string | null; dirty: boolean | null; pid: number; platform: string; node: string }
+  | { kind: "run.started"; mode: string; client?: string; version: string | null; commit: string | null; dirty: boolean | null; pid: number; platform: string; node: string }
   | { kind: "run.ended"; ms: number }
   // A chat of the run's, opened - fresh, or a saved one reopened - and closed: its id is the entry's chat.
   | { kind: "chat.opened"; reopened: boolean; role?: string }
@@ -356,11 +356,13 @@ function write(run: Run, project: string, event: LedgerEvent, where: Omit<Ledger
 function openWriter(run: Run, project: string): Writer {
   const keep = keepOf(project);
   const dir = ledgerDir(project);
-  const identity = turriIdentity();
+  const identity = clientIdentity();
   seq += 1;
   const started: LedgerEvent = {
     kind: "run.started",
     mode: run.mode,
+    // Whose version this is: the session's front end, else the core.
+    client: identity.name,
     version: identity.version,
     commit: identity.git_commit,
     dirty: identity.git_dirty,

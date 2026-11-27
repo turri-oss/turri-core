@@ -73,20 +73,12 @@ describe("captureConsole", () => {
 });
 
 describe("warnings nobody can act on", () => {
-  it("are dropped for good, captured or not, and nothing else is", async () => {
-    const { dropNoise, captureConsole } = await import("../src/quiet.ts");
-    const printed: unknown[][] = [];
-    const warn = console.warn;
-    console.warn = (...args: unknown[]) => void printed.push(args);
-    try {
-      dropNoise();
+  it("are left out of what a capture keeps, and nothing else is", async () => {
+    const { captureConsole } = await import("../src/quiet.ts");
+    const { output } = await captureConsole(async () => {
       console.warn("Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY.");
       console.warn("something that matters");
-      const { output } = await captureConsole(async () => console.warn("Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY."));
-      expect(output).toEqual([]);
-      expect(printed).toEqual([["something that matters"]]);
-    } finally {
-      console.warn = warn;
-    }
+    });
+    expect(output).toEqual(["something that matters"]);
   });
 });
