@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, isTurriError, rungOf, type ChatEntry, type StartOverQuestion, type TurriEvent, type WorkRunOptions } from "@turri-dev/core";
+import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, isTurriError, rungOf, type ChatEntry, type StartOverQuestion, type Turri, type TurriEvent, type WorkRunOptions } from "@turri-dev/core";
 import { checkPlainFile, highlightLines, isStack, plainGraph, stdlibTemplates } from "@turri-dev/core/plain";
 import { checkModule, configForSpec, configLines, configSettings, configuredModel, credentialsFile, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
 import { bedrockModels, hasBedrockPreset, loginDeviceId } from "@turri-dev/core/models";
@@ -111,6 +111,10 @@ try {
 } finally {
   await command.dispose();
 }
+
+// A skill by name, or the one in a folder.
+const skillAsked: Array<Parameters<Turri["skills"]["run"]>[0]> = ["init-config", { dir: "skills/mine" }];
+assert.equal(skillAsked.length, 2);
 
 // A run's start over, answered by whoever runs it - a command at its terminal.
 const startOver: WorkRunOptions["startOver"] = async (question: StartOverQuestion) => (question.codebases.length > 0 ? false : undefined);

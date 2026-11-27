@@ -1823,7 +1823,9 @@ export interface Turri {
             name: string;
             description: string;
         }>;
-        run(name: string, options?: SkillRunOptions): Promise<SkillResult>;
+        run(skill: string | {
+            dir: string;
+        }, options?: SkillRunOptions): Promise<SkillResult>;
     };
     spending(): SessionSpending;
     // (undocumented)

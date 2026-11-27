@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, type AgentSession, type ExtensionAPI, type ExtensionFactory, type ExtensionUIContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { runAsk, type AskUserIO, type DialogAsked } from "./ask.ts";
 import { inChat } from "./chat-scope.ts";
@@ -34,6 +35,7 @@ import type { SessionEvent, SkillProgress } from "./session-events.ts";
 import type { SessionSpending } from "./session-spending.ts";
 import { changeSetting, givenValue, reachable, ruleNames, settingCandidates } from "./settings.ts";
 import { discoverSkills } from "./skills.ts";
+import { loadSkill, type Skill } from "./skill.ts";
 import { runWork, type WorkRequest, type WorkResult, type WorkRunOptions } from "./work.ts";
 
 /**
@@ -373,7 +375,12 @@ export interface Turri {
 
   readonly skills: {
     list(): Array<{ name: string; description: string }>;
-    run(name: string, options?: SkillRunOptions): Promise<SkillResult>;
+    /**
+     * Run a skill outside any chat: one by name - turri's own or the project's, as `list` has them - or the skill in a
+     * folder with a SKILL.md (`{ dir }`, from the project's folder). One there is none of is `not-found`; a SKILL.md that
+     * does not parse, `refused` with why.
+     */
+    run(skill: string | { dir: string }, options?: SkillRunOptions): Promise<SkillResult>;
   };
 
   /** Dollars spent since the session opened. */
@@ -777,7 +784,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     },
     skills: {
       list: () => discoverSkills(PACKAGE_ROOT, cwd).skills.map((skill) => ({ name: skill.name, description: skill.description })),
-      run: (name, asked = {}) => runNamedSkill(core, name, asked, ask, (progress) => emit({ type: "skillProgress", progress })),
+      run: (which, asked = {}) => runSkillOutsideChats(core, which, asked, ask, (progress) => emit({ type: "skillProgress", progress })),
     },
     spending: () => core.spending(),
     async dispose() {
@@ -888,11 +895,26 @@ function eventStream(subscribe: (listener: (event: TurriEvent) => void) => () =>
   };
 }
 
+/** The skill `skills.run` is asked for: one of the catalogue's by name, or the one in a folder. */
+function skillAsked(cwd: string, which: string | { dir: string }): Skill {
+  if (typeof which === "string") {
+    const skill = discoverSkills(PACKAGE_ROOT, cwd).skills.find((each) => each.name === which);
+    if (skill === undefined) throw new TurriError("not-found", `There is no skill ${which}.`);
+    return skill;
+  }
+  const dir = resolve(cwd, which.dir);
+  if (!existsSync(join(dir, "SKILL.md"))) throw new TurriError("not-found", `There is no SKILL.md in ${dir}.`);
+  try {
+    return loadSkill(dir);
+  } catch (error) {
+    throw new TurriError("refused", error instanceof Error ? error.message : String(error), { cause: error });
+  }
+}
+
 /** A skill run outside any chat: its questions and escalations put through the front end, its progress as events. */
-async function runNamedSkill(core: TurriCore, name: string, options: SkillRunOptions, ask: Frontend["ask"], progress: (progress: SkillProgress | null) => void): Promise<SkillResult> {
+async function runSkillOutsideChats(core: TurriCore, which: string | { dir: string }, options: SkillRunOptions, ask: Frontend["ask"], progress: (progress: SkillProgress | null) => void): Promise<SkillResult> {
   const { cwd } = core;
-  const skill = discoverSkills(PACKAGE_ROOT, cwd).skills.find((each) => each.name === name);
-  if (skill === undefined) throw new TurriError("not-found", `There is no skill ${name}.`);
+  const skill = skillAsked(cwd, which);
   const phases = skill.steps.map((step) => step.name);
   const models = projectModels(readProjectConfig(cwd));
   const model = options.model ?? modelSpec(skill.model === "coding" ? models.coding : models.harness);
