@@ -59,6 +59,10 @@ describe("the packages an entry loads", () => {
     expect(packages).toContain("js-yaml");
     expect(packages).not.toContain("@earendil-works/pi-coding-agent");
   });
+
+  it("tells the core's version and the Node check with no pi - doctor loads it as it runs", () => {
+    expect(loads("src/api/system.ts")).not.toContain("@earendil-works/pi-coding-agent");
+  });
 });
 
 /**
