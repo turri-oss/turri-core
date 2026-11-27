@@ -18,9 +18,8 @@ import { applyBedrockRegion } from "./bedrock-region.ts";
 import { CONFORMANCE_OFF_REFUSAL, conformanceBlock, conformanceTestsOn, conformanceTestsOnIn, turnOnConformanceTests } from "./conformance-switch.ts";
 import { BACKGROUND_NOTE, doneLine, failedTask, ownChanges, runDetails, skillRunDelivery, startedText, type SkillRunEnd } from "./background-skills.ts";
 import { runCapture } from "./capture/capture.ts";
-import { captureEnded, captureFailed, captureGoesOn, captureOpenQuestion, captureRefusal, captureStartedText, readReopenedAfterCapture, reopenedAfterCapture } from "./capture/chat.ts";
+import { captureEnded, captureFailed, captureGoesOn, captureRefusal, captureStartedText } from "./capture/chat.ts";
 import { reportFile as captureReportFile } from "./capture/state.ts";
-import { canReopen, REOPENED_AFTER_CAPTURE, reopenIn } from "./reopen.ts";
 import { duration, type CaptureStatus } from "./capture/progress.ts";
 import { createAskUserTool } from "./tools.ts";
 import { planWork } from "./work.ts";
@@ -332,6 +331,13 @@ export function createTurriCore(
     mode?: "chat" | "host";
     /** Who runs turri: the front end's name and version, for the banner, the ledger and run reports. Default: the core. */
     client?: ClientInfo;
+    /**
+     * A capture wrote a project of its own: open it, as the front end opens projects - the person asked, if it asks -
+     * and tell its report there. True when it does; false leaves the report to the chat that started the capture.
+     */
+    openProject?: (dir: string, context: { summary: string; reportFile: string }) => Promise<boolean>;
+    /** This session is opened in the project a capture wrote: its report, told in the first chat. */
+    captured?: { summary: string };
   } = {},
 ): TurriCore {
   setClient(options.client);
@@ -408,6 +414,7 @@ export function createTurriCore(
     },
   });
   sessionLaunches.set(jobs, launches);
+  projectHooks.set(jobs, { ...(options.openProject !== undefined ? { openProject: options.openProject } : {}), ...(options.captured !== undefined ? { captured: options.captured } : {}) });
   let closeLedger: (() => void) | undefined;
   const spending = createSessionSpending();
   core = createChats({
@@ -2055,6 +2062,9 @@ const workLoops = new WeakMap<JobRegistry, { loop: WorkLoop; from: { ctx: Extens
 /** A session's launches, by its jobs: the launch track every chat's launch tool and every pulse's launch share. */
 const sessionLaunches = new WeakMap<JobRegistry, SessionLaunches>();
 
+/** What a session's front end does with a captured project, and the capture this session was opened after, by its jobs. */
+const projectHooks = new WeakMap<JobRegistry, { openProject?: (dir: string, context: { summary: string; reportFile: string }) => Promise<boolean>; captured?: { summary: string } }>();
+
 /**
  * The session's work loop, made once. With a chat's context - the last chat that asked for work - pulses build on the
  * coding model as that chat resolves it, and the planner runs on the chat's model; before any chat has asked, or with
@@ -2571,11 +2581,13 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
   pi.on("session_shutdown", (event) => {
     if (event.reason === "quit") running?.controller.abort();
   });
-  // turri opened again here, in the project a capture wrote: its report told in the first chat, once.
+  // A session opened in the project a capture wrote: its report told in the first chat, once.
   pi.on("session_start", () => {
-    const told = readReopenedAfterCapture(process.env[REOPENED_AFTER_CAPTURE]);
-    delete process.env[REOPENED_AFTER_CAPTURE];
-    if (told !== undefined) ends.put(captureEnded(cwd, { plainDir: cwd, reportFile: captureReportFile(cwd), summary: told.summary }));
+    const opened = projectHooks.get(session.jobs);
+    const told = opened?.captured;
+    if (told === undefined) return;
+    opened!.captured = undefined;
+    ends.put(captureEnded(cwd, { plainDir: cwd, reportFile: captureReportFile(cwd), summary: told.summary }));
   });
   pi.registerCommand("capture", {
     description: "Capture an existing codebase into ***plain, in the background - nothing is asked, and its report comes back here; a stopped one goes on: /capture [path] (this folder by default - the ***plain goes into <path>/plain)",
@@ -2625,15 +2637,10 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
       void capture
         .then(async ({ result }) => {
           shown?.close();
-          // A chat works on the project of its own folder, and the capture wrote one of its own: turri in a terminal
-          // can open again there, on that project's models, the report told there.
-          if (ctx.hasUI && canReopen()) {
-            const question = captureOpenQuestion(cwd, result);
-            if ((await ctx.ui.confirm(question.title, question.message)) && reopenIn(result.plainDir, { env: { [REOPENED_AFTER_CAPTURE]: reopenedAfterCapture(result.summary) } })) {
-              ctx.shutdown();
-              return;
-            }
-          }
+          // A chat works on the project of its own folder, and the capture wrote one of its own: a front end that can
+          // open it - on that project's config - does, and its report is told there; else it is told here.
+          const open = projectHooks.get(session.jobs)?.openProject;
+          if (open !== undefined && (await open(result.plainDir, { summary: result.summary, reportFile: result.reportFile }))) return;
           ends.put(captureEnded(cwd, result));
         })
         .catch((error: unknown) => {

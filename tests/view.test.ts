@@ -349,27 +349,43 @@ describe("a capture's progress", () => {
     }
   });
 
-  it("runs on the project's models, not the chat's, and opens the captured project on its own config", async () => {
-    const reopenFile = join(project, "reopen.json");
-    process.env.TURRI_REOPEN_FILE = reopenFile;
-    const { session, pis } = withChats(undefined);
+  it("runs on the project's models, not the chat's, and hands the captured project to the front end to open", async () => {
+    const opened: Array<[string, { summary: string; reportFile: string }]> = [];
+    const session = createTurriCore({}, { openProject: async (dir, context) => (opened.push([dir, context]), true) });
+    const { pi, commands } = recordingPi();
+    session.setDriver({ create: async () => void (await session.extension(pi)), dispose: async () => {} });
     try {
       await session.open();
       const run = vi.mocked((await import("../src/capture/capture.ts")).runCapture);
       run.mockClear();
-      let shutdown = 0;
-      // The chat on pi's fallback model: none of it reaches the capture, or turri opened again in what it wrote.
-      const ctx = { ...contextOf(true, { confirm: async () => true }), model: { provider: "anthropic", id: "claude-fallback" }, shutdown: () => void shutdown++ };
-      await pis[0]!.commands.get("capture")!.handler("", ctx);
-      await vi.waitFor(() => expect(shutdown).toBe(1));
-      expect(run).toHaveBeenCalledTimes(1);
+      // The chat on pi's fallback model: none of it reaches the capture.
+      const ctx = { ...contextOf(true), model: { provider: "anthropic", id: "claude-fallback" } };
+      await commands.get("capture")!.handler("", ctx);
+      await vi.waitFor(() => expect(opened).toHaveLength(1));
       const options = run.mock.calls[0]![0];
       expect(options).toMatchObject({ root: project, configFrom: project });
       expect(options).not.toHaveProperty("model");
       expect(options).not.toHaveProperty("harnessModel");
-      expect(JSON.parse(readFileSync(reopenFile, "utf8"))).toMatchObject({ dir: join(project, "plain"), args: [] });
+      expect(opened[0]).toEqual([join(project, "plain"), { summary: "1 module.", reportFile: join(project, "plain", "report.md") }]);
     } finally {
-      delete process.env.TURRI_REOPEN_FILE;
+      await session.dispose();
+    }
+  });
+
+  it("tells the capture's report once, in the first chat of a session opened in the captured project", async () => {
+    const session = createTurriCore({}, { captured: { summary: "Captured 2 functional specs." } });
+    const made: Array<ReturnType<typeof recordingPi>> = [];
+    // Each chat on an idle pi session, so what is told to it is delivered.
+    session.setDriver({ create: async (state) => { state.session = { isStreaming: false, isCompacting: false, isRetrying: false, getSessionStats: () => ({ cost: 0 }), subscribe: () => () => {} } as never; const chat = recordingPi(); made.push(chat); await session.extension(chat.pi); }, dispose: async () => {} });
+    try {
+      await session.open();
+      await session.open({ hidden: true });
+      for (const chat of made) await chat.start(contextOf(false));
+      const told = () => made.map((chat) => chat.order.filter((line) => line === "entry turri_skill_run").length);
+      await vi.waitFor(() => expect(told()).toEqual([1, 0]));
+      await settled();
+      expect(told()).toEqual([1, 0]);
+    } finally {
       await session.dispose();
     }
   });

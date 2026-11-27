@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { captureEnded, captureFailed, captureGoesOn, captureOpenQuestion, captureRefusal, captureStartedText, readReopenedAfterCapture, reopenedAfterCapture } from "../../src/capture/chat.ts";
+import { captureEnded, captureFailed, captureGoesOn, captureRefusal, captureStartedText } from "../../src/capture/chat.ts";
 import { CaptureError } from "../../src/capture/capture.ts";
 import { saveState, newState } from "../../src/capture/state.ts";
 import { writeCodebase } from "./fixture.ts";
@@ -53,14 +53,5 @@ describe("/capture in the chat", () => {
     const end = captureEnded("/work/app/plain", { plainDir: "/work/app/plain", reportFile: "/work/app/plain/.turri/capture/report.md", summary: "Captured 3 functional specs in 2 modules." });
     expect(end.line).toBe(`Capture finished: Captured 3 functional specs in 2 modules. The report: ${join(".turri", "capture", "report.md")}.`);
     expect(end.task).not.toContain("open turri in its folder");
-  });
-
-  it("asks to open turri again in the captured project, and hands it what the capture said", () => {
-    const question = captureOpenQuestion("/work/app", { plainDir: "/work/app/plain", summary: "Captured 3 functional specs in 2 modules." });
-    expect(question.title).toBe("Open the captured ***plain in plain/?");
-    expect(question.message).toContain("ctrl+h shows its ***plain and /regenerate builds it");
-    expect(question.message).toContain("`cd plain && turri` opens it later");
-    expect(readReopenedAfterCapture(reopenedAfterCapture("Captured 3 functional specs."))).toEqual({ summary: "Captured 3 functional specs." });
-    expect([readReopenedAfterCapture(undefined), readReopenedAfterCapture("not json"), readReopenedAfterCapture("{}")]).toEqual([undefined, undefined, undefined]);
   });
 });

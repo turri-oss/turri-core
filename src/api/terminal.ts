@@ -14,4 +14,3 @@ export { DIFF_HEADER, locateDiffLines, type DiffWhere } from "../regenerate/diff
 export { describeAgents } from "../regenerate/activity.ts";
 export { formatDuration, pulseName } from "../regenerate/jobs.ts";
 export type { SpecGap } from "../regenerate/notes.ts";
-export { REOPEN_FILE_ENV, takeReopening } from "../reopen.ts";

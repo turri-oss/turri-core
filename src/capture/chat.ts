@@ -53,36 +53,6 @@ export function captureEnded(cwd: string, result: Pick<CaptureResult, "plainDir"
   };
 }
 
-/** What the person is asked once a capture in the chat ends: to open turri again in the captured project. */
-export function captureOpenQuestion(cwd: string, result: Pick<CaptureResult, "plainDir" | "summary">): { title: string; message: string } {
-  const folder = `${relative(cwd, result.plainDir) || result.plainDir}/`;
-  return {
-    title: `Open the captured ***plain in ${folder}?`,
-    message: [
-      result.summary,
-      "",
-      `turri closes here and opens again in ${folder} - the captured project - where ctrl+h shows its ***plain and /regenerate builds it. Its report is told there.`,
-      `Not now: it stays here, and \`cd ${folder.slice(0, -1)} && turri\` opens it later.`,
-    ].join("\n"),
-  };
-}
-
-/** What a turri opened again after a capture is told at its start: what the capture said of itself. */
-export function reopenedAfterCapture(summary: string): string {
-  return JSON.stringify({ summary });
-}
-
-/** What a turri opened again after a capture was told, or undefined when it is not that turri. */
-export function readReopenedAfterCapture(told: string | undefined): { summary: string } | undefined {
-  if (told === undefined) return undefined;
-  try {
-    const parsed = JSON.parse(told) as { summary?: unknown };
-    return typeof parsed.summary === "string" ? { summary: parsed.summary } : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function captureFailed(error: unknown): SkillRunEnd {
   const why = error instanceof Error ? error.message : String(error);
   return {
