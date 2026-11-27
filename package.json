@@ -1,14 +1,14 @@
 {
   "name": "@turri-dev/core",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/turri-oss/turri.git"
+    "url": "git+https://github.com/turri-oss/turri-core.git"
   },
-  "homepage": "https://github.com/turri-oss/turri#readme",
-  "bugs": "https://github.com/turri-oss/turri/issues",
+  "homepage": "https://github.com/turri-oss/turri-core#readme",
+  "bugs": "https://github.com/turri-oss/turri-core/issues",
   "description": "turri's core: the harness that builds code from ***plain specifications, with harness-enforced review and conformance gates - its sessions, chats, work loop and agents, without the terminal UI or the command line.",
   "engines": {
     "node": ">=22.19"

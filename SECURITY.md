@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for a security problem. Report it privately, through GitHub's [private vulnerability reporting](https://github.com/turri-oss/turri/security/advisories/new): only the maintainer sees it.
+Please do not open a public issue for a security problem. Report it privately, through GitHub's [private vulnerability reporting](https://github.com/turri-oss/turri-core/security/advisories/new): only the maintainer sees it.
 
 Say what is affected, how to reproduce it, and what someone could do with it. You will have an answer within a week, word as it is fixed, and credit in the advisory unless you would rather not.
 

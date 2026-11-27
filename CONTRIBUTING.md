@@ -4,7 +4,7 @@ Thank you for helping. turri builds regenerative software from [\*\*\*plain](htt
 
 ## Reporting a bug or asking for something
 
-Open an [issue](https://github.com/turri-oss/turri/issues/new/choose). For a bug, say what `turri --version` prints, your system, the provider and models your `config.turri.yaml` names, what you did, and what you saw. The \*\*\*plain that makes it happen helps most, and so does the pulse's log from a run with `--debug` - see [agent logs](docs/using.md#agent-logs).
+Open an [issue](https://github.com/turri-oss/turri-core/issues/new/choose). For a bug, say what `turri --version` prints, your system, the provider and models your `config.turri.yaml` names, what you did, and what you saw. The \*\*\*plain that makes it happen helps most, and so does the pulse's log from a run with `--debug` - see [agent logs](docs/using.md#agent-logs).
 
 A security problem is not an issue: report it privately, as [SECURITY.md](SECURITY.md) says.
 
