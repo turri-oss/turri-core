@@ -1,4 +1,4 @@
-export { CONFIG_FILE, configForSpec, configLines, configuredModel, debugMode, DEFAULT_TEST_DIR, hasProjectConfig, modelSpec, projectModels, readProjectConfig, moduleConfigsOf, testDirOf, booleanOption, overrideConfig, splitModelSpec, skillModel, type ConfigLine, type ConfigLineKind, type ModelChoice as ConfiguredModel, type ProjectConfig } from "../config.ts";
+export { CONFIG_FILE, configForSpec, configLines, configuredModel, debugMode, DEFAULT_TEST_DIR, hasProjectConfig, modelSpec, projectModels, readProjectConfig, moduleConfigsOf, testDirOf, booleanOption, splitModelSpec, skillModel, type ConfigLine, type ConfigLineKind, type ModelChoice as ConfiguredModel, type ProjectConfig } from "../config.ts";
 export { MODULES_DIR, projectDirOf } from "../regenerate/paths.ts";
 export { defaultParallelJobs } from "../regenerate/jobs.ts";
 export { configSettings, currentValue, EFFECT_TEXT, overriddenBy, readConfigText, type Effect, type Setting, type SettingKind } from "../config-edit.ts";

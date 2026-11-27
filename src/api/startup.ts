@@ -4,5 +4,4 @@ export { setTurriRoot, turriRoot, versionLine, themeFiles, extensionInstalledGlo
 export { describeVersion } from "../turri-versions.ts";
 export { readProjectConfig, modelSpec, projectModels } from "../config.ts";
 export { dropNoise } from "../quiet.ts";
-export { CODING_MODEL_ENV } from "../chat-models.ts";
 export { REOPEN_FILE_ENV, takeReopening } from "../reopen.ts";

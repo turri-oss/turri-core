@@ -359,10 +359,10 @@ describe("a headless run, in a process of its own", () => {
     ];
     const module = (file: string) => JSON.stringify(pathToFileURL(join(SRC, file)).href);
     const script = [
-      `const { overrideConfig, splitModelSpec } = await import(${module("config.ts")});`,
+      `const { setConfigOverrides, splitModelSpec } = await import(${module("config.ts")});`,
       `const { runHeadless } = await import(${module("headless.ts")});`,
       // What headlessOptions sets of these options (turri's CLI, through configKeyOptions), set as it sets them.
-      `overrideConfig({ harnessModel: splitModelSpec("nowhere/big"), codingModel: splitModelSpec("nowhere/small"), judgeModel: splitModelSpec("nowhere/judge"), review: false });`,
+      `setConfigOverrides(process.cwd(), { harnessModel: splitModelSpec("nowhere/big"), codingModel: splitModelSpec("nowhere/small"), judgeModel: splitModelSpec("nowhere/judge"), review: false });`,
       "const quiet = () => {};",
       // The export as the process exits, a marker line on stderr: what turri's CLI prints there from it, `The code is in <dir> (<module> at <commit>).`
       'const told = (exported, buildDir) => console.error(`exported ${JSON.stringify({ exported, buildDir })}`);',

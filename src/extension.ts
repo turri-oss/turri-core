@@ -7,8 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { CODING_MODEL_ENV } from "./chat-models.ts";
-import { AGENT_ROLES, CONFIG_FILE, configForSpec, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines } from "./config.ts";
+import { AGENT_ROLES, CONFIG_FILE, configForSpec, configOverrides, dropConfigOverride, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines } from "./config.ts";
 import { modulesRoot, projectDirOf, skillRunDir } from "./regenerate/paths.ts";
 import { sweepOrphanedGroups } from "./regenerate/shell.ts";
 import { readScript, scriptAgainstMachine, stackOnMachine, toolchainsBlock } from "./stack.ts";
@@ -2014,16 +2013,16 @@ function jobModelOf(ctx: ExtensionContext, named?: string, plainFile?: string): 
 }
 
 /**
- * The coding model this session starts from, and where it was given: `turri
- * --coding-model`, or `coding-model:` in the project's config.turri.yaml - read afresh, so an edit to the
- * file holds for the next render.
+ * The coding model this session starts from, and where it was given: the project's config.turri.yaml, with the coding
+ * model the session was opened with read as its `coding-model:` - read afresh, so an edit to the file holds for the next
+ * render.
  */
 function codingModelDefault(plainFile?: string): { named: string; from: string } | undefined {
-  const flag = process.env[CODING_MODEL_ENV]?.trim();
-  if (flag) return { named: flag, from: "--coding-model" };
   // The coding model inherits what it leaves out from the harness model.
   const named = modelSpec(projectModels(configOf(plainFile)).coding);
-  return named !== undefined ? { named, from: CONFIG_FILE } : undefined;
+  if (named === undefined) return undefined;
+  const given = modelSpec(configOverrides(plainFile !== undefined ? dirname(resolve(process.cwd(), plainFile)) : process.cwd()).codingModel);
+  return { named, from: given === named ? "the coding model this session was opened with" : CONFIG_FILE };
 }
 
 /**
@@ -2353,9 +2352,10 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
       codingModel: () => {
         const dropped: string[] = [];
         // What the session chose wins over the file; changed in the file, the file's holds from now on.
-        if (process.env[CODING_MODEL_ENV] !== undefined) {
-          dropped.push(`--coding-model ${process.env[CODING_MODEL_ENV]}`);
-          delete process.env[CODING_MODEL_ENV];
+        const given = modelSpec(configOverrides(cwd).codingModel);
+        if (given !== undefined) {
+          dropped.push(`the coding model this session was opened with, ${given}`);
+          dropConfigOverride(cwd, "codingModel");
         }
         return dropped.length === 0 ? undefined : `Chosen this session, and given way to the config: ${dropped.join("; ")}.`;
       },
@@ -2610,7 +2610,7 @@ function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, end
       };
       // The chat may be on pi's fallback model. Capture uses the project's configured models, as the CLI does; only a coding
       // model turri was started with overrides the project's.
-      const codingModel = process.env[CODING_MODEL_ENV];
+      const codingModel = modelSpec(configOverrides(cwd).codingModel);
       const configured = {
         configFrom: cwd,
         ...(codingModel !== undefined && codingModel !== "" ? { codingModel } : {}),

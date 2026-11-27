@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testPlainFile } from "./test-plain.ts";
-import { overrideConfig, projectModels, readProjectConfig, booleanOption, roleModel, splitModelSpec } from "../src/config.ts";
+import { setConfigOverrides, projectModels, readProjectConfig, booleanOption, roleModel, splitModelSpec } from "../src/config.ts";
 import { reportModelEvent, reportUsage } from "../src/regenerate/activity.ts";
 import { createJobRegistry } from "../src/regenerate/jobs.ts";
 import { conformanceDirFor } from "../src/regenerate/conformance.ts";
@@ -20,7 +20,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "turri-report-"));
 });
 afterEach(() => {
-  overrideConfig({});
+  setConfigOverrides(dir, undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -351,8 +351,8 @@ describe("the functional specs conformance tested", () => {
 describe("a headless run's options", () => {
   it("lets an override of harness-model, coding-model, judge-model and review win over the config file, the config's order kept", () => {
     writeFileSync(join(dir, "config.yaml"), "review: true\njudge-model: p/old\nmodels:\n  judge: { model: p/own-judge, thinking: high }\nunittests-script: run_unittests.sh\n");
-    // What headlessOptions sets of these options (turri's CLI, through configKeyOptions), set as it sets them.
-    overrideConfig({ harnessModel: splitModelSpec("p/harness"), codingModel: splitModelSpec("p/coding:low"), judgeModel: splitModelSpec("p/judge"), review: false });
+    // A session's own models and review, as an unattended run is opened with them.
+    setConfigOverrides(dir, { harnessModel: splitModelSpec("p/harness"), codingModel: splitModelSpec("p/coding:low"), judgeModel: splitModelSpec("p/judge"), review: false });
     const config = readProjectConfig(dir);
     expect(config).toMatchObject({
       harnessModel: { model: "p/harness" },
@@ -373,8 +373,8 @@ describe("a headless run's options", () => {
   it("lets an override of mutation-testing win over what the config file says", () => {
     writeFileSync(join(dir, "config.turri.yaml"), "mutation-testing: true\n");
     expect(readProjectConfig(dir).mutationTesting).toBe(true);
-    // What configKeyOptions sets of --mutation-testing false (turri's CLI), set as it sets it.
-    overrideConfig({ mutationTesting: false });
+    // A session's own mutation-testing, as an unattended run is opened with it.
+    setConfigOverrides(dir, { mutationTesting: false });
     expect(readProjectConfig(dir).mutationTesting).toBe(false);
   });
 });

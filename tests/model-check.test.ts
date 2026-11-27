@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { overrideConfig, readProjectConfig, splitModelSpec } from "../src/config.ts";
+import { setConfigOverrides, readProjectConfig, splitModelSpec } from "../src/config.ts";
 import { checkModels, fixFor, modelsInUse, type ModelAccess } from "../src/model-check.ts";
 import { checkProjectModels } from "../src/setup.ts";
 
@@ -28,7 +28,7 @@ beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), "turri-model-check-")));
 });
 afterEach(() => {
-  overrideConfig({});
+  setConfigOverrides(dir, undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -132,8 +132,8 @@ describe("turri doctor, in a project", () => {
 
   it("checks the models named on the command line as the config's keys - a config.yaml that names none, and a models: entry still winning", async () => {
     writeFileSync(join(dir, "config.yaml"), "unittests-script: run_unittests.sh\nmodels:\n  judge: amazon-bedrock/eu.anthropic.claude-opus-5\n");
-    // What `--harness-model`, `--model` and `--judge-model` set (turri's CLI, configKeyOptions), set as it sets them.
-    overrideConfig({
+    // A session's own models, as an unattended run is opened with them.
+    setConfigOverrides(dir, {
       harnessModel: splitModelSpec("amazon-bedrock/eu.anthropic.claude-opus-5-5"),
       codingModel: splitModelSpec("amazon-bedrock/eu.anthropic.claude-sonnet-5-5:low"),
       judgeModel: splitModelSpec("amazon-bedrock/eu.anthropic.claude-haiku-5-5"),

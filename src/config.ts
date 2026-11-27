@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { load as loadYaml } from "js-yaml";
 import { projectDirOf, resolveTemplateDirs } from "./regenerate/paths.ts";
 
@@ -685,7 +685,7 @@ function text(value: unknown): string | undefined {
  * not parse.
  */
 export function readProjectConfig(root: string, module?: string): ProjectConfig {
-  return withRunOverrides(readLayeredConfig(root, module));
+  return withSessionOverrides(root, readLayeredConfig(root, module));
 }
 
 function readLayeredConfig(root: string, module?: string): ProjectConfig {
@@ -709,15 +709,16 @@ function readLayeredConfig(root: string, module?: string): ProjectConfig {
 }
 
 /**
- * What a command's own options say of the config's keys - `turri regenerate --harness-model`, `--coding-model`,
- * `--judge-model`, `--review`, `--mutation-testing` - read as if the file had them: each takes its key's value, and
- * every key keeps its place in the order, so a run is the same as one with them in config.turri.yaml - a `models:`
- * entry still winning over `harness-model`, `coding-model` or `judge-model`. A headless run needs no config file
- * edited. Never set in the conversation.
+ * A session's own values for config keys - a front end's `--harness-model`, `--coding-model`, `--judge-model`,
+ * `--review`, `--mutation-testing` - read in its project as if config.turri.yaml had them: each takes its key's value and
+ * keeps its place in the order, so a `models:` entry still wins over `harness-model`, `coding-model` or `judge-model`.
+ * No config file is edited. Set by the session as it opens and cleared as it closes; a key the person sets with
+ * /settings drops the session's value for it.
  */
-type RunOverrides = Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "review" | "mutationTesting">>;
+export type ConfigOverrides = Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "review" | "mutationTesting">>;
 
-let runOverrides: RunOverrides = {};
+/** The open sessions' overrides, by their project's folder. */
+const sessionOverrides = new Map<string, ConfigOverrides>();
 
 /** Megabytes of package caches a project keeps when `cache-keep:` does not say. */
 export const DEFAULT_CACHE_KEEP_MB = 4096;
@@ -736,9 +737,36 @@ export function debugMode(project: string): boolean {
   }
 }
 
-/** Read a command's options as the config's keys for the rest of this process. */
-export function overrideConfig(overrides: RunOverrides): void {
-  runOverrides = { ...overrides };
+/** The session's overrides in `project` - undefined to clear them. */
+export function setConfigOverrides(project: string, overrides: ConfigOverrides | undefined): void {
+  const key = resolve(project);
+  const given = Object.fromEntries(Object.entries(overrides ?? {}).filter(([, value]) => value !== undefined)) as ConfigOverrides;
+  if (Object.keys(given).length === 0) sessionOverrides.delete(key);
+  else sessionOverrides.set(key, given);
+}
+
+/** The folder of the open session whose project holds `folder`, if one does. */
+function sessionProjectOf(folder: string): string | undefined {
+  const at = resolve(folder);
+  for (const project of sessionOverrides.keys()) {
+    const from = relative(project, at);
+    if (from === "" || (!from.startsWith("..") && !isAbsolute(from))) return project;
+  }
+  return undefined;
+}
+
+/** The overrides that hold in `folder`: its project's session's, when one is open there or above it. */
+export function configOverrides(folder: string): ConfigOverrides {
+  const project = sessionProjectOf(folder);
+  return project !== undefined ? sessionOverrides.get(project)! : {};
+}
+
+/** The session's value for one key dropped, in the project holding `folder` - the person set the key itself. */
+export function dropConfigOverride(folder: string, key: keyof ConfigOverrides): void {
+  const project = sessionProjectOf(folder);
+  if (project === undefined) return;
+  const { [key]: _dropped, ...rest } = sessionOverrides.get(project)!;
+  setConfigOverrides(project, rest);
 }
 
 /** `--review <value>`, `--mutation-testing <value>`: the config's own, true or false. Undefined for anything else. */
@@ -747,9 +775,9 @@ export function booleanOption(value: string): boolean | undefined {
   return word === "true" ? true : word === "false" ? false : undefined;
 }
 
-/** The config with the command's options in place of the keys they name. */
-function withRunOverrides(config: ProjectConfig): ProjectConfig {
-  const given = Object.entries(runOverrides).filter(([, value]) => value !== undefined);
+/** The config with the session's overrides in place of the keys they name. */
+function withSessionOverrides(root: string, config: ProjectConfig): ProjectConfig {
+  const given = Object.entries(configOverrides(root));
   return given.length === 0 ? config : { ...config, ...Object.fromEntries(given) };
 }
 

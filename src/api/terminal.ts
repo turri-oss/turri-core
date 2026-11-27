@@ -5,7 +5,6 @@ export { interruptChat, terminalUi, type ChatDriver, type ChatLink, type ChatSta
 export { createChatUi, type ChatUi } from "../chat-ui.ts";
 export { unqueue, type QueueOf } from "../chat-queue.ts";
 export { lastRun, type RunRecord } from "../chat-records.ts";
-export { CODING_MODEL_ENV } from "../chat-models.ts";
 export { TerminalNotifications, type TerminalNotification } from "../notifications.ts";
 export { BANNER_ENTRY, VERSION_ENTRY, COMMAND_OUTCOME, SIDE_ENTRY, SKILL_MESSAGE_ENTRY, INTERVIEW_ENTRY, JOB_ENTRY, HISTORY_ENTRY, MILESTONE_ENTRY, JOBS_LIST_ENTRY, NOTICE_ENTRY, NOTICE_OVER_ENTRY, CONCLUDED_ENTRY, SKILL_RUN_ENTRY, SKILL_REPORT_ENTRY, type BannerData, type CommandOutcome, type Exchange, type JobAnnouncement } from "../chat-entries.ts";
 export { CAPTURE_PHASES, COMPACT_PHASES, capturePhases, captureStageText, duration, workOf, type CaptureStatus } from "../capture/progress.ts";
