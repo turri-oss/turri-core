@@ -1,6 +1,6 @@
 /**
- * `@turri-dev/core/project`: a project on disk, with no session open - its config read, its settings' catalogue and
- * edits, a project's first config (`initConfig`), how far its modules are built and what drifted, their history, the
+ * `@turri-dev/core/project`: a project on disk, with no session open - its modules checked in it, its config read, its
+ * settings' catalogue and edits, a project's first config (`initConfig`), how far its modules are built and what drifted, their history, the
  * ledger of what turri did, the chats of its last run, capturing an existing codebase into ***plain, and launching its
  * code on its own.
  */
@@ -38,4 +38,5 @@ export { runCapture, CaptureError, DEFAULT_PARALLEL, type CaptureOptions, type C
 export type { Convention, Definition, Part } from "../capture/state.ts";
 export type { ScriptRequest, ScriptWriter } from "../capture/scripts.ts";
 export { exportCode, type ExportResult } from "../work.ts";
+export { checkModule, checkModules } from "../module-check.ts";
 export type { ModuleStanding } from "../regenerate/standing.ts";

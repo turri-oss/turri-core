@@ -1,6 +1,7 @@
 import { resolve, sep } from "node:path";
 import { brokenConfig, inheritModel, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, ROLE_THINKING, splitModelSpec, type ProjectConfig } from "./config.ts";
-import { checkPlainFile, formatCheckResults } from "./plain/check.ts";
+import { checkModule } from "./module-check.ts";
+import { formatCheckResults } from "./plain/check.ts";
 import { CONFORMANCE_OFF_REFUSAL, conformanceTestsOn } from "./conformance-switch.ts";
 import { refuseTestPlainFile } from "./test-plain-files.ts";
 import { stopJob, whenBuildable } from "./loop-tools.ts";
@@ -69,7 +70,7 @@ export async function askLoop(loop: WorkLoop, kind: WorkKind, request: WorkReque
     if (kind === "conform") {
       if (!conformanceTestsOn(plainFile)) throw new TurriError("refused", CONFORMANCE_OFF_REFUSAL);
     } else {
-      const check = checkPlainFile(plainFile);
+      const check = checkModule(plainFile);
       // The parser's message as it gives it, a test plain file out of place, and turri's next step for the old syntax.
       if (!check.ok) throw new TurriError("refused", `${plainFile} does not parse, so nothing can be regenerated from it yet:\n${formatCheckResults([check])}`);
       if ((request.funcIds ?? []).length > 0 && request.fromScratch !== undefined) throw new TurriError("refused", "Name funcIds or set fromScratch, not both: from scratch regenerates every one of them.");

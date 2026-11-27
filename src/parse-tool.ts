@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { checkPlainTargets, formatCheckResults } from "./plain/check.ts";
+import { checkModules } from "./module-check.ts";
+import { formatCheckResults } from "./plain/check.ts";
 
 /** parse, for the conversation and for the skills that write specs alike: it checks the ***plain, never the code. */
 export function checkPlainTool(cwd: string) {
@@ -26,7 +27,7 @@ export function checkPlainTool(cwd: string) {
       ),
     }),
     async execute(_id, params) {
-      const results = checkPlainTargets(
+      const results = checkModules(
         resolve(cwd, params.target),
         (params.template_dir ?? []).map((dir) => resolve(cwd, dir)),
       );

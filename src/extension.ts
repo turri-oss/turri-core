@@ -37,7 +37,8 @@ import { checkedSpecs } from "./sentinel-check.ts";
 import { askedForCommandLine, refusal, selfInvocation, TOOLS_NOT_CLI } from "./self-invocation.ts";
 import { CAPTURE_HINT, NEW_PROJECT } from "./new-project.ts";
 import { describeResolution, resolveModel } from "./regenerate/model-names.ts";
-import { checkPlainFile, formatCheckResults } from "./plain/check.ts";
+import { checkModule } from "./module-check.ts";
+import { formatCheckResults } from "./plain/check.ts";
 import { checkPlainTool } from "./parse-tool.ts";
 import { changedFiles, projectFiles } from "./plain-files.ts";
 import { whyFailed } from "./regenerate/diagnose-job.ts";
@@ -1336,7 +1337,7 @@ async function commandModule(
       if (plainFile === undefined) return undefined;
     }
   }
-  const check = checkPlainFile(plainFile);
+  const check = checkModule(plainFile);
   if (!check.ok) {
     say(`${relative(cwd, plainFile) || plainFile} does not parse, so nothing can be ${words.outcome} from it yet:\n${formatCheckResults([check])}`, "error");
     return undefined;

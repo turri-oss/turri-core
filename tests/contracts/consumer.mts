@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, isTurriError, rungOf, type ChatEntry, type TurriEvent } from "@turri-dev/core";
 import { checkPlainFile, highlightLines, isStack, plainGraph, stdlibTemplates } from "@turri-dev/core/plain";
-import { configForSpec, configLines, configSettings, configuredModel, credentialsFile, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
+import { checkModule, configForSpec, configLines, configSettings, configuredModel, credentialsFile, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
 import { bedrockModels, hasBedrockPreset, loginDeviceId } from "@turri-dev/core/models";
 import { checkNode, coreVersion } from "@turri-dev/core/system";
 
@@ -23,6 +23,7 @@ assert.ok(stdlibTemplates().length);
 assert.ok(isStack({ name: "stdlib/backend/python-flask" })); // a catalogue may name a stack by its import name alone
 
 // /project: the project on disk, with no session.
+assert.equal(checkModule(file).ok, true);
 assert.equal(configForSpec(file).sentinel, false);
 assert.ok(configSettings().some((setting) => setting.key === "sentinel"));
 assert.deepEqual(configLines(project), []);

@@ -101,6 +101,20 @@ const BASE64_BLOB_PATTERN = new RegExp(
   `(?:data:[\\w.+-]+/[\\w.+-]+;base64,)?[A-Za-z0-9+/_-]{${MAX_BASE64_BLOB_LENGTH},}={0,2}`,
 );
 
+/** The file a linked resource is read from: the first template folder that has it, else the current folder - or null. */
+export function resourceFile(target: string, templateDirs: string[]): string | null {
+  const found = [...templateDirs.map((dir) => join(dir, target)), target].find((path) => isFileAt(path));
+  return found === undefined ? null : resolve(found);
+}
+
+function isFileAt(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** First contiguous base64 blob at or above the threshold, or null. */
 export function findLargeBase64Blob(text: string): string | null {
   const match = BASE64_BLOB_PATTERN.exec(text);

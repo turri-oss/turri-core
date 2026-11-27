@@ -2,6 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { resourceFile } from "../plain/files.ts";
 import { collectLinkedResources, type MarshalledPlainSource } from "../plain/spec.ts";
 import { scriptKind } from "./test-scripts.ts";
 
@@ -83,20 +84,6 @@ export function loadLinkedResources(
     loaded.push({ text: resource.text, target: resource.target, content, source, ...(whole > MAX_RESOURCE_CHARS ? { cutFrom: whole } : {}) });
   }
   return loaded;
-}
-
-/** The file a linked resource is read from: the first template folder that has it, else the current folder - or null. */
-export function resourceFile(target: string, templateDirs: string[]): string | null {
-  const found = [...templateDirs.map((dir) => join(dir, target)), target].find((path) => isFileAt(path));
-  return found === undefined ? null : resolve(found);
-}
-
-function isFileAt(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
 }
 
 /** Source files, by extension: a linked resource that is one is code that lives elsewhere, never copied in. */

@@ -21,7 +21,7 @@ export interface CheckedFunctionalSpec {
     testPlainFiles: string[];
 }
 
-// @public (undocumented)
+// @public
 export function checkPlainFile(file: string, templateDirs?: string[]): CheckResult;
 
 // @public

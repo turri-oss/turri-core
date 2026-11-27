@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realp
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkPlainFile } from "../../src/plain/check.ts";
+import { checkModule } from "../../src/module-check.ts";
 import {
   baseFiles,
   baseFolderDrift,
@@ -139,7 +139,7 @@ describe("a base folder", () => {
   it("not there stops the first pulse before it starts - and parse, doctor and drift say so beforehand", async () => {
     writeFileSync(join(dir, "config.turri.yaml"), "module: app.plain\nbase-folder: nowhere\n");
     expect(() => seedFromBaseFolder(codeOf("app"), join(dir, "app.plain"), "app")).toThrow(MissingBaseFolderError);
-    expect(checkPlainFile(join(dir, "app.plain")).warnings).toEqual(["its base folder nowhere (base-folder:) is not there - its codebase's first pulse stops until it is"]);
+    expect(checkModule(join(dir, "app.plain")).warnings).toEqual(["its base folder nowhere (base-folder:) is not there - its codebase's first pulse stops until it is"]);
     expect(await checkBaseFolders(dir)).toEqual([expect.objectContaining({ level: "missing", name: "base folder nowhere" })]);
     const { ran, run } = runner();
     const loop = createWorkLoop({ registry: createJobRegistry({ maxRunning: 1 }), cwd: dir, planner: false, run });

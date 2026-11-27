@@ -4,7 +4,8 @@ import { basename, relative, resolve } from "node:path";
 import { defineTool, type ExtensionContext, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { brokenConfig, CONFIG_FILE, readProjectConfig, moduleConfigFile, configModuleFor, moduleConfigsOf, withConfigModule } from "./config.ts";
-import { checkPlainFile, formatCheckResults } from "./plain/check.ts";
+import { checkModule } from "./module-check.ts";
+import { formatCheckResults } from "./plain/check.ts";
 import { describeDrift, describeModules, type ModuleStatus, type WorkLoop } from "./regenerate/loop.ts";
 import { describeJob, pulseName, type Job, type JobRegistry } from "./regenerate/jobs.ts";
 import { currentChat } from "./chat-scope.ts";
@@ -313,7 +314,7 @@ export function regenerateTool(options: LoopToolsOptions & { loop: (ctx: Extensi
     async execute(_id, given, _signal, _onUpdate, ctx) {
       const plainFile = plainFileOf(options.cwd, given, "regenerate");
       return whenBuildable(plainFile, async () => {
-        const check = checkPlainFile(plainFile);
+        const check = checkModule(plainFile);
         // The parser's message as it gives it, a test plain file out of place, and turri's next step for the old syntax.
         if (!check.ok) throw new Error(`${relative(options.cwd, plainFile) || plainFile} does not parse, so nothing can be regenerated from it yet:\n${formatCheckResults([check])}`);
         const again = given.funcIds ?? [];

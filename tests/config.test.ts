@@ -285,14 +285,14 @@ describe("a module's own config file", () => {
 
   it("cannot be told when two of the modules a module requires have one - an error, as the parse says it", async () => {
     const { configForSpec, configModuleFor } = await import("../src/config.ts");
-    const { checkPlainFile } = await import("../src/plain/check.ts");
+    const { checkModule } = await import("../src/module-check.ts");
     // A chain is one line: app on frontend, frontend on backend - each of them with a file of its own.
     writeFileSync(join(root, "frontend.plain"), "---\nrequires: [backend]\n---\n\n***implementation reqs***\n\n- :Implementation: is React.\n\n***functional specs***\n\n# show\nShow.\n");
     writeFileSync(join(root, "app.plain"), "---\nrequires: [frontend]\n---\n\n***implementation reqs***\n\n- :Implementation: is Python.\n\n***functional specs***\n\n# both\nBoth.\n");
     expect(() => configModuleFor(join(root, "app.plain"))).toThrow(/config\.turri\.frontend\.yaml, config\.turri\.backend\.yaml[\s\S]*Give app\.plain its own config\.turri\.app\.yaml/);
     // Read as anything reads the config, it is the project's alone; parsed, it is an error.
     expect(configForSpec(join(root, "app.plain")).unittestsScript).toBeUndefined();
-    const check = checkPlainFile(join(root, "app.plain"));
+    const check = checkModule(join(root, "app.plain"));
     expect(check.ok).toBe(false);
     expect(check.error).toContain("which builds app.plain cannot be told");
     // Its own file settles it.

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CONFORMANCE_OFF_REFUSAL, conformanceBlock, conformanceTestsOn, conformanceTestsOnIn, turnOnConformanceTests } from "../src/conformance-switch.ts";
-import { checkPlainFile } from "../src/plain/check.ts";
+import { checkModule } from "../src/module-check.ts";
 import { createJobRegistry } from "../src/regenerate/jobs.ts";
 import { recordHistory } from "../src/regenerate/lineage.ts";
 import { createWorkLoop, describeDrift, type JobRunner } from "../src/regenerate/loop.ts";
@@ -93,7 +93,7 @@ describe("conformance tests", () => {
   });
 
   it("off, leave the scenarios written untested - parse says so, and warns of no step of adding them", () => {
-    expect(checkPlainFile(join(dir, "app.plain")).warnings).toEqual([
+    expect(checkModule(join(dir, "app.plain")).warnings).toEqual([
       "its scenarios are not tested - app:say-hello: conformance tests are off (conformance-tests: false, or unset). /conform in the chat turns them on, or conformance-tests: true in config.turri.yaml.",
     ]);
   });

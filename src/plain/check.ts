@@ -1,14 +1,9 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
-import { configModuleFor, testDirOf } from "../config.ts";
+import { testDirOf } from "../config.ts";
 import { projectDirOf, resolveTemplateDirs } from "../regenerate/paths.ts";
-import { isImportModule } from "../regenerate/requires-chain.ts";
-import { testingGap } from "../regenerate/testing-steps.ts";
-import { missingBaseFolder } from "../regenerate/base-folder.ts";
-import { conformanceTestsOn } from "../conformance-switch.ts";
-import { testedFuncIds } from "../regenerate/records.ts";
-import { projectModules, projectTestFiles, testPlainFileRefusal } from "../test-plain-files.ts";
-import { plainFileParser, PLAIN_SOURCE_FILE_EXTENSION, PREVIOUS_SYNTAX_HINT, readPlainSourceMetadata, REQUIRES_DIRECTIVE } from "./parser.ts";
+import { projectTestFiles, testPlainFileRefusal } from "../test-plain-files.ts";
+import { plainFileParser, PLAIN_SOURCE_FILE_EXTENSION, PREVIOUS_SYNTAX_HINT } from "./parser.ts";
 import {
   ACCEPTANCE_TESTS,
   CONFORMANCE_TESTS,
@@ -19,14 +14,14 @@ import {
 } from "./spec.ts";
 
 /**
- * Static validation of ***plain, using this repo's own parser - `turri parse`, the chat's `parse`, and the check
- * `regenerate` runs on the module it is given.
+ * The ***plain language's check of a module, with turri's own parser: it parses the module with its test plain files,
+ * resolves its imports and required modules, and reports every error the parser can see without generating anything.
+ * The parser's errors come one at a time, the first it meets, as the reference gives them. turri's own checks list
+ * everything they find at once: every functional spec without a test plain file, and every test plain file that is not
+ * where it belongs.
  *
- * It parses each module with its test plain files, resolves its imports and required modules, and reports every error
- * the parser can see without generating anything. The parser's errors come one at a time, the first it meets, as the
- * reference gives them. turri's own checks list everything they find at once: every functional spec without a test
- * plain file, and every test plain file that is not where it belongs. A module whose functional specs have scenarios
- * but which has no test reqs, or no conformance testing script, passes with a warning.
+ * What the project adds - its config files, its testing scripts, its base folder - is `checkModule`'s
+ * (src/module-check.ts): `turri parse`, the chat's `parse` and the check `regenerate` runs are that one.
  */
 
 export interface CheckedFunctionalSpec {
@@ -74,128 +69,76 @@ function shown(path: string, projectDir: string): string {
   return relative(projectDir, resolve(path)).split(sep).join("/");
 }
 
-/**
- * The modules of a project whose requires chains a module is in and that nothing requires: the tips its conformance
- * tests are written in, by name with their files. None when nothing requires it - it is a tip itself.
- */
-export function tipsAbove(moduleName: string, projectDir: string): Array<{ name: string; file: string }> {
-  const modules = projectModules(projectDir);
-  const requiredBy = new Map<string, string[]>();
-  for (const [name, file] of modules) {
-    let requires: string[] = [];
-    try {
-      requires = (readPlainSourceMetadata(readFileSync(file, "utf8")).metadata[REQUIRES_DIRECTIVE] as string[] | undefined) ?? [];
-    } catch {
-      continue;
-    }
-    for (const required of requires) {
-      const below = basename(required.replace(/^\.\//, ""), PLAIN_SOURCE_FILE_EXTENSION);
-      requiredBy.set(below, [...(requiredBy.get(below) ?? []), name]);
-    }
-  }
-  const tips = new Set<string>();
-  const seen = new Set<string>();
-  const up = (name: string) => {
-    if (seen.has(name)) return;
-    seen.add(name);
-    const above = requiredBy.get(name) ?? [];
-    if (above.length === 0 && name !== moduleName) tips.add(name);
-    for (const next of above) up(next);
-  };
-  up(moduleName);
-  return [...tips].sort().flatMap((name) => (modules.has(name) ? [{ name, file: modules.get(name)! }] : []));
+/** A module parsed and checked by the language: its result, and - when it parsed - its tree and template folders. */
+export interface ParsedCheck {
+  result: CheckResult;
+  parsed?: { path: string; moduleName: string; tree: MarshalledPlainSource; requiredModules: string[]; dirs: string[] };
 }
 
-/**
- * The steps of adding tests a module skipped, as warnings. A module another requires has its conformance tests
- * written in the tips above it, from their test reqs and with their script: it is judged by each of them, which says so.
- */
-function testingGapsOf(moduleName: string, path: string, tree: MarshalledPlainSource, projectDir: string, templateDirs: string[]): string[] {
-  // Conformance tests off: no step of adding them is skipped - and scenarios written are said not to be tested.
-  if (!conformanceTestsOn(path)) {
-    const tested = testedFuncIds(tree);
-    return tested.length > 0
-      ? [`its scenarios are not tested - ${tested.map((funcId) => `${moduleName}:${funcId}`).join(", ")}: conformance tests are off (conformance-tests: false, or unset). /conform in the chat turns them on, or conformance-tests: true in config.turri.yaml.`]
-      : [];
-  }
-  const tips = tipsAbove(moduleName, projectDir);
-  if (tips.length === 0) {
-    const gap = testingGap({ moduleName, plainFile: path, tree });
-    return gap !== undefined ? [gap.text] : [];
-  }
-  return tips.flatMap((tip) => {
-    let tipTree: MarshalledPlainSource;
-    try {
-      [, tipTree] = plainFileParser(basename(tip.file), resolveTemplateDirs(tip.file, templateDirs), {
-        allowNoFunctionalities: true,
-        testDir: testDirOf(tip.file),
-        requireTestPlainFiles: false,
-      });
-    } catch {
-      // A tip that does not parse is reported when it is checked itself.
-      return [];
-    }
-    const gap = testingGap({ moduleName: tip.name, plainFile: tip.file, tree: tipTree });
-    return gap !== undefined ? [`${moduleName}'s conformance tests are written in ${tip.name}, which requires it: ${gap.text}`] : [];
-  });
-}
-
-export function checkPlainFile(file: string, templateDirs: string[] = []): CheckResult {
+/** The language's check of a module, with what it parsed - for the project's check to go on from. */
+export function checkParsed(file: string, templateDirs: string[] = []): ParsedCheck {
   const path = resolve(file);
 
   if (extname(path) !== PLAIN_SOURCE_FILE_EXTENSION) {
-    return { file, ok: false, error: `Not a ${PLAIN_SOURCE_FILE_EXTENSION} file.`, errorType: "UsageError" };
+    return { result: { file, ok: false, error: `Not a ${PLAIN_SOURCE_FILE_EXTENSION} file.`, errorType: "UsageError" } };
   }
   if (!existsSync(path)) {
-    return { file, ok: false, error: "File does not exist.", errorType: "UsageError" };
+    return { result: { file, ok: false, error: "File does not exist.", errorType: "UsageError" } };
   }
   const refusal = testPlainFileRefusal(path);
-  if (refusal !== undefined) return { file, ok: false, error: refusal, errorType: "UsageError" };
+  if (refusal !== undefined) return { result: { file, ok: false, error: refusal, errorType: "UsageError" } };
 
   const projectDir = projectDirOf(path);
-  const testDir = testDirOf(path);
   try {
     const dirs = resolveTemplateDirs(path, templateDirs);
     // A module with no functional specs yet is valid - it is how every module starts, and how
     // an import module always is. It is reported, not failed.
     const [moduleName, tree, requiredModules] = plainFileParser(basename(path), dirs, {
       allowNoFunctionalities: true,
-      testDir,
+      testDir: testDirOf(path),
       requireTestPlainFiles: false,
     });
-    // Two config files among the modules it requires: which one builds it cannot be told - an error, as a syntax one is.
-    configModuleFor(path);
-    // Scenarios with a step of adding tests skipped - the test reqs, or the conformance testing script: a warning, never a failure.
-    const gaps = testingGapsOf(moduleName, path, tree, projectDir, templateDirs);
-    // A codebase that requires nothing starts from its base folder: one named and not there stops its first pulse.
-    const base = requiredModules.length === 0 && !isImportModule(path) ? missingBaseFolder(path) : undefined;
-    if (base !== undefined) gaps.push(base);
     const bindings = Object.entries((tree[TEST_PLAIN_FILES] as Record<string, TestPlainFileBinding> | undefined) ?? {});
     return {
-      file,
-      ok: true,
-      moduleName,
-      ...(gaps.length > 0 ? { warnings: gaps } : {}),
-      functionalSpecs: getFunctionalSpecs(tree).map((item) => ({
-        funcId: item.id,
-        testPlainFiles: bindings
-          .filter(([, binding]) => binding.module === moduleName && binding.func_id === item.id)
-          .map(([name]) => shown(join(dirs[0]!, name), projectDir)),
-        conformance: item[CONFORMANCE_TESTS].length,
-        acceptance: item[ACCEPTANCE_TESTS].length,
-      })),
-      requiredModules,
+      result: {
+        file,
+        ok: true,
+        moduleName,
+        functionalSpecs: getFunctionalSpecs(tree).map((item) => ({
+          funcId: item.id,
+          testPlainFiles: bindings
+            .filter(([, binding]) => binding.module === moduleName && binding.func_id === item.id)
+            .map(([name]) => shown(join(dirs[0]!, name), projectDir)),
+          conformance: item[CONFORMANCE_TESTS].length,
+          acceptance: item[ACCEPTANCE_TESTS].length,
+        })),
+        requiredModules,
+      },
+      parsed: { path, moduleName, tree, requiredModules, dirs },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      file,
-      ok: false,
-      error: message,
-      errorType: error instanceof Error ? error.name : "Error",
-      ...(isPreviousSyntaxError(message) ? { nextStep: previousSyntaxStep(path) } : {}),
-    };
+    return { result: failedCheck(file, error) };
   }
+}
+
+/** A check that failed on an error: its message verbatim, and turri's next step when it has one. */
+export function failedCheck(file: string, error: unknown): CheckResult {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    file,
+    ok: false,
+    error: message,
+    errorType: error instanceof Error ? error.name : "Error",
+    ...(isPreviousSyntaxError(message) ? { nextStep: previousSyntaxStep(resolve(file)) } : {}),
+  };
+}
+
+/**
+ * The ***plain language's check of one module: parsed with its test plain files, its imports and required modules
+ * resolved. `checkModule` (`@turri-dev/core/project`) adds what the project says of it.
+ */
+export function checkPlainFile(file: string, templateDirs: string[] = []): CheckResult {
+  return checkParsed(file, templateDirs).result;
 }
 
 /** The check of a project's test folder: every test plain file not where it belongs. Undefined when there is none. */
@@ -227,14 +170,19 @@ export function resolvePlainTargets(target: string): string[] {
  * project's test folder, once, at the end.
  */
 export function checkPlainTargets(target: string, templateDirs: string[] = []): CheckResult[] {
+  return checkTargets(target, (file) => checkPlainFile(file, templateDirs));
+}
+
+/** `checkPlainTargets` with each module checked by `check`. */
+export function checkTargets(target: string, check: (file: string) => CheckResult): CheckResult[] {
   const path = resolve(target);
   if (existsSync(path) && statSync(path).isDirectory()) {
     const refusal = testPlainFileRefusal(path);
     if (refusal !== undefined) return [{ file: target, ok: false, error: refusal, errorType: "UsageError" }];
   }
-  const results = resolvePlainTargets(target).map((file) => checkPlainFile(file, templateDirs));
-  const projects = [...new Set(resolvePlainTargets(target).map((file) => projectDirOf(file)))];
-  for (const project of projects) {
+  const files = resolvePlainTargets(target);
+  const results = files.map(check);
+  for (const project of new Set(files.map((file) => projectDirOf(file)))) {
     const folder = checkTestFolder(project);
     if (folder !== undefined) results.push(folder);
   }

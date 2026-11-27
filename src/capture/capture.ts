@@ -5,7 +5,8 @@ import { captureDefaults, type CaptureRole } from "./models.ts";
 import { writeSetting } from "../config-edit.ts";
 import { slashed } from "../regenerate/paths.ts";
 import { findTestScripts, testingScriptSkill, type ScriptKind } from "../regenerate/test-scripts.ts";
-import { checkPlainFile, type CheckResult } from "../plain/check.ts";
+import { checkModule } from "../module-check.ts";
+import type { CheckResult } from "../plain/check.ts";
 import { conformanceOf, stdlibCatalogue, stdlibTemplates } from "../stdlib.ts";
 import { AREAS_TOOL, askAgent, capturePrompt, watched, COMPACT_TOOL, CONCEPTS_TOOL, CONVENTIONS_TOOL, CORRECTIONS_TOOL, definitionsOf, EDITS_TOOL, FEATURE_TOOL, FEATURES_TOOL, INTERFACE_TOOL, leftOutOf, MODULES_TOOL, OWNERS_TOOL, records, REFERENCE_CHECKED_TOOL, REFERENCE_TOOL, strings, SURVEY_TOOL, text, TRIAL_TOOL, type AgentOptions } from "./agents.ts";
 import { buildOrder, covers, entriesOf, filesOf, kebab, linesOf, renderArea, testEvidence, type TestEvidence } from "./area.ts";
@@ -1211,7 +1212,7 @@ class CaptureRun {
   finish(): CaptureResult {
     const { plainDir } = this.options;
     const assembly = assemble(this.state, this.options.moduleSpecs);
-    const checks: CheckResult[] = assembly.modules.map((module) => checkPlainFile(join(plainDir, `${module.name}.plain`)));
+    const checks: CheckResult[] = assembly.modules.map((module) => checkModule(join(plainDir, `${module.name}.plain`)));
     this.state.finished = new Date().toISOString();
     const report = renderReport({ root: this.options.root, plainDir, map: this.map, state: this.state, assembly, checks });
     writeFileSync(reportFile(plainDir), report);

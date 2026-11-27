@@ -2,8 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { resolveTemplateDirs } from "../regenerate/paths.ts";
 import { locateModule } from "../regenerate/requires-chain.ts";
-import { resourceFile } from "../regenerate/resources.ts";
 import { DEFAULT_CONCEPT_DEFINITIONS, DEFAULT_CONCEPTS, definitionText, extractConceptsFromDefinition, findConcepts } from "./concepts.ts";
+import { resourceFile } from "./files.ts";
 import { lineNumber, renderToMarkdown, renderTokens, type AnyNode } from "./markdown.ts";
 import { attempt, namesIn, readModule } from "./module-concepts.ts";
 import {

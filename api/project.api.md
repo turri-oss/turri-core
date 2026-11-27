@@ -163,6 +163,41 @@ export interface ChatRecord {
 }
 
 // @public
+interface CheckedFunctionalSpec {
+    // (undocumented)
+    acceptance: number;
+    // (undocumented)
+    conformance: number;
+    // (undocumented)
+    funcId: string;
+    testPlainFiles: string[];
+}
+
+// @public
+export function checkModule(file: string, templateDirs?: string[]): CheckResult;
+
+// @public
+export function checkModules(target: string, templateDirs?: string[]): CheckResult[];
+
+// @public (undocumented)
+interface CheckResult {
+    error?: string;
+    // (undocumented)
+    errorType?: string;
+    file: string;
+    functionalSpecs?: CheckedFunctionalSpec[];
+    // (undocumented)
+    moduleName?: string;
+    nextStep?: string;
+    // (undocumented)
+    ok: boolean;
+    problems?: string[];
+    // (undocumented)
+    requiredModules?: string[];
+    warnings?: string[];
+}
+
+// @public
 export const CONFIG_FILE = "config.turri.yaml";
 
 // @public
