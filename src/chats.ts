@@ -229,8 +229,11 @@ export interface TurriCore {
   onChats(listener: () => void): () => void;
   /** For a driver: something about the chats changed - a question waiting, one shown - and those listening are told. */
   changed(): void;
-  /** Said in the chat shown - or the first one shown, when none is yet. */
-  notify(message: string, level: "info" | "warning" | "error"): void;
+  /**
+   * Said in the chat shown - or the first one shown, when none is yet - and to every front end as a `notification`,
+   * unless `notification: false`: an event of its own tells them, and the same said twice is one too many.
+   */
+  notify(message: string, level: "info" | "warning" | "error", options?: { notification?: boolean }): void;
   /** Every chat let go, but the one pi is letting go itself. */
   dispose(options?: { except?: AgentSession }): Promise<void>;
   /** For the extension: the chat a pi API is built for (see ChatLink). */
@@ -645,10 +648,10 @@ export function createChats(options: CoreOptions): TurriCore {
 
     changed,
 
-    notify(message, level) {
+    notify(message, level, options = {}) {
       const chat = core.shownChat();
       // Heard by every front end as it is said, and said in the chat shown as pi says what an extension says.
-      emitSessionEvent(host, { type: "notification", ...(chat !== undefined ? { chat: chat.id } : {}), text: message, level });
+      if (options.notification !== false) emitSessionEvent(host, { type: "notification", ...(chat !== undefined ? { chat: chat.id } : {}), text: message, level });
       say(message, level);
     },
 

@@ -444,7 +444,8 @@ export function createTurriCore(
   const orphans = sweepOrphanedGroups();
   if (orphans > 0) {
     emitSessionEvent(host, { type: "orphansStopped", count: orphans });
-    session.notify(`Stopped ${orphans} process group${orphans === 1 ? "" : "s"} a turri that was killed left running.`, "info");
+    // Said in the chat shown; a front end hears it as orphansStopped, not again as a notification.
+    session.notify(`Stopped ${orphans} process group${orphans === 1 ? "" : "s"} a turri that was killed left running.`, "info", { notification: false });
   }
   // A pulse's provider failing and waited out, or a turn turri ended itself: said in the chat shown as it happens - the
   // job panel's activity holds it too, but scrolls by.
@@ -452,7 +453,8 @@ export function createTurriCore(
     const line = describeTurnIncident(event);
     if (line !== undefined) {
       emitSessionEvent(host, { type: "incident", event, text: line });
-      session.notify(event.job !== undefined ? `${event.job}: ${line}` : line, "warning");
+      // Said in the chat shown; a front end hears it as the incident, not again as a notification.
+      session.notify(event.job !== undefined ? `${event.job}: ${line}` : line, "warning", { notification: false });
     }
     const cost = event.usage?.cost ?? 0;
     if (event.kind === "call" && event.job === undefined && cost > 0) {

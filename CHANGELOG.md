@@ -43,6 +43,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - A front end's question dialog declined while it opened is closed.
 - `doctor` asking the models, `runCapture` and `launchModule` set `AWS_REGION` for the project's Bedrock models, as a session does as it opens: with no session open, a model of a geography that needs a region of its own was called in pi's default.
 - What turri said while no chat was shown - the orphans stopped at start, a provider waited out - was a `notification` event again when the first chat was shown: it is heard once, and shown in that chat.
+- An incident, or the orphans stopped as a session opens, is heard once: as its own event, never again as a `notification` a front end could tell it by only by its text. It is still said in the chat shown.
 - A listener's throw reaches `process.emitWarning` coded `TURRI_LISTENER`, as documented: given the error itself, Node dropped the code.
 - Importing the core set exit, SIGINT, SIGTERM and SIGHUP handlers on the importing process; they are set once turri first starts a process group.
 - Fresh and resumed captures run on the project's init-config models; init-config sets all three capture models and keeps a `models:` block valid.

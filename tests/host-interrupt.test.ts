@@ -77,10 +77,12 @@ it("reports the startup sweep and agent costs before a chat opens and stops repo
     const session = await createTurri({ onEvent: (event) => events.push(event as never) });
     try {
       expect(events).toContainEqual({ type: "orphansStopped", count: 3 });
+      // Each heard once, by its own event: never again as a notification.
+      expect(events.some((event) => event.type === "notification")).toBe(false);
       expect(sweep).toHaveBeenCalledTimes(1);
       reportModelEvent({ kind: "provider_stall", role: "planner" });
-      // The incident, then what the chat shown is told of it - every front end hears both.
-      expect(events.slice(-2)).toMatchObject([{ type: "incident", event: { kind: "provider_stall" } }, { type: "notification", level: "warning" }]);
+      expect(events.at(-1)).toMatchObject({ type: "incident", event: { kind: "provider_stall" } });
+      expect(events.some((event) => event.type === "notification")).toBe(false);
       const call = { kind: "call", role: "planner", usage: { cost: 0.5, input: 5, output: 2, cacheRead: 0, cacheWrite: 0 } } as const;
       reportModelEvent(call);
       reportModelEvent(call);

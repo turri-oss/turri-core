@@ -65,7 +65,7 @@ Every member is optional; a front end says only what it does differently.
 
 **No front end** is unattended: no chats, the sentinel never opens, nobody is asked - a start over is what `startOver` says, a function of the caller's asking whoever it likes, and otherwise refused with why, never waited on.
 
-Whatever the front end, the same rules hold: turri appends its entries to a chat's transcript (a transcript is a record; whether to draw one is the front end's choice), a chat is marked unread when something happens in it out of sight, its `"question"` status is turri's own pending asks, and what turri says outside any transcript is a `notification` event as well as said in the chat shown.
+Whatever the front end, the same rules hold: turri appends its entries to a chat's transcript (a transcript is a record; whether to draw one is the front end's choice), a chat is marked unread when something happens in it out of sight, its `"question"` status is turri's own pending asks, and what turri says outside any transcript is said in the chat shown and sent once - as a `notification`, or as the event of its own that tells it (`incident`, `orphansStopped`).
 
 ## Events
 
@@ -76,7 +76,7 @@ Whatever the front end, the same rules hold: turri appends its entries to a chat
 | `chats` | a chat opened, closed, renamed, started or stopped working or asking | `chats` |
 | `chatSession` | a chat's pi session replaced under the same id - the sentinel's fresh conversation | `chat` - read `chats.get(chat).session` |
 | `entry` | turri appended an entry or sent a message to a chat | `chat`, `entry` |
-| `notification` | turri said something to the person outside any transcript | `chat?`, `text`, `level` |
+| `notification` | turri said something to the person outside any transcript - but what an event of its own tells (`incident`, `orphansStopped`), which is said in the chat shown and not sent again | `chat?`, `text`, `level` |
 | `job` | a pulse started, moved on, or ended | `job`, `final` - ended and not run again as another |
 | `plan` | what is planned changed, no pulse changing | |
 | `launch` | a launch asked for, started or ended | `launch` |
