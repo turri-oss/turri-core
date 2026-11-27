@@ -7,7 +7,7 @@ import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, i
 import { checkPlainFile, highlightLines, isStack, plainGraph, stdlibTemplates } from "@turri-dev/core/plain";
 import { checkModule, configForSpec, configLines, configSettings, configuredModel, credentialsFile, historyLog, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
 import { bedrockModels, hasBedrockPreset, loginDeviceId } from "@turri-dev/core/models";
-import { checkNode, coreVersion } from "@turri-dev/core/system";
+import { asksModels, checkNode, coreVersion } from "@turri-dev/core/system";
 
 const project = process.cwd();
 const agentDir = process.env.PI_CODING_AGENT_DIR!;
@@ -47,6 +47,7 @@ assert.ok(hasBedrockPreset(choice));
 assert.match(bedrockModels(choice).harness, /^amazon-bedrock\/global\.anthropic\./);
 assert.equal(typeof loginDeviceId(project, agentDir), "string");
 assert.equal(checkNode().level, "ok");
+assert.equal(asksModels({ dir: project, models: true, overrides: { harnessModel: "anthropic/claude-named" } }), true);
 assert.equal(typeof coreVersion().version, "string");
 
 // pi can replay records from other extensions or older writers. A job without details is not a typed job announcement.

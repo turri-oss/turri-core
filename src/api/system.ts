@@ -10,7 +10,7 @@ export function coreVersion(): { version: string | null; commit: string | null; 
   return { version: identity.version, commit: identity.git_commit, changed: identity.git_dirty, pi: piVersion() ?? null };
 }
 
-export { asksModels, doctor, verdictOf, describeChecks, type DoctorOptions } from "../setup.ts";
+export { asksModels, doctor, verdictOf, describeChecks, type DoctorModels, type DoctorOptions } from "../setup.ts";
 export { checkNode, type Check, type Level } from "../node-check.ts";
 export { MIN_NODE, nodeVersionOk } from "../environment.ts";
 export { machineChange, machineChangeReason } from "../regenerate/command-check.ts";

@@ -38,11 +38,22 @@ export function describeChecks(checks: Check[]): string;
 // @public
 export function doctor(options?: DoctorOptions): Promise<Check[]>;
 
+// @public
+export interface DoctorModels {
+    // (undocumented)
+    codingModel?: string;
+    // (undocumented)
+    harnessModel?: string;
+    // (undocumented)
+    judgeModel?: string;
+}
+
 // @public (undocumented)
 export interface DoctorOptions {
     dir?: string;
     env?: NodeJS.ProcessEnv;
     models?: boolean;
+    overrides?: DoctorModels;
 }
 
 // @public (undocumented)

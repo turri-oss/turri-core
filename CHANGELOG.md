@@ -28,6 +28,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - `startOver` takes a function, asked for the run alone with what would be started over and why (`StartOverQuestion`): a command with no front end asks at its terminal. `false` is "no": the rest of the chain is regenerated, as a "no" through the front end did; absent or unanswered, the run ends at once.
 - `skills.run({ dir })` runs the skill in a folder with a SKILL.md, as `turri cultivate <folder>` does, beside one by name.
 - A skill run says what it does as it goes: `skills.run`'s `onReport` hears each step tried, its artifact, each gate's judges and verdicts and its decision with the critique (`SkillReport`), and `skills.list()` gives each skill's steps and gates (`SkillInfo`). `SkillResult.runDir` says where the run's artifacts are.
+- `doctor`'s `overrides`: models of the caller's own - named on a command line - checked and asked in place of the config's, their AWS region worked out with it, with no session open to hold them (`DoctorModels`).
 - `launches.followLogs` and `followLaunchedLogs` stop on a signal.
 - `launchOutput` events: each launch's agent's words as they stream. `launches.launch` takes `onOutput`, `signal`, `guidance`, `inModule` and `again`, and `launchModule` `onOutput`.
 - `map` events: the spec map as it changes, for a front end that shows it (`Frontend.shows.map`) - its files looked at each second, its marks laid again as the work moves.

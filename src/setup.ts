@@ -7,7 +7,7 @@ import { EXTENSION_PROVIDERS, installedProviders, runtimeWithProviders } from ".
 import { checkNode, type Check, type Level } from "./node-check.ts";
 import { sandboxAvailable, sandboxWithAsync, type Wall } from "./regenerate/os-sandbox.ts";
 import { findTestScripts, onThisMachine } from "./regenerate/test-scripts.ts";
-import { CONFIG_FILE, configOverrides, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems } from "./config.ts";
+import { CONFIG_FILE, configOverrides, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems, splitModelSpec, type ProjectConfig } from "./config.ts";
 import { checkModels, modelsInUse, piModelAccess, type ModelAccess } from "./model-check.ts";
 import { applyBedrockRegion, bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
 import { baseFilesAsync } from "./regenerate/base-folder.ts";
@@ -129,15 +129,15 @@ async function checkProvider(project: string = process.cwd()): Promise<Check> {
  * In a project: each model its config.turri.yaml names - or the module config pinned, its file's over it - tried with one short
  * request. A model that answers is ready; one that does not says what the provider said, and what to do about it.
  */
-export async function checkProjectModels(project: string, access?: ModelAccess): Promise<Check[]> {
-  const used = modelsInUse(readProjectConfig(project, configModuleOf(project)));
+export async function checkProjectModels(project: string, access?: ModelAccess, given: DoctorModels = {}): Promise<Check[]> {
+  const used = modelsInUse({ ...readProjectConfig(project, configModuleOf(project)), ...modelChoices(given) });
   if (used.length === 0) {
     return [{ level: "missing", name: "Models", detail: "config.turri.yaml names none", fix: "turri init-config writes the two models - or name them here: --harness-model, --coding-model" }];
   }
   let verdicts;
   try {
     // The AWS region the Bedrock models need, set as a session sets it as it opens: doctor asks them with none open.
-    const region = describeBedrockRegion(applyBedrockRegion(project));
+    const region = describeBedrockRegion(applyBedrockRegion(project, { also: specsOf(given) }));
     verdicts = await checkModels(used, access ?? (await piModelAccess()), region !== undefined ? { bedrockRegion: region } : {});
   } catch (error) {
     return [{ level: "missing", name: "Models", detail: `pi's models could not be read: ${error instanceof Error ? error.message : String(error)}` }];
@@ -150,11 +150,23 @@ export async function checkProjectModels(project: string, access?: ModelAccess):
   });
 }
 
+/** Models doctor checks in place of the config's - named on a command line - as provider/model-id[:thinking]. */
+export interface DoctorModels {
+  harnessModel?: string;
+  codingModel?: string;
+  judgeModel?: string;
+}
+
 export interface DoctorOptions {
   /** The project to check. Without it, only the machine. */
   dir?: string;
   /** Ask each model the project's config names for a word - a request a model, which costs money. Off by default. */
   models?: boolean;
+  /**
+   * Models of the caller's own, checked in place of the config's - as a session's overrides are read, a role's own
+   * `models:` entry still winning - and asked, with `models`. Their AWS region is worked out with the config's.
+   */
+  overrides?: DoctorModels;
   /** The environment whose PATH is looked in - bash, git, the sandbox, the toolchains, what the testing scripts run. */
   env?: NodeJS.ProcessEnv;
 }
@@ -162,8 +174,20 @@ export interface DoctorOptions {
 /** Whether doctor asks the models: asked to, and a config that names them - or a session's own models in the project. */
 export function asksModels(options: DoctorOptions): options is DoctorOptions & { dir: string } {
   if (options.models !== true || options.dir === undefined) return false;
-  const given = configOverrides(options.dir);
+  const given = { ...configOverrides(options.dir), ...modelChoices(options.overrides ?? {}) };
   return hasProjectConfig(options.dir) || given.harnessModel !== undefined || given.codingModel !== undefined || given.judgeModel !== undefined;
+}
+
+/** The models given, as the config's keys hold them. */
+function modelChoices(given: DoctorModels): Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel">> {
+  const choice = (spec: string | undefined) => (spec !== undefined && spec.trim() !== "" ? splitModelSpec(spec.trim()) : undefined);
+  const [harnessModel, codingModel, judgeModel] = [choice(given.harnessModel), choice(given.codingModel), choice(given.judgeModel)];
+  return { ...(harnessModel !== undefined ? { harnessModel } : {}), ...(codingModel !== undefined ? { codingModel } : {}), ...(judgeModel !== undefined ? { judgeModel } : {}) };
+}
+
+/** The models given, as specs. */
+function specsOf(given: DoctorModels): string[] {
+  return Object.values(modelChoices(given)).flatMap((choice) => (choice?.model !== undefined ? [choice.model] : []));
 }
 
 /** Whether `command` runs with `env` - its PATH looked in, as the agents' shells and the testing scripts would. Never holds a host's thread up. */
@@ -192,8 +216,9 @@ export async function doctor(options: DoctorOptions = {}): Promise<Check[]> {
     fix: `Set each key once in ${problem.file}, then run turri doctor again`,
   })));
   if (hasProjectConfig(project) || existsSync(join(project, "plain_modules"))) checks.push(...(await checkProject(project, { has: (command) => onThisMachine(command, env) !== undefined })));
-  if (hasProjectConfig(project)) checks.push(...checkBedrockRegion(project, env), ...(await checkClaudeSubscription(project, env)), ...(await checkBaseFolders(project)));
-  if (asksModels(options)) checks.push(...(await checkProjectModels(project)));
+  const given = options.overrides ?? {};
+  if (hasProjectConfig(project)) checks.push(...checkBedrockRegion(project, env, specsOf(given)), ...(await checkClaudeSubscription(project, env, undefined, specsOf(given))), ...(await checkBaseFolders(project)));
+  if (asksModels(options)) checks.push(...(await checkProjectModels(project, undefined, given)));
   return checks;
 }
 
@@ -230,9 +255,9 @@ const claudeCodeProbe = (project: string): ClaudeCodeProbe => ({
  * pi-claude-code needs, in the order it needs it - its extension installed, Claude Code on the PATH, signed in to a Pro or
  * Max subscription, and nothing in the environment it refuses. Nothing when no model is a claude-code one.
  */
-export async function checkClaudeSubscription(project: string, env: NodeJS.ProcessEnv = process.env, probe: ClaudeCodeProbe = claudeCodeProbe(project)): Promise<Check[]> {
+export async function checkClaudeSubscription(project: string, env: NodeJS.ProcessEnv = process.env, probe: ClaudeCodeProbe = claudeCodeProbe(project), also: string[] = []): Promise<Check[]> {
   const configs = [readProjectConfig(project), ...moduleConfigsOf(project).map((module) => readProjectConfig(project, module))];
-  const named = [...new Set(configs.flatMap((config) => modelsInUse(config)).filter((used) => used.spec.startsWith("claude-code/")).map((used) => used.spec))];
+  const named = [...new Set([...configs.flatMap((config) => modelsInUse(config)).map((used) => used.spec), ...also].filter((spec) => spec.startsWith("claude-code/")))];
   if (named.length === 0) return [];
   const name = "Claude subscription";
   const extension = EXTENSION_PROVIDERS["claude-code"]!;
@@ -282,10 +307,10 @@ export async function checkBaseFolders(project: string): Promise<Check[]> {
  * The AWS region a project's Bedrock models are called in, when it uses any: turri's, the person's or the profile's - and
  * what is wrong with it, when the models need two, or the person's is not in their geography. Nothing when it uses none.
  */
-export function checkBedrockRegion(project: string, env: NodeJS.ProcessEnv = process.env): Check[] {
+export function checkBedrockRegion(project: string, env: NodeJS.ProcessEnv = process.env, also: string[] = []): Check[] {
   let decided: BedrockRegion;
   try {
-    decided = bedrockRegionFor(project, { env });
+    decided = bedrockRegionFor(project, { env, also });
   } catch {
     return [];
   }

@@ -14,7 +14,7 @@ vi.mock("../src/model-check.ts", async (original) => ({
   },
 }));
 
-const { doctor } = await import("../src/api/system.ts");
+const { asksModels, doctor } = await import("../src/api/system.ts");
 
 /** doctor as a host runs it: the checks returned, for its own UI - never printed, never asked. */
 
@@ -91,5 +91,19 @@ describe("doctor for a host", () => {
     const withModels = await doctor({ dir: project, models: true });
     expect(asked.models).toEqual(["anthropic/claude-test"]);
     expect(withModels.find((check) => check.name === "harness-model, coding-model")).toMatchObject({ level: "ok" });
+  });
+
+  it("checks models of its caller's own in place of the config's, with no session to hold them", async () => {
+    const checks = await doctor({ dir: project, models: true, overrides: { harnessModel: "anthropic/claude-named:high" } });
+    expect(asked.models.sort()).toEqual(["anthropic/claude-named", "anthropic/claude-test"]);
+    expect(checks.find((check) => check.name === "harness-model")).toMatchObject({ level: "ok", detail: expect.stringContaining("anthropic/claude-named") });
+    // A folder with no config: asked only for the models given.
+    const bare = mkdtempSync(join(tmpdir(), "turri-doctor-bare-"));
+    try {
+      expect(asksModels({ dir: bare, models: true })).toBe(false);
+      expect(asksModels({ dir: bare, models: true, overrides: { codingModel: "anthropic/claude-named" } })).toBe(true);
+    } finally {
+      rmSync(bare, { recursive: true, force: true });
+    }
   });
 });
