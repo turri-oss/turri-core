@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EnvironmentError } from "../../src/regenerate/environment-error.ts";
 import { abandonWork, committedText, diffSinceSnapshot, head, historyLog, historyShow, landWork, markWork, recordHistory, resetToLastCommit, startWork, workDiff, workSnapshot } from "../../src/regenerate/lineage.ts";
 import { copyRequiredCode } from "../../src/regenerate/requires.ts";
+import * as project from "../../src/api/project.ts";
 
 let root: string;
 let code: string;
@@ -36,6 +37,16 @@ describe("a module's history", () => {
       "render app fs 1: hello (unit tests pass)",
     ]);
     expect(historyShow(code, head(code)!)).toContain("+print(2)");
+  });
+
+  it("is read by the module's name in its project", () => {
+    expect(project.historyLog("app", { cwd: root })).toBe("No history for app yet.");
+    writeFileSync(join(code, "app.py"), "print(1)\n");
+    recordHistory(code, "app pulse 1 landed");
+    writeFileSync(join(code, "app.py"), "print(2)\n");
+    recordHistory(code, "app pulse 2 landed");
+    expect(project.historyLog("app", { cwd: root, limit: 1 }).split("  ").at(-1)).toBe("app pulse 2 landed");
+    expect(project.historyShow("app", head(code)!, { cwd: root })).toContain("+print(2)");
   });
 
   it("keeps the code and tests, and leaves out its own git directory, dependencies and caches", () => {

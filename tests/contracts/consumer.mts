@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, isTurriError, rungOf, type ChatEntry, type SkillReport, type StartOverQuestion, type Turri, type TurriEvent, type WorkRunOptions } from "@turri-dev/core";
 import { checkPlainFile, highlightLines, isStack, plainGraph, stdlibTemplates } from "@turri-dev/core/plain";
-import { checkModule, configForSpec, configLines, configSettings, configuredModel, credentialsFile, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
+import { checkModule, configForSpec, configLines, configSettings, configuredModel, credentialsFile, historyLog, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
 import { bedrockModels, hasBedrockPreset, loginDeviceId } from "@turri-dev/core/models";
 import { checkNode, coreVersion } from "@turri-dev/core/system";
 
@@ -38,6 +38,7 @@ assert.equal(configuredModel(settings, "models.judge"), undefined);
 assert.equal(credentialsFile(agentDir), join(agentDir, "auth.json"));
 assert.deepEqual(await savedChatFiles(project, join(project, "sessions")), []);
 assert.equal(readDrift(file)[0]?.module, "app");
+assert.equal(historyLog("app"), "No history for app yet.");
 assert.equal(existsSync("plain_modules"), false);
 
 // /models and /system.

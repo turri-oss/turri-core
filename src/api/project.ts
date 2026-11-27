@@ -30,7 +30,21 @@ export { MODULES_DIR, projectDirOf } from "../regenerate/paths.ts";
 export { defaultParallelJobs } from "../regenerate/jobs.ts";
 export { describeDrift, describeModules, type DriftReport } from "../regenerate/loop.ts";
 export { readDrift, launchModule } from "../project.ts";
-export { historyLog, historyShow } from "../regenerate/lineage.ts";
+import { historyLog as codeHistoryLog, historyShow as codeHistoryShow } from "../regenerate/lineage.ts";
+import { defaultBuildDir } from "../regenerate/paths.ts";
+
+/**
+ * A module's lineage, newest first: each commit of its code and tests - when, and what it was regenerated from - one a
+ * line, the last `limit` (30). `cwd`: the project's folder, the process's by default. Says so when there is none yet.
+ */
+export function historyLog(module: string, options: { cwd?: string; limit?: number } = {}): string {
+  return codeHistoryLog(defaultBuildDir(module, options.cwd), options.limit);
+}
+
+/** One commit of a module's lineage in full: what it says, the files it changed, and how. */
+export function historyShow(module: string, commit: string, options: { cwd?: string } = {}): string {
+  return codeHistoryShow(defaultBuildDir(module, options.cwd), commit);
+}
 export { lastRun, type ChatRecord, type RunRecord } from "../chat-records.ts";
 export { ledgerDir, readLedger, type AgentRef, type LedgerEntry, type LedgerEvent, type LedgerKind, type LedgerQuery } from "../regenerate/ledger.ts";
 export { asJob, describePulseView, describeRuns, earlierPulses, ledgerProjects, pulseView, runViews, type PulseView, type RunView } from "../regenerate/ledger-view.ts";

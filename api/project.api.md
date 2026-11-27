@@ -344,10 +344,15 @@ export type ExportResult = {
 export function hasProjectConfig(root: string): boolean;
 
 // @public
-export function historyLog(dir: string, limit?: number): string;
+export function historyLog(module: string, options?: {
+    cwd?: string;
+    limit?: number;
+}): string;
 
 // @public
-export function historyShow(dir: string, commit: string): string;
+export function historyShow(module: string, commit: string, options?: {
+    cwd?: string;
+}): string;
 
 // @public
 export function initConfig(dir: string, options?: InitConfigOptions): Promise<{
