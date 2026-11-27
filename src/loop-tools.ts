@@ -15,7 +15,6 @@ import type { LaunchTrack } from "./launch-track.ts";
 import { projectDirOf } from "./regenerate/paths.ts";
 import { findTestScripts } from "./regenerate/test-scripts.ts";
 import { scriptBeingWritten } from "./regenerate/scripts-being-written.ts";
-import { surfaceOf } from "./surface.ts";
 import { planWork } from "./work.ts";
 
 /**
@@ -215,7 +214,7 @@ export function stopJob(jobs: JobRegistry, named: string, reason?: string, loop?
   if (module !== undefined) return module;
   const matches = jobs.list().filter((job) => job.id.startsWith(named.trim()));
   // /pulses is the terminal's: in a host, the pulses tool lists them.
-  if (matches.length === 0) return `No pulse ${named}. ${surfaceOf(jobs) !== undefined ? "The pulses tool lists them." : "/pulses shows them."}`;
+  if (matches.length === 0) return `No pulse ${named}. The pulses tool lists them.`;
   if (matches.length > 1) return `'${named}' matches ${matches.map((job) => job.id).join(", ")}. Give more of the id.`;
   const target = matches[0]!;
   const behind = jobs.list().filter((job) => job.status === "queued" && job.waitingOn.includes(target.id));

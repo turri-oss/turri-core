@@ -230,7 +230,7 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
     const chosen = await ctx.ui.select(`/settings - the project's ${CONFIG_FILE}. Pick a setting to change:`, lines);
     if (chosen === undefined) return undefined;
     if (chosen === PI_ENTRY) {
-      if (!(options.openPiMenu?.() ?? false)) ctx.ui.notify("pi's own settings open only in the terminal's chat.", "info");
+      if (!(options.openPiMenu?.() ?? false)) ctx.ui.notify("pi's own settings open only where the app you use has them.", "info");
       return undefined;
     }
     if (chosen === ROLES_ENTRY) {

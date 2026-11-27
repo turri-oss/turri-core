@@ -110,7 +110,7 @@ export interface SideQuestion {
   projectDir: string;
   /** turri's own folder: its source, skills, rules and docs. */
   harnessDir: string;
-  /** A host's surface, in its own words (TurriHost.surface): where the person watches the work instead of the terminal. */
+  /** The front end's surface, in its own words (TurriHost.surface): where the person watches the work. None: no view is named. */
   surface?: string;
 }
 

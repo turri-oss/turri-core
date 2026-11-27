@@ -3,17 +3,14 @@ import { existsSync } from "node:fs";
 import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { currentChat, inChat, type ChatScope } from "./chat-scope.ts";
 import { adoptRun, forgetChat, forgetSessionFile, recordRun, type ChatRecord, type RunRecord } from "./chat-records.ts";
-import { createChatUi, type ChatUi } from "./chat-ui.ts";
-import { TerminalNotifications } from "./notifications.ts";
 import { debugMode, type SentinelSetting } from "./config.ts";
 import type { AskUserIO } from "./ask.ts";
 import { firstLine, record } from "./regenerate/ledger.ts";
-import { pulseName, formatDuration, type Job, type JobRegistry } from "./regenerate/jobs.ts";
+import type { Job, JobRegistry } from "./regenerate/jobs.ts";
 import type { Launch } from "./launch-track.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { newNotice, noticeTask, SENTINEL, sentinelStartChoice, wentWrong, type ChatRole, type Conclusion, type Notice, type NoticeAnswer, type NoticeInput, type SentinelCheck } from "./notice.ts";
-import type { TurriView } from "./view.ts";
-import type { SessionEvent } from "./session-events.ts";
+import { emitSessionEvent, type SessionEvent } from "./session-events.ts";
 import { createSessionSpending, type SessionSpending } from "./session-spending.ts";
 
 /**
@@ -101,6 +98,18 @@ export interface TurriHost {
   onLaunch?(launch: Launch): void;
   /** What the sentinel puts to the person - and, `kind: "sentinel-start"`, whether to start it: the host draws it in the chat it names, and answers it with `answer`. */
   onNotice?(notice: Notice): void;
+  /**
+   * The front end puts notices to the person itself - its cards and buttons, answered with `answer` - so a chat does not
+   * put one as a question once it is idle. Unset, a chat with a screen does.
+   */
+  noticesShown?: boolean;
+  /**
+   * The person asked to see something the front end shows - `/pulses` - in the chat named: true when it shows it. Unset
+   * or false, the chat lists it in text.
+   */
+  reveal?(target: { kind: "pulses" | "pulse" | "map"; id?: string }, context: { chat: string }): boolean;
+  /** pi's own settings, the last entry of /settings: opened where the front end has them. False or unset: said to open only there. */
+  openPiSettings?(): boolean;
   /** A notice is over - answered, dismissed, or superseded by a newer one about its module: the host takes its card down. */
   onNoticeOver?(notice: Notice): void;
   /**
@@ -113,8 +122,6 @@ export interface TurriHost {
 
 /** What a chat's extension does for its chat when the session asks. */
 export interface ChatInstance {
-  /** The terminal header's toggle. Visibility is independent of which side has the keys. */
-  plainPanel?: { open(): boolean; busy(): boolean; toggle(): void };
   /** A pulse it asked for ended: said in the chat, and its agent told, to react to it. */
   announce(job: Job): void;
   /**
@@ -161,10 +168,8 @@ export interface ChatLink {
   live(instance: ChatInstance): void;
 }
 
-/** Where chats live: the terminal's screen, or a host's windows. */
+/** Where chats live: a session's own pi sessions, or a front end's. */
 export interface ChatDriver {
-  /** pi's terminal: the chats are switched between with its keys and /chat. */
-  terminal?: boolean;
   /** A session for the chat - its saved one, when `sessionFile` - with the session's extension built for it. */
   create(chat: ChatState, sessionFile: string | undefined): Promise<void>;
   /** Put the chat on the screen. */
@@ -181,10 +186,6 @@ export interface ChatState {
   /** Its title as recorded, until it says one of its own. */
   recordedTitle?: string;
   session?: AgentSession;
-  /** pi's services the session was made with - the terminal's driver hands them to pi with it. */
-  services?: unknown;
-  /** What it draws on, in the terminal. */
-  ui?: ChatUi;
   instance?: ChatInstance;
   dialogs?: AskUserIO;
   working: boolean;
@@ -195,8 +196,6 @@ export interface ChatState {
 export interface TurriCore {
   /** What this run has spent, across every chat and pulse. */
   spending(): SessionSpending;
-  /** Shared by all the terminal's chats. */
-  readonly notifications: TerminalNotifications;
   readonly cwd: string;
   readonly host: TurriHost;
   readonly jobs: JobRegistry;
@@ -204,13 +203,6 @@ export interface TurriCore {
   readonly extension: ExtensionFactory;
   /** Whether chats can be opened beside the one there is - with a driver that has somewhere to put them. */
   readonly canOpen: boolean;
-  /** Whether the chats are the terminal's, switched between with /chat and its keys. */
-  readonly terminal: boolean;
-  /** What a front-end draws of the session that the core does not (view.ts) - undefined for a host and a headless run. */
-  readonly view: TurriView | undefined;
-  /** Only the first terminal chat shows the welcome, until a non-empty submission anywhere in the session. */
-  welcomeVisible(chat: string): boolean;
-  dismissWelcome(): void;
   chats(): ChatInfo[];
   /** The chat's pi session. */
   session(id: string): AgentSession | undefined;
@@ -236,8 +228,8 @@ export interface TurriCore {
   chatOfSession(session: AgentSession): ChatState | undefined;
   /** For a driver: the chat shown now, as the session keeps it. */
   shownChat(): ChatState | undefined;
-  /** For the terminal's driver: the chat made by pi itself, its session now known - the first, or one pi rebuilt. */
-  adopt(session: AgentSession, services: unknown): ChatState;
+  /** A pi session the front end made with turri's extension in it - pi's first, one it rebuilt or forked - as a chat. */
+  adopt(session: AgentSession): ChatState;
   /** For a driver: `chat` is on the screen now. */
   showing(chat: ChatState): void;
   /** For the extension: a pulse ended - told to the chat that asked for it, or, with the sentinel on, to the sentinel. */
@@ -296,8 +288,6 @@ export interface CoreOptions {
   ignored?: (notice: Notice) => void;
   /** The launch track, as the sentinel waits on it (docs/sentinel.md). Not given: the sentinel waits for nothing. */
   launches?: SentinelLaunches;
-  /** What a front-end draws of the session that the core does not - the terminal's. Not given: a host's or a headless run's. */
-  view?: TurriView;
 }
 
 /**
@@ -362,6 +352,24 @@ const TITLE_CHARS = 32;
 /** What the sentinel is given: a pulse that finished, or functional specs a host asked it to check. */
 type SentinelWork = { pulse: Job } | { check: SentinelCheck };
 
+/** A chat's open questions: `onChange` told as each opens and closes - the chat's "question" status. */
+function watchedQuestions(onChange: () => void): Set<() => void> {
+  const questions = new Set<() => void>();
+  const add = questions.add.bind(questions);
+  const remove = questions.delete.bind(questions);
+  questions.add = (decline) => {
+    add(decline);
+    onChange();
+    return questions;
+  };
+  questions.delete = (decline) => {
+    const had = remove(decline);
+    if (had) onChange();
+    return had;
+  };
+  return questions;
+}
+
 export function createChats(options: CoreOptions): TurriCore {
   const { cwd, host, jobs } = options;
   const spending = options.spending ?? createSessionSpending();
@@ -369,8 +377,6 @@ export function createChats(options: CoreOptions): TurriCore {
   const listeners = new Set<() => void>();
   let driver: ChatDriver | undefined;
   let shownId: string | undefined;
-  let welcomeChat: string | undefined;
-  let welcomeDismissed = false;
   /** The chat whose extension pi is building now. */
   let attaching: ChatState | undefined;
   /** Chats are opened one at a time: each one's extension is built while it is the one attaching. */
@@ -431,8 +437,9 @@ export function createChats(options: CoreOptions): TurriCore {
     return fallback?.instance !== undefined && fallback.role !== SENTINEL ? fallback : people().find((chat) => chat.instance !== undefined);
   };
 
+  // A question turri asks in it waits for the person - whatever front end shows it.
   const statusOf = (chat: ChatState): ChatStatus =>
-    (chat.ui?.waiting() ?? 0) > 0 ? "question" : chat.working ? "working" : chat.unread ? "unread" : "idle";
+    chat.scope.asking.size > 0 ? "question" : chat.working ? "working" : chat.unread ? "unread" : "idle";
 
   /** What the session keeps of its chats on disk: those with something said in them, in order. */
   const persist = () => {
@@ -447,10 +454,9 @@ export function createChats(options: CoreOptions): TurriCore {
 
   const newChat = (title?: string, role?: ChatRole): ChatState => {
     const id = randomUUID().slice(0, 8);
-    if (role === undefined) welcomeChat ??= id;
     const chat: ChatState = {
       id,
-      scope: { id, asking: new Set() },
+      scope: { id, asking: watchedQuestions(() => changed()) },
       ...(title !== undefined ? { recordedTitle: title } : {}),
       ...(role !== undefined ? { role } : {}),
       working: false,
@@ -493,23 +499,12 @@ export function createChats(options: CoreOptions): TurriCore {
 
   const core: TurriCore = {
     spending: () => spending.snapshot(jobs.list()),
-    notifications: new TerminalNotifications(),
     cwd,
     host,
     jobs,
-    view: options.view,
     extension: (pi) => options.extension(pi, core.attach(pi)),
     get canOpen() {
       return driver !== undefined;
-    },
-    get terminal() {
-      return driver?.terminal === true;
-    },
-    welcomeVisible: (id) => !core.terminal || (!welcomeDismissed && welcomeChat === id),
-    dismissWelcome() {
-      if (!core.terminal || welcomeDismissed) return;
-      welcomeDismissed = true;
-      changed();
     },
     chats: () => chats.map((chat) => ({ id: chat.id, title: titleFor(chat), status: statusOf(chat), shown: chat.id === shownId, ...(chat.role !== undefined ? { role: chat.role } : {}) })),
     session: (id) => chats.find((chat) => chat.id === id)?.session,
@@ -580,7 +575,6 @@ export function createChats(options: CoreOptions): TurriCore {
       // The question whether to start the sentinel was in it: put again in the chat the person looks at now.
       if (asking?.chat === id) askAgain();
       chat.unsubscribe?.();
-      chat.ui?.close();
       inChat(chat.scope, () => record({ kind: "chat.closed" }, { project: cwd }));
       try {
         await driver?.dispose(chat);
@@ -618,7 +612,9 @@ export function createChats(options: CoreOptions): TurriCore {
 
     notify(message, level) {
       const chat = core.shownChat();
-      const ui: ExtensionUIContext | undefined = chat?.ui?.ui ?? chat?.session?.extensionRunner.getUIContext();
+      // Heard by every front end as it is said, and said in the chat shown as pi says what an extension says.
+      emitSessionEvent(host, { type: "notification", ...(chat !== undefined ? { chat: chat.id } : {}), text: message, level });
+      const ui: ExtensionUIContext | undefined = chat?.session?.extensionRunner.getUIContext();
       if (ui === undefined) {
         notices = [...notices, [message, level] as [string, typeof level]].slice(-10);
         return;
@@ -634,7 +630,6 @@ export function createChats(options: CoreOptions): TurriCore {
       options.onDispose?.();
       for (const chat of chats.splice(0)) {
         chat.unsubscribe?.();
-        chat.ui?.close();
         try {
           if (chat.session !== asked.except) await driver?.dispose(chat);
         } catch {
@@ -662,12 +657,11 @@ export function createChats(options: CoreOptions): TurriCore {
       };
     },
 
-    adopt(session, services) {
+    adopt(session) {
       const chat = core.chatOfSession(session) ?? core.shownChat() ?? chats.find((candidate) => candidate.session === undefined) ?? newChat();
       if (chat.session !== session) {
         if (chat.session) spending.closed(chat.session);
         chat.session = session;
-        chat.services = services;
         follow(chat);
         if (shownId === undefined) inChat(chat.scope, () => record({ kind: "chat.opened", reopened: session.messages.length > 0 }, { project: cwd }));
       }
@@ -677,12 +671,6 @@ export function createChats(options: CoreOptions): TurriCore {
     sentinelOn: () => driver !== undefined && wantsSentinel(),
 
     jobFinished(job) {
-      if (core.terminal) {
-        const didNotPass = job.status === "succeeded" && wentWrong(job);
-        const result = job.status === "succeeded" ? didNotPass ? "did not pass" : "finished" : job.status;
-        core.notifications.add(`${pulseName(job)} · ${result} after ${formatDuration(job)}`, job.error ?? job.report ?? job.note ?? "", { warning: job.status === "failed" || didNotPass });
-        changed();
-      }
       // The question was settled in config.turri.yaml while it was open: what it held goes as the file now says.
       if (consent === "asking" && setting() !== "ask") settleStart(setting() === true ? "given" : "declined", "superseded");
       if (core.sentinelOn()) {
@@ -754,15 +742,12 @@ export function createChats(options: CoreOptions): TurriCore {
       }
       // Only the sentinel's own may be ignored: never the question whether to start it.
       const { ignorable, ...rest } = input;
-      const notice = newNotice(ignorable === true && input.kind === undefined ? input : rest, target.id);
+      // notify_person may leave out what it is about: the sentinel checks one pulse, or one check, at a time - the notice says which.
+      const work = checking?.work;
+      const checkingNow = input.job === undefined && input.check === undefined && work !== undefined && currentChat()?.id === sentinelChat()?.id ? ("pulse" in work ? { job: work.pulse.id } : { check: work.check.id }) : {};
+      const notice = newNotice({ ...(ignorable === true && input.kind === undefined ? input : rest), ...checkingNow }, target.id);
       open.push(notice);
-      if (core.terminal) {
-        // notify_person may omit the id; the sentinel still has exactly one review in progress.
-        const work = checking?.work;
-        const about = work && currentChat()?.id === sentinelChat()?.id ? ("pulse" in work ? { job: work.pulse.id } : { check: work.check.id }) : undefined;
-        core.notifications.put(notice, about);
-      }
-      else if (target.id !== shownId) target.unread = true;
+      if (target.id !== shownId) target.unread = true;
       inChat(target.scope, () => record({ kind: "notice.put", notice: notice.id, severity: notice.severity, ...(notice.module !== undefined ? { module: notice.module } : {}) }, { project: cwd }));
       try {
         target.instance?.notice(notice);
@@ -791,8 +776,7 @@ export function createChats(options: CoreOptions): TurriCore {
       const module = conclusion.module ?? job?.module ?? check?.module;
       const pulse = conclusion.pulse ?? job?.pulse;
       const told = { ...conclusion, ...(module !== undefined ? { module } : {}), ...(pulse !== undefined ? { pulse } : {}) };
-      if (core.terminal) core.notifications.concluded(told);
-      else if (target.id !== shownId) target.unread = true;
+      if (target.id !== shownId) target.unread = true;
       inChat(target.scope, () =>
         record(
           { kind: "sentinel.concluded", verdict: told.verdict, ...(module !== undefined ? { module } : {}), ...(told.check !== undefined ? { check: told.check } : {}) },
@@ -879,7 +863,7 @@ export function createChats(options: CoreOptions): TurriCore {
       /* a host that throws must not keep the notice open */
     }
     if (chat !== undefined) inChat(chat.scope, () => record({ kind: "notice.over", notice: notice.id, state }, { project: cwd }));
-    if (core.terminal) changed();
+    changed();
   }
 
   /** A pulse ended, told to the chat that asked for it - as without a sentinel - or the chat shown, when that one is closed. */
@@ -970,7 +954,7 @@ export function createChats(options: CoreOptions): TurriCore {
     const asked = chats.find((chat) => chat.id === job.chat && chat.role !== SENTINEL);
     const where = personFacing(asked);
     if (where !== undefined) {
-      if (where.id !== shownId && !core.terminal) where.unread = true;
+      if (where.id !== shownId) where.unread = true;
       try {
         where.instance?.landed(job, { tell: !wentWrong(job) });
       } catch {
@@ -1016,9 +1000,7 @@ export function createChats(options: CoreOptions): TurriCore {
   }
 
   function sentinelMessage(message: string, level: "warning" | "error"): void {
-    if (!core.terminal) return core.notify(message, level);
-    core.notifications.add(message, "");
-    changed();
+    core.notify(message, level);
   }
 
   /** The sentinel's work, after what it was given before. */
@@ -1064,7 +1046,7 @@ export function createChats(options: CoreOptions): TurriCore {
     inChat(sentinel.scope, () =>
       record({ kind: "sentinel.refused", ...(module !== undefined ? { module } : {}), ...("check" in work ? { check: work.check.id } : {}), why: firstLine(why, 300) }, { project: cwd, ...("pulse" in work ? { job: work.pulse.id } : {}) }),
     );
-    if ("pulse" in work && !core.terminal) core.notify(`The sentinel cannot check pulse ${work.pulse.id}: ${why}`, "error");
+    if ("pulse" in work) core.notify(`The sentinel cannot check pulse ${work.pulse.id}: ${why}`, "error");
     core.concluded({
       ...("pulse" in work ? { job: work.pulse.id } : { check: work.check.id }),
       ...(module !== undefined ? { module } : {}),
@@ -1172,7 +1154,7 @@ export function createChats(options: CoreOptions): TurriCore {
    * the one it had.
    */
   async function freshConversation(chat: ChatState): Promise<void> {
-    const old = { session: chat.session!, services: chat.services, instance: chat.instance };
+    const old = { session: chat.session!, instance: chat.instance };
     chat.unsubscribe?.();
     chat.unsubscribe = undefined;
     try {
@@ -1252,8 +1234,3 @@ export function scopedToChat(pi: ExtensionAPI, scope: ChatScope): ExtensionAPI {
   });
 }
 
-/** A chat's stand-in for the screen, for the terminal's driver. */
-export function terminalUi(chat: ChatState, screen: () => ExtensionUIContext | undefined, onChange: () => void): ChatUi {
-  chat.ui ??= createChatUi({ screen, onChange });
-  return chat.ui;
-}

@@ -1,12 +1,11 @@
-/** In the terminal: regen, where the person watches the work - the side panel, its key, and the pulses behind it. */
-const REGEN = [
-  "- regen is the side panel (ctrl+h): the spec with each functionality and item marked built, regenerating,",
-  "  planned or waiting - and behind it the pulses (/pulses), every pulse regenerating, planned and finished. Say regen,",
-  "  lowercase. It was the regeneration, the job queue, or the job panel.",
+/** With no front end's words for it: where the person watches the work is not said, and no key or view is named. */
+const NO_SURFACE = [
+  "- What the person sees of your work - where they watch it, and what they press - is not said here. Speak of no key,",
+  "  panel or view: say what happened, and list the pulses with your tools when they ask.",
 ];
 
-/** In a host: where the person watches the work is the host's to say - its surface, below. */
-const HOST_SURFACE = [
+/** Where the person watches the work is the front end's to say - its surface, below. */
+const SURFACE = [
   "- What the person sees of your work - where they watch it, and what they press - is the app's you run in, and",
   "  <surface> below says it in its own words. Say only what it says, and speak of no key, panel or view it does not",
   "  name.",
@@ -14,14 +13,14 @@ const HOST_SURFACE = [
 
 /**
  * Who the conversation's agent is: turri, and what it does - first, so it speaks as turri, in the first person. Where
- * the person watches the work is the terminal's regen; given a host's surface, that is said in its place.
+ * the person watches the work is the front end's surface, in its own words; without one, no view is named.
  */
 export function conversationIdentity(surface?: string): string {
   const text = surface?.trim() ?? "";
   const hosted = text !== "";
   return [
     ...IDENTITY_BEFORE,
-    ...(hosted ? HOST_SURFACE : REGEN),
+    ...(hosted ? SURFACE : NO_SURFACE),
     ...IDENTITY_AFTER,
     ...(hosted ? ["", "<surface>", text, "</surface>"] : []),
     "</turri>",

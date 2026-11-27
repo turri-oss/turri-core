@@ -72,7 +72,8 @@ it("reports the startup sweep and agent costs before a chat opens and stops repo
       expect(events).toContainEqual({ type: "orphansStopped", count: 3 });
       expect(sweep).toHaveBeenCalledTimes(1);
       reportModelEvent({ kind: "provider_stall", role: "planner" });
-      expect(events.at(-1)).toMatchObject({ type: "incident", event: { kind: "provider_stall" } });
+      // The incident, then what the chat shown is told of it - every front end hears both.
+      expect(events.slice(-2)).toMatchObject([{ type: "incident", event: { kind: "provider_stall" } }, { type: "notification", level: "warning" }]);
       const call = { kind: "call", role: "planner", usage: { cost: 0.5, input: 5, output: 2, cacheRead: 0, cacheWrite: 0 } } as const;
       reportModelEvent(call);
       reportModelEvent(call);

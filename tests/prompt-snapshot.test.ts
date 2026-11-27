@@ -74,18 +74,26 @@ function toolsText(tools: Map<string, Tool>): string {
     .join("\n");
 }
 
+/** The terminal's own words for where the person watches the work - what turri's CLI says as its surface. */
+const TERMINAL_SURFACE = [
+  "regen is the side panel (ctrl+h): the spec with each functionality and item marked built, regenerating, planned or",
+  "waiting - and behind it the pulses (/pulses), every pulse regenerating, planned and finished. Say regen, lowercase. It",
+  "was the regeneration, the job queue, or the job panel. Finished pulses, the sentinel's conclusions and its notices go",
+  "to the notification centre (/notifications).",
+].join("\n");
+
+/** Two front ends: the terminal's, and a host's - each with its own words, each showing pulse ends and notices itself. */
 const SHAPES = {
-  terminal: { host: {}, terminal: true },
-  host: { host: { surface: "<the host's own words for its views>", pulseEndsShown: true, onNotice: () => {} }, terminal: false },
+  terminal: { host: { surface: TERMINAL_SURFACE, pulseEndsShown: true, noticesShown: true } },
+  host: { host: { surface: "<the host's own words for its views>", pulseEndsShown: true, noticesShown: true } },
 } as const;
 
 describe("what the model reads", () => {
-  for (const [shape, { host, terminal }] of Object.entries(SHAPES)) {
+  for (const [shape, { host }] of Object.entries(SHAPES)) {
     it(`in a ${shape}'s chat and its sentinel`, async () => {
       const session = createTurriCore(host, {});
       const chats: Array<ReturnType<typeof recordingPi>> = [];
       session.setDriver({
-        terminal,
         create: async () => {
           const made = recordingPi();
           chats.push(made);

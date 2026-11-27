@@ -132,25 +132,25 @@ export function noticeDialogs(
 
   return {
     put(notice) {
-      if (session.terminal) return; // The terminal centre received it, including the question whether to start.
       try {
         appendChatEntry(pi, NOTICE_ENTRY, notice);
       } catch {
-        /* the host still hears of it */
+        /* the front end still hears of it */
       }
-      // A host answers it itself: its card, its buttons. A note of a fix the sentinel made asks nothing: its card alone.
-      if (session.host.onNotice !== undefined || notice.kind === "fixed") return;
+      // A front end that shows notices puts them to the person itself: its card, its buttons. A note of a fix the sentinel
+      // made asks nothing: its card alone.
+      if (session.host.noticesShown === true || notice.kind === "fixed") return;
       waiting.push(notice);
       void ask();
     },
     concluded(conclusion) {
       try {
-        if (!session.terminal) appendChatEntry(pi, CONCLUDED_ENTRY, conclusion);
+        appendChatEntry(pi, CONCLUDED_ENTRY, conclusion);
       } catch {
         /* the agent is still told */
       }
-      // A host that shows the person the conclusion itself: the chat knows of it - in order, with no turn of its own.
-      const shown = session.terminal || session.host.pulseEndsShown === true;
+      // A front end that shows the person the conclusion itself: the chat knows of it - in order, with no turn of its own.
+      const shown = session.host.pulseEndsShown === true;
       sendChatMessage(pi,
         {
           customType: "turri_sentinel_concluded",
@@ -162,7 +162,6 @@ export function noticeDialogs(
       );
     },
     over(notice) {
-      if (session.terminal) return;
       asking.get(notice.id)?.abort();
       const at = waiting.indexOf(notice);
       if (at !== -1) waiting.splice(at, 1);

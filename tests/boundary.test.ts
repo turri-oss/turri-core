@@ -41,9 +41,8 @@ const SCREEN_CALLS = new Set(["registerEntryRenderer", "registerMessageRenderer"
 /**
  * Where a core file passes one of those on, doing nothing of its own with it - each site by its file, the function it is
  * in and what it is read from: a chat's scope hands pi's own registerShortcut its handler run in the chat (chats.ts,
- * scopedToChat, on the proxy's `target`); a hidden chat's stand-in for the screen passes a terminal input handler on to
- * the screen it is shown on, now (`screen`) or once shown (`next`) (chat-ui.ts, createChatUi). Anywhere else in those
- * files, it is a crossing.
+ * scopedToChat, on the proxy's `target`) - a front end's extension registering a key in a chat. Anywhere else in that
+ * file, it is a crossing.
  */
 interface PassedOn {
   file: string;
@@ -53,8 +52,6 @@ interface PassedOn {
 }
 const PASSED_ON: PassedOn[] = [
   { file: "src/chats.ts", within: "scopedToChat", on: "target", name: "registerShortcut" },
-  { file: "src/chat-ui.ts", within: "createChatUi", on: "screen", name: "onTerminalInput" },
-  { file: "src/chat-ui.ts", within: "createChatUi", on: "next", name: "onTerminalInput" },
 ];
 const siteOf = (site: PassedOn) => `${site.file} ${site.within}: ${site.on}.${site.name}`;
 
@@ -275,7 +272,7 @@ describe("the core's boundary with the terminal", () => {
   it("reads every file of the core", () => {
     const files = coreFiles().map((each) => each.file);
     expect(files.length).toBeGreaterThan(100);
-    expect(files).toEqual(expect.arrayContaining(["src/extension.ts", "src/view.ts", "src/regenerate/loop.ts"]));
+    expect(files).toEqual(expect.arrayContaining(["src/extension.ts", "src/chats.ts", "src/regenerate/loop.ts"]));
   });
 
   it("imports no pi-tui, including for text measurement", () => {
@@ -293,21 +290,17 @@ describe("the core's boundary with the terminal", () => {
     expect(found, found.join("\n")).toEqual([]);
   });
 
-  it("lets pi's registerShortcut and onTerminalInput be passed on at their three sites alone, each still there", () => {
+  it("lets pi's registerShortcut be passed on at its one site alone, still there", () => {
     const passed: string[] = [];
     for (const { file, text } of coreFiles()) crossings(file, text, (site) => passed.push(site));
     expect(passed.sort()).toEqual(PASSED_ON.map(siteOf).sort());
   });
 
-  it("finds pi's registerShortcut and onTerminalInput used anywhere else in the files that pass them on", () => {
+  it("finds pi's registerShortcut used anywhere else in the file that passes it on", () => {
     const chats = readFileSync("src/chats.ts", "utf8");
-    const chatUi = readFileSync("src/chat-ui.ts", "utf8");
     const lines = (text: string) => text.split("\n").length;
     expect(crossings("src/chats.ts", `${chats}\nexport function more(pi: ExtensionAPI) {\n  pi.registerShortcut("ctrl+h", { handler() {} });\n}\n`).map((crossing) => crossing.message)).toEqual([
       `src/chats.ts:${lines(chats) + 2} uses registerShortcut - the terminal's view does`,
-    ]);
-    expect(crossings("src/chat-ui.ts", `${chatUi}\nexport function more(screen: ExtensionUIContext) {\n  screen.onTerminalInput(() => undefined);\n}\n`).map((crossing) => crossing.message)).toEqual([
-      `src/chat-ui.ts:${lines(chatUi) + 2} uses onTerminalInput - the terminal's view does`,
     ]);
   });
 

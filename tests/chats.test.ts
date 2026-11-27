@@ -1,7 +1,6 @@
 import type { AgentSession, ExtensionAPI, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { currentChat, inChat } from "../src/chat-scope.ts";
-import { createChatUi } from "../src/chat-ui.ts";
 import { createChats, INTERRUPT_SETTLE_MS, interruptChat, MAX_CHATS, scopedToChat, type ChatLink, type Stoppable, type TurriCore } from "../src/chats.ts";
 import { createJobRegistry, type Job } from "../src/regenerate/jobs.ts";
 
@@ -57,25 +56,13 @@ function session() {
 const settled = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 /**
- * The terminal's chats, as its driver keeps them: each on a session of its own, drawing on its stand-in (chat-ui.ts) -
- * pi's one screen while it is shown. The screen says what it was asked and told.
+ * Chats on a front end's own pi sessions, as its driver keeps them: each on a session of its own, the one in front shown
+ * when turri asks. What it was asked to show is kept.
  */
-function terminalSession() {
-  const did: string[] = [];
-  const screen = {
-    select: async (title: string) => {
-      did.push(`select ${title}`);
-      return "picked";
-    },
-    notify: (message: string) => did.push(`notify ${message}`),
-    setWidget: () => {},
-    setStatus: () => {},
-    getEditorText: () => "",
-    setEditorText: () => {},
-  } as unknown as ExtensionUIContext;
+function frontEndSession() {
+  const shown: string[] = [];
   const core = createChats({ cwd: process.cwd(), host: {}, jobs: createJobRegistry(), extension: () => {} });
   core.setDriver({
-    terminal: true,
     async create(chat) {
       core.extension({} as ExtensionAPI);
       chat.session = Object.assign(fakeSession().session, {
@@ -84,11 +71,9 @@ function terminalSession() {
           this.disposed = true;
         },
       });
-      chat.ui = createChatUi({ screen: () => undefined });
     },
-    async show(chat, from) {
-      from?.ui?.hide();
-      chat.ui!.show(screen);
+    async show(chat) {
+      shown.push(chat.id);
       core.showing(chat);
     },
     async dispose(chat) {
@@ -97,7 +82,7 @@ function terminalSession() {
   });
   /** The chat's pi session, and whether it was let go. */
   const sessionOf = (id: string) => core.session(id) as AgentSession & { disposed: boolean };
-  return { core, did, sessionOf };
+  return { core, shown, sessionOf };
 }
 
 describe("the chats of a session", () => {
@@ -178,64 +163,35 @@ describe("the chats of a session", () => {
   });
 });
 
-describe("the terminal's chats", () => {
-  it("opens a chat beside the first and switches between them, nothing let go", async () => {
-    const { core, did, sessionOf } = terminalSession();
-
-    // The first chat, as pi's screen comes up on it.
+describe("chats on a front end's own sessions", () => {
+  it("opens a chat beside the first and switches between them, nothing let go - a question asked in a hidden one its status", async () => {
+    const { core, shown, sessionOf } = frontEndSession();
     await core.open();
-    expect(core.chats()).toHaveLength(1);
     const firstId = core.shown()!;
-    expect(core.welcomeVisible(firstId)).toBe(true);
-
-    // /new: a chat beside it, shown, the first one kept.
     await core.open();
     expect(core.chats().map((chat) => chat.shown)).toEqual([false, true]);
     const secondId = core.shown()!;
-    expect(core.welcomeVisible(secondId)).toBe(false);
-    expect(core.welcomeVisible(firstId)).toBe(true);
 
-    // What the terminal's submit does with a submission that is not blank (turri's chat-terminal.ts): the welcome gone.
-    core.dismissWelcome();
-    expect(core.welcomeVisible(firstId)).toBe(false);
-    const first = sessionOf(firstId);
-    expect(first.disposed).toBe(false);
-
-    // The first chat asks while hidden: nothing on the screen until it is shown again.
-    const ui = core.chatOfSession(first)!.ui!.ui;
-    const answer = ui.select("Which CRM?", ["a", "b"]);
-    expect(did).toEqual([]);
+    // turri asks in the first chat while it is hidden: its status says so, and the listeners hear it, until it is over.
+    let told = 0;
+    core.onChats(() => (told += 1));
+    const first = core.chatOfSession(sessionOf(firstId))!;
+    const decline = () => {};
+    first.scope.asking.add(decline);
     expect(core.chats()[0]!.status).toBe("question");
-    await core.show(core.chats()[0]!.id);
-    expect(await answer).toBe("picked");
-    expect(did).toEqual(["select Which CRM?"]);
-    ui.notify("said", "info");
-    expect(did).toEqual(["select Which CRM?", "notify said"]);
+    first.scope.asking.delete(decline);
+    expect(core.chats()[0]!.status).not.toBe("question");
+    expect(told).toBe(2);
+
+    await core.show(firstId);
+    expect(shown).toEqual([firstId, secondId, firstId]);
     expect(core.shown()).toBe(firstId);
-    expect(core.welcomeVisible(firstId)).toBe(false);
 
-    // Leaving turri lets the other chat go; pi lets go of the one it shows itself.
-    const second = sessionOf(secondId);
-    await core.dispose({ except: first });
-    expect(second.disposed).toBe(true);
-    expect(first.disposed).toBe(false);
-  });
-
-  it("gives the welcome to the person's first chat, never to the sentinel's opened before it", async () => {
-    const { core } = terminalSession();
-    const sentinel = await core.open({ role: "sentinel", hidden: true });
-    const person = await core.open();
-    expect(core.welcomeVisible(sentinel.id)).toBe(false);
-    expect(core.welcomeVisible(person.id)).toBe(true);
-  });
-
-  it("leaves the welcome in every chat that is not the terminal's, where dismissing it does nothing", async () => {
-    const { core } = session();
-    const first = await core.open();
-    const second = await core.open();
-    expect([first.id, second.id].map((id) => core.welcomeVisible(id))).toEqual([true, true]);
-    core.dismissWelcome();
-    expect([first.id, second.id].map((id) => core.welcomeVisible(id))).toEqual([true, true]);
+    // Leaving turri lets the other chat go; a front end that lets go of one itself keeps it.
+    const [firstSession, secondSession] = [sessionOf(firstId), sessionOf(secondId)];
+    await core.dispose({ except: firstSession });
+    expect(secondSession.disposed).toBe(true);
+    expect(firstSession.disposed).toBe(false);
   });
 });
 

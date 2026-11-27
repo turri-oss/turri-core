@@ -49,8 +49,8 @@ describe("/settings and pi's own settings", () => {
     expect(said).toEqual([]);
   });
 
-  it("says they open only in the terminal's chat when the screen has no menu, or there is no screen", async () => {
-    expect(await pickPiSettings(() => false)).toEqual(["pi's own settings open only in the terminal's chat."]);
-    expect(await pickPiSettings()).toEqual(["pi's own settings open only in the terminal's chat."]);
+  it("says they open only where the app has them when the front end has no menu for them, or there is none", async () => {
+    expect(await pickPiSettings(() => false)).toEqual(["pi's own settings open only where the app you use has them."]);
+    expect(await pickPiSettings()).toEqual(["pi's own settings open only where the app you use has them."]);
   });
 });

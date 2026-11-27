@@ -24,7 +24,9 @@ export type SessionEvent =
       | { state: "failed"; error: string }
       | { state: "stopped" }
     ))
-  | { type: "entry"; chat: string; entry: ChatEntry };
+  | { type: "entry"; chat: string; entry: ChatEntry }
+  /** What turri says to the person, outside any chat's transcript: in the chat shown, as pi says what an extension says. */
+  | { type: "notification"; chat?: string; text: string; level: "info" | "warning" | "error" };
 
 /** An observer that has lost its window must not interrupt a skill or prevent a chat from opening. */
 export function emitSessionEvent(host: { onEvent?(event: SessionEvent): void }, event: SessionEvent): void {

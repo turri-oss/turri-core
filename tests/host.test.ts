@@ -131,12 +131,12 @@ describe("turri for a host that runs it itself", () => {
 });
 
 describe("what a host says of its own surface", () => {
-  it("leaves the terminal's prompt as it is when the host describes none", async () => {
+  it("names no key, panel or view when the front end describes none", async () => {
     const prompt = await systemPromptFor({});
     expect(prompt).toBe(await systemPromptFor());
     expect(prompt.startsWith(`pi's own prompt\n\n${TURRI_IDENTITY}\n\n${TOOLS_NOT_CLI}\n\n`)).toBe(true);
-    expect(prompt).toContain("regen is the side panel (ctrl+h)");
-    expect(prompt).not.toContain("<surface>");
+    for (const named of ["ctrl+h", "side panel", "/pulses", "regen is", "<surface>"]) expect(prompt, named).not.toContain(named);
+    expect(prompt).toContain("is not said here. Speak of no key");
   });
 
   it("tells the conversation to start a new project itself, without offering a skill", async () => {
@@ -167,17 +167,14 @@ describe("what a host says of its own surface", () => {
     expect(prompt).toBe(`${seen}\n\n<app>the host's own words</app>`);
   });
 
-  it("says the host's words deep in the tools and side questions too - a pulse not found, a run refused", () => {
-    const jobs = createTurriCore({ surface: SURFACE }).jobs;
-    expect(stopJob(jobs, "nope")).toBe("No pulse nope. The pulses tool lists them.");
-    const terminalJobs = createTurriCore({}).jobs;
-    expect(stopJob(terminalJobs, "nope")).toBe("No pulse nope. /pulses shows them.");
-
-    expect(refusal("regenerate")).toContain("the panel and /halt");
-    expect(refusal("regenerate", SURFACE)).not.toContain("panel");
+  it("says the front end's words in side questions, and no front end's deep in the tools - a pulse not found, a run refused", () => {
+    // Deep in the tools, no front end's keys or views are named, whichever front end it is.
+    for (const host of [{ surface: SURFACE }, {}]) expect(stopJob(createTurriCore(host).jobs, "nope")).toBe("No pulse nope. The pulses tool lists them.");
+    expect(refusal("regenerate")).toContain("where the person can neither watch it nor halt it");
+    expect(refusal("regenerate")).not.toContain("panel");
 
     const side = { question: "Why?", conversation: "", pulses: [], projectDir: "/p", harnessDir: "/t" };
-    expect(sideQuestionPrompt(side)).toContain("ctrl+h");
+    expect(sideQuestionPrompt(side)).not.toContain("ctrl+h");
     const hosted = sideQuestionPrompt({ ...side, surface: SURFACE });
     expect(hosted).toContain(SURFACE);
     expect(hosted).not.toContain("ctrl+h");

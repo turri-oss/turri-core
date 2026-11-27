@@ -4,13 +4,12 @@ import type { Job } from "../src/regenerate/jobs.ts";
 import { TURRI_IDENTITY } from "../src/identity.ts";
 
 describe("what the chat is told it is", () => {
-  it("knows a job is a pulse, and the job queue regen - whatever a project's files still call them", () => {
+  it("knows a job is a pulse - whatever a project's files still call them - and names no front end's views of its own", () => {
     expect(TURRI_IDENTITY).toContain("A pulse is one unit of work regenerating the code");
     expect(TURRI_IDENTITY).toContain("the job_id a tool takes is a pulse's id");
     expect(TURRI_IDENTITY).toContain("parallel-jobs and");
     expect(TURRI_IDENTITY).toContain("\"Job\" in what you read is a pulse; say pulse.");
-    expect(TURRI_IDENTITY).toContain("It was the regeneration, the job queue, or the job panel.");
-    expect(TURRI_IDENTITY).toContain("Say regen,");
+    expect(TURRI_IDENTITY).not.toContain("Say regen,");
   });
 
   it("is turri itself, speaking in the first person, never of turri as someone else to pass a message to", () => {
