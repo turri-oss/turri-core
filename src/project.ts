@@ -5,6 +5,8 @@ import { runLaunchAgent } from "./launch-agent.ts";
 import { createJobRegistry } from "./regenerate/jobs.ts";
 import { createWorkLoop, type DriftReport } from "./regenerate/loop.ts";
 import { refuseTestPlainFile } from "./test-plain-files.ts";
+import { applyBedrockRegion } from "./bedrock-region.ts";
+import { projectDirOf } from "./regenerate/paths.ts";
 import type { Launch } from "./launch-track.ts";
 
 /**
@@ -28,6 +30,8 @@ export async function launchModule(plainFile: string, options: { cwd?: string; i
   const file = resolve(cwd, plainFile);
   refuseTestPlainFile(file);
   const model = options.model ?? modelSpec(projectModels(configForSpec(file)).coding);
+  // The AWS region its Bedrock model needs, set as a session sets it as it opens: this launch has none open.
+  applyBedrockRegion(projectDirOf(file), model !== undefined ? { also: [model] } : {});
   const track = createLaunchTrack({ cwd, run: (launch, code, signal, freed) => runLaunchAgent({ cwd, launch, code, signal, freed, model, ...(options.onOutput !== undefined ? { onDelta: options.onOutput } : {}) }) });
   const { launch } = track.request({ plainFile: file, ...(options.inModule !== undefined ? { inModule: options.inModule } : {}), ...(options.guidance !== undefined ? { guidance: options.guidance } : {}), cause: {} });
   return track.done(launch.id);

@@ -396,6 +396,23 @@ describe("a capture", () => {
     expect(existsSync(join(root, "plain", "tests", "notes", "add-note.plain"))).toBe(true);
   });
 
+  it("calls Bedrock models in the region they need, set as a session sets it - none being open", async () => {
+    const aws = ["AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE", "AWS_CONFIG_FILE", "TURRI_AWS_REGION"];
+    const kept = Object.fromEntries(aws.map((name) => [name, process.env[name]]));
+    for (const name of aws) delete process.env[name];
+    process.env.AWS_CONFIG_FILE = join(root, "no-aws-config");
+    try {
+      crashes.add("survey");
+      await expect(runCapture({ root, model: "amazon-bedrock/eu.anthropic.claude-opus-5-5" })).rejects.toThrow("stopped");
+      expect(process.env.AWS_REGION).toBe("eu-central-1");
+    } finally {
+      for (const name of aws) {
+        if (kept[name] === undefined) delete process.env[name];
+        else process.env[name] = kept[name];
+      }
+    }
+  });
+
   it("goes on from where it was stopped, asking no agent again what it answered", async () => {
     crashes = new Set(["feature notes/api#list-notes"]);
     await expect(runCapture({ root, leafLines: leafLines(), parallel: 1 })).rejects.toThrow("stopped");

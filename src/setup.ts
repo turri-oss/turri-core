@@ -9,7 +9,7 @@ import { sandboxAvailable, sandboxWithAsync, type Wall } from "./regenerate/os-s
 import { findTestScripts, onThisMachine } from "./regenerate/test-scripts.ts";
 import { CONFIG_FILE, configOverrides, hasProjectConfig, readProjectConfig, moduleConfigFile, configModuleOf, moduleConfigsOf, configProblems } from "./config.ts";
 import { checkModels, modelsInUse, piModelAccess, type ModelAccess } from "./model-check.ts";
-import { bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
+import { applyBedrockRegion, bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
 import { baseFilesAsync } from "./regenerate/base-folder.ts";
 import { readScript, scriptAgainstMachine, stackOnMachineAsync } from "./stack.ts";
 
@@ -136,7 +136,8 @@ export async function checkProjectModels(project: string, access?: ModelAccess):
   }
   let verdicts;
   try {
-    const region = describeBedrockRegion(bedrockRegionFor(project));
+    // The AWS region the Bedrock models need, set as a session sets it as it opens: doctor asks them with none open.
+    const region = describeBedrockRegion(applyBedrockRegion(project));
     verdicts = await checkModels(used, access ?? (await piModelAccess()), region !== undefined ? { bedrockRegion: region } : {});
   } catch (error) {
     return [{ level: "missing", name: "Models", detail: `pi's models could not be read: ${error instanceof Error ? error.message : String(error)}` }];

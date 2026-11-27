@@ -4,6 +4,7 @@ import { CONFIG_FILE, inheritModel, modelSpec, projectModels, readProjectConfig,
 import { captureDefaults, type CaptureRole } from "./models.ts";
 import { writeSetting } from "../config-edit.ts";
 import { slashed } from "../regenerate/paths.ts";
+import { applyBedrockRegion } from "../bedrock-region.ts";
 import { findTestScripts, testingScriptSkill, type ScriptKind } from "../regenerate/test-scripts.ts";
 import { checkModule } from "../module-check.ts";
 import type { CheckResult } from "../plain/check.ts";
@@ -155,6 +156,8 @@ export async function runCapture(options: CaptureOptions): Promise<CaptureResult
   // The config in use, from the start - after the state, so a capture stopped here goes on: its agents run on its models,
   // and the project it writes keeps them.
   if (config !== savedConfig) writeFileSync(configPath, config);
+  // The AWS region its Bedrock models need, set as a session sets it as it opens: a capture calls them with none open.
+  applyBedrockRegion(plainDir);
   const inUse = projectModels(readProjectConfig(plainDir));
   const model = options.model ?? options.harnessModel ?? modelSpec(inUse.harness);
   const codingModel = options.codingModel ?? modelSpec(inUse.coding);

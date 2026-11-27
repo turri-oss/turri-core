@@ -3,12 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const asked = vi.hoisted(() => ({ models: [] as string[] }));
+const asked = vi.hoisted(() => ({ models: [] as string[], regions: [] as Array<string | undefined> }));
 vi.mock("../src/model-check.ts", async (original) => ({
   ...(await original<typeof import("../src/model-check.ts")>()),
   piModelAccess: async () => ({}),
   checkModels: async (used: Array<{ spec: string; usedBy: string[] }>) => {
     asked.models.push(...used.map((model) => model.spec));
+    asked.regions.push(process.env.AWS_REGION);
     return used.map((model) => ({ ...model, ok: true, ms: 100 }));
   },
 }));
@@ -47,6 +48,24 @@ describe("doctor for a host", () => {
       more: [expect.stringContaining("none of config.turri.yaml applies")],
       fix: "Set each key once in config.turri.yaml, then run turri doctor again",
     });
+  });
+
+  it("calls Bedrock models in the region they need, set as a session sets it - none being open", async () => {
+    writeFileSync(join(project, "config.turri.yaml"), "harness-model: amazon-bedrock/eu.anthropic.claude-opus-5-5\ncoding-model: amazon-bedrock/eu.anthropic.claude-haiku-5-5\n");
+    const aws = ["AWS_REGION", "AWS_DEFAULT_REGION", "AWS_PROFILE", "AWS_CONFIG_FILE", "TURRI_AWS_REGION"];
+    const kept = Object.fromEntries(aws.map((name) => [name, process.env[name]]));
+    for (const name of aws) delete process.env[name];
+    process.env.AWS_CONFIG_FILE = join(project, "no-aws-config");
+    asked.regions = [];
+    try {
+      await doctor({ dir: project, models: true, env: { PATH: "" } });
+      expect(asked.regions).toEqual(["eu-central-1"]);
+    } finally {
+      for (const name of aws) {
+        if (kept[name] === undefined) delete process.env[name];
+        else process.env[name] = kept[name];
+      }
+    }
   });
 
   it("writes nothing to stdout, even asking the models", async () => {
