@@ -33,6 +33,7 @@ try {
   lock.name = consumer.name;
   lock.packages[""] = consumer;
   lock.packages[`node_modules/${manifest.name}`] = { version: manifest.version, resolved: consumer.dependencies[manifest.name], integrity: pack.integrity, dependencies: manifest.dependencies, peerDependencies: manifest.peerDependencies };
+  lock.packages = consumerTree(lock.packages);
   writeFileSync(join(dir, "package-lock.json"), JSON.stringify(lock));
   npm(["ci", "--prefer-offline", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], dir);
   copyFileSync("tests/contracts/consumer.mts", join(dir, "consumer.mts"));
@@ -48,4 +49,39 @@ try {
   console.log("Packed consumer: all entries, declarations, shared pi and private-import boundary passed.");
 } finally {
   rmSync(dir, { recursive: true, force: true });
+}
+
+// The lock's entries the consumer reaches, with the flags it gives them. The repository's lock marks pi and @types/node
+// dev, as they are here; npm 11 works the consumer's flags out again, but npm 10 - Node 22.19's - trusts them and
+// leaves both out under --omit=dev. So nothing is kept dev, and what only the repository's development reaches is
+// dropped, lest it hide a dependency the package forgot. A dependency resolves as Node finds it: in the dependent's own
+// node_modules, then in each one above it. One reached only through optional dependencies stays optional, so a
+// platform's own build is skipped elsewhere.
+function consumerTree(packages) {
+  const kept = {};
+  const resolveFrom = (path, name) => {
+    for (let dir = path; ; dir = dir.slice(0, Math.max(0, dir.lastIndexOf("/node_modules/")))) {
+      const candidate = dir ? `${dir}/node_modules/${name}` : `node_modules/${name}`;
+      if (packages[candidate]) return candidate;
+      if (!dir) return undefined;
+    }
+  };
+  const visit = (path, optional) => {
+    const seen = kept[path];
+    if (seen && (!seen.optional || optional)) return;
+    const { dev, devOptional, optional: wasOptional, peer, ...entry } = packages[path];
+    kept[path] = optional ? { ...entry, optional: true } : entry;
+    const optionals = Object.keys(entry.optionalDependencies ?? {});
+    const required = [
+      ...Object.keys(entry.dependencies ?? {}).filter((name) => !optionals.includes(name)),
+      ...Object.keys(entry.peerDependencies ?? {}).filter((name) => !entry.peerDependenciesMeta?.[name]?.optional),
+    ];
+    for (const [name, isOptional] of [...required.map((name) => [name, optional]), ...optionals.map((name) => [name, true])]) {
+      const found = resolveFrom(path, name);
+      if (found) visit(found, isOptional);
+      else if (!isOptional) throw new Error(`package-lock.json has no ${name} for ${path || "the consumer"}`);
+    }
+  };
+  visit("", false);
+  return kept;
 }
