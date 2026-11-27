@@ -477,14 +477,13 @@ export default extension;
 
 /**
  * The session's work loop, for a host to read: made with the first chat's context - the models it plans with - when no
- * chat has asked for work yet.
+ * chat has asked for work yet, or with the config's models when no chat is open.
  */
 export function sessionLoop(session: TurriCore): WorkLoop {
   const known = workLoops.get(session.jobs)?.loop;
   if (known !== undefined) return known;
   const live: AgentSession | undefined = session.shownChat()?.session ?? session.chats().map((info) => session.session(info.id)).find((found) => found !== undefined);
-  if (live === undefined) throw new Error("No chat is open yet: the work loop plans with a chat's models.");
-  return workLoopFor(session.jobs, session.cwd, live.extensionRunner.createContext());
+  return workLoopFor(session.jobs, session.cwd, live?.extensionRunner.createContext());
 }
 
 /**
@@ -2043,21 +2042,26 @@ function projectModel(ctx: ExtensionContext, plainFile?: string): string | undef
  * those wait by default.
  */
 /** The one work loop of a conversation's jobs: every tool that builds brings its modules up through it. */
-const workLoops = new WeakMap<JobRegistry, { loop: WorkLoop; from: { ctx: ExtensionContext } }>();
+const workLoops = new WeakMap<JobRegistry, { loop: WorkLoop; from: { ctx: ExtensionContext | undefined } }>();
 
 /** A session's launches, by its jobs: the launch track every chat's launch tool and every pulse's launch share. */
 const sessionLaunches = new WeakMap<JobRegistry, SessionLaunches>();
 
-function workLoopFor(jobs: JobRegistry, cwd: string, ctx: ExtensionContext): WorkLoop {
+/**
+ * The session's work loop, made once. With a chat's context - the last chat that asked for work - pulses build on the
+ * coding model as that chat resolves it, and the planner runs on the chat's model; before any chat has asked, or with
+ * none open, the config's models are used as they are named: the coding model builds, the harness model plans.
+ */
+function workLoopFor(jobs: JobRegistry, cwd: string, ctx?: ExtensionContext): WorkLoop {
   let shared = workLoops.get(jobs);
   if (shared === undefined) {
-    const from = { ctx };
+    const from: { ctx: ExtensionContext | undefined } = { ctx };
     const loop = createWorkLoop({
       registry: jobs,
       cwd,
-      modelFor: (plainFile) => projectModel(from.ctx, plainFile) ?? chatModelOf(from.ctx),
-      // The planner reasons about the whole of the work: it runs on the chat's model.
-      plannerModel: () => chatModelOf(from.ctx),
+      modelFor: (plainFile) => from.ctx !== undefined ? projectModel(from.ctx, plainFile) ?? chatModelOf(from.ctx) : codingModelDefault(plainFile)?.named,
+      // The planner reasons about the whole of the work: it runs on the chat's model - or the harness model, with no chat.
+      plannerModel: () => from.ctx !== undefined ? chatModelOf(from.ctx) : modelSpec(projectModels(configOf()).harness),
       // A pulse landed: its commit kept for the sentinel - and, under launch-after-pulse, launched in the background, the
       // codebase's next pulse not waiting on it.
       landed: (input) => sessionLaunches.get(jobs)?.landed(input),
@@ -2065,7 +2069,7 @@ function workLoopFor(jobs: JobRegistry, cwd: string, ctx: ExtensionContext): Wor
     shared = { loop, from };
     workLoops.set(jobs, shared);
   }
-  shared.from.ctx = ctx;
+  if (ctx !== undefined) shared.from.ctx = ctx;
   return shared.loop;
 }
 

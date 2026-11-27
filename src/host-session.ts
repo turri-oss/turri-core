@@ -56,7 +56,7 @@ export interface Turri {
   status(): { modules: (ModuleStatus & { lookedAhead?: boolean })[]; jobs: Job[]; planned: Job[] };
   /** Read drift and completion, even before the first chat opens. Never plans or starts work. */
   standing(files?: string[]): ModuleStanding[];
-  /** Plan on the chats' own loop, hold the plan and return its next prompts. Requires an open chat. */
+  /** Plan on the chats' own loop, hold the plan and return its next prompts - on the config's models when no chat is open. */
   lookAhead(plainFile: string): Promise<{ statuses: ModuleStatus[]; next: PlannedPulse[] }>;
   /** turri's custom entries in the chat's current branch, in transcript order. */
   entries(chat: string): ChatEntry[];

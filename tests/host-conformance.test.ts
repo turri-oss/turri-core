@@ -97,10 +97,13 @@ describe("a host looking ahead", () => {
   it("shows the next prompt and holds the plan across chats without starting a pulse", async () => {
     const planner = vi.spyOn(await import("../src/regenerate/chunk-plan.ts"), "llmChunkAgents").mockReturnValue({ group: async () => undefined, place: async () => undefined });
     writeTestScripts(dir);
+    writeFileSync(join(dir, "config.turri.yaml"), `${readFileSync(join(dir, "config.turri.yaml"), "utf8")}harness-model: p/talk:medium\ncoding-model: p/code:low\n`);
     const session = await createTurri();
     try {
       expect(session.standing()[0]?.module).toBe("app");
-      await expect(session.lookAhead("app.plain")).rejects.toThrow(/no chat is open/i);
+      // Before any chat is open, the loop plans on the config's harness model.
+      expect((await session.lookAhead("app.plain")).next[0]?.task).toContain("Say hello.");
+      expect(planner).toHaveBeenCalledWith(expect.objectContaining({ model: "p/talk:medium" }));
       await session.openChat();
       const { next } = await session.lookAhead("app.plain");
       expect(next).toHaveLength(1);
