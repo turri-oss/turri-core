@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { dump as dumpYaml, load as loadYaml } from "js-yaml";
 import { PACKAGE_ROOT } from "./environment.ts";
 import { loadRules } from "./rules.ts";
-import { adoptLegacyConfig, AGENT_ROLES, CONFIG_FILE, moduleConfigFile, moduleConfigFileIn, moduleConfigsOf, projectConfigFile, splitModelSpec, THINKING_LEVELS } from "./config.ts";
+import { adoptLegacyConfig, AGENT_ROLES, CONFIG_FILE, moduleConfigFile, moduleConfigFileIn, moduleConfigsOf, projectConfigFile, splitModelSpec, THINKING_LEVELS, type AgentRole } from "./config.ts";
+import { TurriError } from "./errors.ts";
 
 /**
  * `/settings`' and the chat's settings tool's side of config.turri.yaml: every setting turri reads, what it takes - a yes or no, one of a few words, a
@@ -17,9 +18,56 @@ export type Effect = "now" | "next-message" | "next-pulse" | "next-plan" | "next
 
 export type SettingKind = "boolean" | "choice" | "number" | "model" | "list" | "path";
 
+/** A role with an entry of its own under `models:` - each agent role, and `default`, which the others take. */
+export type ModelRole = "default" | AgentRole;
+
+/**
+ * What each setting takes, by its key as config.turri.yaml writes it: a model as provider/model-id with an optional
+ * `:thinking`, a path from the project root, a list as YAML's.
+ */
+export type SettingValues = {
+  "harness-model": string;
+  "coding-model": string;
+  "judge-model": string;
+  module: string;
+  review: boolean;
+  "mutation-testing": boolean;
+  "allow-to-stop-jobs": boolean;
+  "launch-after-pulse": boolean;
+  sentinel: boolean | "ask";
+  "conformance-tests": boolean;
+  "test-dir": string;
+  "base-folder": string;
+  "unittests-script": string;
+  "conformance-tests-script": string;
+  "prepare-environment-script": string;
+  "testing-scripts-run-on": "in-place" | "copy";
+  "parallel-jobs": number;
+  "max-specs-per-pulse": number;
+  "max-lines-per-pulse": number;
+  "turn-limit": number;
+  "compact-at": number;
+  "rules-off": string[];
+  "agent-env.files": string[];
+  "agent-env.vars": string[];
+  toolchains: string[];
+  debug: boolean;
+  "cache-keep": number;
+  "ledger-keep": number;
+} & { [R in ModelRole as `models.${R}`]: string } & { [R in ModelRole as `models.${R}.turn-limit`]: number };
+
+/** A setting, by its key as config.turri.yaml writes it. */
+export type SettingKey = keyof SettingValues;
+
+/** The kinds a setting's value can be read as. */
+type KindOf<V> = [V] extends [boolean] ? "boolean" : [V] extends [number] ? "number" : [V] extends [readonly string[]] ? "list" : "model" | "path" | "choice";
+
+/** A setting of the table, its kind the one its value takes. */
+type Entry<K extends SettingKey> = Omit<Setting, "key" | "kind"> & { kind: KindOf<SettingValues[K]> };
+
 export interface Setting {
   /** As written in the file - a nested one by its path: `models.coding`, `models.coding.turn-limit`, `agent-env.files`. */
-  key: string;
+  key: SettingKey;
   /** What it does, in a line. */
   about: string;
   kind: SettingKind;
@@ -55,7 +103,7 @@ export const EFFECT_TEXT: Record<Effect, string> = {
 const SECONDS = ["0", "60", "120", "180", "300"];
 
 /** A role's line: which agents it is, for the list. */
-const ROLE_ABOUT: Record<(typeof AGENT_ROLES)[number] | "default", string> = {
+const ROLE_ABOUT: Record<ModelRole, string> = {
   default: "every role not named",
   chat: "the conversation - as harness-model, which it wins over",
   sentinel: "the sentinel: checks every finished pulse and tests what is launched",
@@ -96,37 +144,42 @@ export function settings(rules: string[] = []): Setting[] {
       min: 0,
     },
   ]);
-  return [
-    { key: "harness-model", about: "the model you talk to: it writes the ***plain and plans the work", kind: "model", unset: "pi's own choice", effect: "now", projectOnly: true },
-    { key: "coding-model", about: "the model that writes the code", kind: "model", unset: "harness-model", effect: "next-pulse" },
-    { key: "judge-model", about: "the judge and the test review of a conformance run", kind: "model", unset: "coding-model", effect: "next-pulse" },
-    { key: "module", about: "the .plain file turri regenerate builds when none is named", kind: "path", unset: "the folder's .plain files", effect: "next-regenerate", projectOnly: true },
-    { key: "review", about: "whether the code and its tests are reviewed once they pass", kind: "boolean", unset: "true", effect: "next-pulse" },
-    { key: "mutation-testing", about: "whether the coding agent and the reviewer can put a bug in the code for one test run (can_it_fail)", kind: "boolean", unset: "true", effect: "next-pulse" },
-    { key: "allow-to-stop-jobs", about: "whether turri stops a running pulse the ***plain has moved on from", kind: "boolean", unset: "true", effect: "now" },
-    { key: "launch-after-pulse", about: "whether every pulse that lands code is launched, in the background", kind: "boolean", unset: "false", effect: "next-landing" },
-    { key: "sentinel", about: "whether a chat of its own checks every finished pulse, tests what is launched, and tells you what is wrong - ask: you are asked before it first opens", kind: "choice", options: ["ask", "true", "false"], unset: "ask", effect: "next-landing", personOnly: true },
-    { key: "conformance-tests", about: "whether functional specs' scenarios are written and conformance tested - false: none, and the chat's conform refused", kind: "boolean", unset: "false", effect: "now", personOnly: true },
-    { key: "test-dir", about: "the folder of the test plain files, a folder per module in it, by path from the project root", kind: "path", unset: "tests", effect: "now" },
-    { key: "base-folder", about: "a folder a codebase that requires no other module starts from, by path from the project root - code to build on, files to use, copied in once", kind: "path", unset: "none: it starts empty", effect: "next-pulse" },
-    { key: "unittests-script", about: "the unit testing script, by path from the project root", kind: "path", unset: "the one run_unittests*.sh found", effect: "next-test-run" },
-    { key: "conformance-tests-script", about: "the conformance testing script, by path from the project root", kind: "path", unset: "the one run_conformance_tests*.sh found", effect: "next-test-run" },
-    { key: "prepare-environment-script", about: "run on the build before every conformance testing script run, by path from the project root - optional", kind: "path", unset: "the one prepare_environment*.sh found, else none", effect: "next-test-run" },
-    { key: "testing-scripts-run-on", about: "what the testing scripts run on: the code itself, or a fresh copy", kind: "choice", options: ["in-place", "copy"], unset: "in-place", effect: "next-test-run" },
-    { key: "parallel-jobs", about: "how many pulses run at once, on modules that share nothing", kind: "number", options: ["1", "2", "3", "4", "6"], min: 1, unset: "half this machine's cores, one to four", effect: "now", projectOnly: true },
-    { key: "max-specs-per-pulse", about: "the most functional specs the planner groups into one pulse", kind: "number", options: ["1", "2", "3", "4", "5", "6"], min: 1, unset: "3", effect: "next-plan" },
-    { key: "max-lines-per-pulse", about: "the most lines of ***plain in one pulse before a group is split", kind: "number", options: ["60", "120", "200", "300"], min: 1, unset: "120", effect: "next-plan" },
-    { key: "turn-limit", about: "seconds each agent turn has, for every role without its own - 0 for none", kind: "number", options: SECONDS, min: 0, unset: "120", effect: "next-pulse" },
-    { key: "compact-at", about: "tokens of work an agent holds before it is compacted between turns", kind: "number", options: ["50000", "100000", "150000", "200000"], min: 1000, unset: "100000", effect: "next-pulse", projectOnly: true },
-    { key: "rules-off", about: "***plain rules left out of the prompts of the agents that write ***plain", kind: "list", options: rules, unset: "none", effect: "next-message", projectOnly: true, personOnly: true },
-    { key: "agent-env.files", about: "dotenv files whose variables the agents' commands get", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
-    { key: "agent-env.vars", about: "variables from turri's environment the agents' commands get, by name", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
-    { key: "toolchains", about: "folders of this machine an agent's commands may read beside the usual ones", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
-    { key: "debug", about: "whether turri keeps what it writes for debugging it - agents' logs and sessions, pulse logs, outputs", kind: "boolean", unset: "false", effect: "next-pulse", projectOnly: true },
-    { key: "cache-keep", about: "megabytes of package caches the project keeps; 0 keeps none", kind: "number", options: ["0", "1024", "4096", "16384"], min: 0, unset: "4096", effect: "next-start", projectOnly: true },
-    { key: "ledger-keep", about: "megabytes of the ledger - what turri did, as facts - the project keeps; 0 keeps none", kind: "number", options: ["0", "50", "100", "500"], min: 0, unset: "100", effect: "next-start", projectOnly: true, personOnly: true },
-    ...roles,
-  ];
+  const fixed = Object.entries(fixedSettings(rules)).map(([key, entry]) => ({ key, ...entry }) as Setting);
+  return [...fixed, ...roles];
+}
+
+/** The settings that are not a role's, by key - each one there, with the kind its value takes. */
+function fixedSettings(rules: string[]): { [K in Exclude<SettingKey, `models.${string}`>]: Entry<K> } {
+  return {
+    "harness-model": { about: "the model you talk to: it writes the ***plain and plans the work", kind: "model", unset: "pi's own choice", effect: "now", projectOnly: true },
+    "coding-model": { about: "the model that writes the code", kind: "model", unset: "harness-model", effect: "next-pulse" },
+    "judge-model": { about: "the judge and the test review of a conformance run", kind: "model", unset: "coding-model", effect: "next-pulse" },
+    module: { about: "the .plain file turri regenerate builds when none is named", kind: "path", unset: "the folder's .plain files", effect: "next-regenerate", projectOnly: true },
+    review: { about: "whether the code and its tests are reviewed once they pass", kind: "boolean", unset: "true", effect: "next-pulse" },
+    "mutation-testing": { about: "whether the coding agent and the reviewer can put a bug in the code for one test run (can_it_fail)", kind: "boolean", unset: "true", effect: "next-pulse" },
+    "allow-to-stop-jobs": { about: "whether turri stops a running pulse the ***plain has moved on from", kind: "boolean", unset: "true", effect: "now" },
+    "launch-after-pulse": { about: "whether every pulse that lands code is launched, in the background", kind: "boolean", unset: "false", effect: "next-landing" },
+    sentinel: { about: "whether a chat of its own checks every finished pulse, tests what is launched, and tells you what is wrong - ask: you are asked before it first opens", kind: "choice", options: ["ask", "true", "false"], unset: "ask", effect: "next-landing", personOnly: true },
+    "conformance-tests": { about: "whether functional specs' scenarios are written and conformance tested - false: none, and the chat's conform refused", kind: "boolean", unset: "false", effect: "now", personOnly: true },
+    "test-dir": { about: "the folder of the test plain files, a folder per module in it, by path from the project root", kind: "path", unset: "tests", effect: "now" },
+    "base-folder": { about: "a folder a codebase that requires no other module starts from, by path from the project root - code to build on, files to use, copied in once", kind: "path", unset: "none: it starts empty", effect: "next-pulse" },
+    "unittests-script": { about: "the unit testing script, by path from the project root", kind: "path", unset: "the one run_unittests*.sh found", effect: "next-test-run" },
+    "conformance-tests-script": { about: "the conformance testing script, by path from the project root", kind: "path", unset: "the one run_conformance_tests*.sh found", effect: "next-test-run" },
+    "prepare-environment-script": { about: "run on the build before every conformance testing script run, by path from the project root - optional", kind: "path", unset: "the one prepare_environment*.sh found, else none", effect: "next-test-run" },
+    "testing-scripts-run-on": { about: "what the testing scripts run on: the code itself, or a fresh copy", kind: "choice", options: ["in-place", "copy"], unset: "in-place", effect: "next-test-run" },
+    "parallel-jobs": { about: "how many pulses run at once, on modules that share nothing", kind: "number", options: ["1", "2", "3", "4", "6"], min: 1, unset: "half this machine's cores, one to four", effect: "now", projectOnly: true },
+    "max-specs-per-pulse": { about: "the most functional specs the planner groups into one pulse", kind: "number", options: ["1", "2", "3", "4", "5", "6"], min: 1, unset: "3", effect: "next-plan" },
+    "max-lines-per-pulse": { about: "the most lines of ***plain in one pulse before a group is split", kind: "number", options: ["60", "120", "200", "300"], min: 1, unset: "120", effect: "next-plan" },
+    "turn-limit": { about: "seconds each agent turn has, for every role without its own - 0 for none", kind: "number", options: SECONDS, min: 0, unset: "120", effect: "next-pulse" },
+    "compact-at": { about: "tokens of work an agent holds before it is compacted between turns", kind: "number", options: ["50000", "100000", "150000", "200000"], min: 1000, unset: "100000", effect: "next-pulse", projectOnly: true },
+    "rules-off": { about: "***plain rules left out of the prompts of the agents that write ***plain", kind: "list", options: rules, unset: "none", effect: "next-message", projectOnly: true, personOnly: true },
+    "agent-env.files": { about: "dotenv files whose variables the agents' commands get", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
+    "agent-env.vars": { about: "variables from turri's environment the agents' commands get, by name", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
+    toolchains: { about: "folders of this machine an agent's commands may read beside the usual ones", kind: "list", unset: "none", effect: "next-pulse", projectOnly: true, personOnly: true },
+    debug: { about: "whether turri keeps what it writes for debugging it - agents' logs and sessions, pulse logs, outputs", kind: "boolean", unset: "false", effect: "next-pulse", projectOnly: true },
+    "cache-keep": { about: "megabytes of package caches the project keeps; 0 keeps none", kind: "number", options: ["0", "1024", "4096", "16384"], min: 0, unset: "4096", effect: "next-start", projectOnly: true },
+    "ledger-keep": { about: "megabytes of the ledger - what turri did, as facts - the project keeps; 0 keeps none", kind: "number", options: ["0", "50", "100", "500"], min: 0, unset: "100", effect: "next-start", projectOnly: true, personOnly: true },
+  };
 }
 
 /** Every setting, as a host is given them: rules-off offering turri's own rules, as /settings offers them. */
@@ -337,6 +390,63 @@ export function shownValue(value: unknown): string {
     return `${entry.model ?? ""}${entry.thinking !== undefined ? `:${entry.thinking}` : ""}`;
   }
   return inline(value);
+}
+
+/** What a setting takes, in words: `true or false`, `a model, provider/model-id[:thinking]`, `one of in-place, copy`. */
+export function settingTakes(setting: Setting): string {
+  switch (setting.kind) {
+    case "boolean":
+      return "true or false";
+    case "model":
+      return "a model, provider/model-id[:thinking]";
+    case "path":
+      return "a path from the project root";
+    case "list":
+      return `a list${setting.options !== undefined && setting.options.length > 0 ? ` of ${setting.options.join(", ")}` : ""}`;
+    case "number":
+      return setting.options !== undefined ? `a number - e.g. ${setting.options.join(", ")}` : "a number";
+    case "choice":
+      return `one of ${(setting.options ?? []).join(", ")}`;
+  }
+}
+
+/**
+ * A setting's value in config.turri.yaml - or `module`'s own config.turri.<module>.yaml - as its kind takes it; undefined
+ * when it is unset there. A model is read as provider/model-id[:thinking], its turn limit apart. A value its kind
+ * cannot take throws `config-invalid`, naming the file and what it takes; a key there is no setting of, `not-found`.
+ */
+export function readSetting<K extends SettingKey>(projectDir: string, key: K, options: { module?: string } = {}): SettingValues[K] | undefined {
+  const setting = settingOf(key);
+  if (setting === undefined) throw new TurriError("not-found", `There is no setting ${String(key)}.`);
+  const { module } = options;
+  const raw = currentValue(module !== undefined ? readModuleConfigText(projectDir, module) : readConfigText(projectDir), setting.key);
+  if (raw === undefined || raw === null) return undefined;
+  const read = valueOfKind(setting, raw);
+  if (read === WRONG) throw new TurriError("config-invalid", `${module !== undefined ? moduleConfigFile(module) : CONFIG_FILE}'s ${setting.key} is ${inline(raw)}: it takes ${settingTakes(setting)}.`);
+  return read as SettingValues[K] | undefined;
+}
+
+const WRONG = Symbol("wrong");
+
+/** A value as a file has it, read as its setting's kind takes it - undefined, a model with no model or thinking; WRONG, one it cannot take. */
+function valueOfKind(setting: Setting, raw: unknown): unknown {
+  switch (setting.kind) {
+    case "boolean":
+      return typeof raw === "boolean" ? raw : WRONG;
+    case "number":
+      return typeof raw === "number" && Number.isFinite(raw) ? raw : WRONG;
+    case "list":
+      return Array.isArray(raw) && raw.every((item) => typeof item === "string") ? [...raw] : typeof raw === "string" ? [raw] : WRONG;
+    case "path":
+      return typeof raw === "string" ? raw : WRONG;
+    case "choice":
+      return (typeof raw === "string" || typeof raw === "boolean") && (setting.options ?? []).includes(String(raw)) ? raw : WRONG;
+    case "model": {
+      if (typeof raw !== "string" && (typeof raw !== "object" || Array.isArray(raw))) return WRONG;
+      const shown = shownValue(raw);
+      return shown === "" ? undefined : shown;
+    }
+  }
 }
 
 /** The project's config.turri.yaml - or the config.yaml it is read from until it has one - its text, empty when there is neither. */

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import type { AgentSession, ExtensionAPI, ExtensionContext, ExtensionFactory, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { AGENT_ROLES, CONFIG_FILE, configForSpec, configOverrides, dropConfigOverride, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines } from "./config.ts";
+import { AGENT_ROLES, CONFIG_FILE, configForSpec, configOverrides, readConfigFile, configModuleFor, hasProjectConfig, LEGACY_CONFIG_FILE, projectConfigFile, moduleConfigFile, moduleConfigFileIn, configModuleOf, moduleConfigsOf, withConfigModule, modelOnly, modelSpec, projectModels, readProjectConfig, roleModel, splitModelSpec, configLines } from "./config.ts";
 import { modulesRoot, projectDirOf, skillRunDir } from "./regenerate/paths.ts";
 import { sweepOrphanedGroups } from "./regenerate/shell.ts";
 import { readScript, scriptAgainstMachine, stackOnMachine, toolchainsBlock } from "./stack.ts";
@@ -2300,16 +2300,6 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
         }
         if (thinking !== undefined) pi.setThinkingLevel(thinking);
         return `The conversation runs on ${spec} now.`;
-      },
-      codingModel: () => {
-        const dropped: string[] = [];
-        // What the session chose wins over the file; changed in the file, the file's holds from now on.
-        const given = modelSpec(configOverrides(cwd).codingModel);
-        if (given !== undefined) {
-          dropped.push(`the coding model this session was opened with, ${given}`);
-          dropConfigOverride(cwd, "codingModel");
-        }
-        return dropped.length === 0 ? undefined : `Chosen this session, and given way to the config: ${dropped.join("; ")}.`;
       },
       parallelJobs: (count) => {
         const limit = count ?? parallelJobs(cwd);

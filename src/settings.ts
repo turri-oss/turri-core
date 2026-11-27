@@ -2,7 +2,7 @@ import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-
 import { Type } from "typebox";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { applyBedrockRegion } from "./bedrock-region.ts";
-import { CONFIG_FILE, LEGACY_CONFIG_FILE, moduleConfigFile, moduleConfigsOf, splitModelSpec, THINKING_LEVELS, usesLegacyConfig } from "./config.ts";
+import { CONFIG_FILE, configOverrides, dropConfigOverride, LEGACY_CONFIG_FILE, modelSpec, moduleConfigFile, moduleConfigsOf, splitModelSpec, THINKING_LEVELS, usesLegacyConfig } from "./config.ts";
 import {
   currentValue,
   dotenvFiles,
@@ -14,10 +14,12 @@ import {
   readModuleConfigText,
   settingOf,
   settings,
+  settingTakes,
   shownValue,
   writeSetting,
   type Setting,
 } from "./config-edit.ts";
+import { TurriError } from "./errors.ts";
 import { PACKAGE_ROOT } from "./environment.ts";
 import { describeResolution, resolveModel } from "./regenerate/model-names.ts";
 import { loadRules } from "./rules.ts";
@@ -38,10 +40,93 @@ import { loadRules } from "./rules.ts";
 export interface LiveHooks {
   /** The chat's model is now this - provider/id:thinking - or, undefined, no longer set in the file. */
   chatModel(spec: string | undefined, ctx: ExtensionContext): Promise<string | undefined>;
-  /** The coding model changed in the file: one given for this session - --coding-model - gives way to it. */
-  codingModel(): string | undefined;
   /** How many pulses run at once: the number, or the machine's default. */
   parallelJobs(count: number | undefined): string | undefined;
+}
+
+/** What a written setting changes as turri runs, outside any chat: the session's. */
+export interface WriteHooks {
+  /** The chat that changed it switches to its model - provider/id:thinking - or, undefined, no longer set in the file. */
+  chatModel?(spec: string | undefined): Promise<string | undefined>;
+  /** How many pulses run at once: the number, or the machine's default. */
+  parallelJobs(count: number | undefined): string | undefined;
+}
+
+/**
+ * Write a setting - or unset it, `value` undefined - into config.turri.yaml, or `module`'s own file, and change live what
+ * turri fixed at its start: the AWS region a Bedrock model needs, a model the session was opened with giving way to the
+ * file's, the chat's model, how many pulses run at once. Says what it did and when it takes effect. `chatSpec`: the
+ * chat's model as the file has it now.
+ */
+export async function changeSetting(
+  cwd: string,
+  setting: Setting,
+  value: unknown,
+  module: string | undefined,
+  hooks: WriteHooks & { chatSpec?: () => string | undefined },
+): Promise<{ file: string; said: string }> {
+  // The first setting written where the project is still read from config.yaml: copied to config.turri.yaml first.
+  const adopting = usesLegacyConfig(cwd);
+  const text = writeSetting(cwd, setting.key, value, module);
+  const file = module !== undefined ? moduleConfigFile(module) : CONFIG_FILE;
+  const notes: string[] = [];
+  // A model changed: the AWS region its Bedrock models need is worked out again - set, moved or taken back by turri.
+  if (setting.key.endsWith("-model") || setting.key.startsWith("models.")) applyBedrockRegion(cwd);
+  // What turri fixed at its start, changed now: a model the session was opened with gives way to the file's.
+  if (setting.key === "harness-model" || setting.key === "models.chat") {
+    const gave = givenWay(cwd, "harnessModel", "the harness model");
+    if (gave !== undefined) notes.push(gave);
+    const said = await hooks.chatModel?.(hooks.chatSpec?.());
+    if (said !== undefined) notes.push(said);
+  }
+  if (setting.key === "coding-model" || setting.key === "models.coding" || setting.key === "models.default") {
+    const gave = givenWay(cwd, "codingModel", "the coding model");
+    if (gave !== undefined) notes.push(gave);
+  }
+  if (setting.key === "parallel-jobs") {
+    const said = hooks.parallelJobs(typeof value === "number" ? value : undefined);
+    if (said !== undefined) notes.push(said);
+  }
+  if (adopting) notes.push(`${LEGACY_CONFIG_FILE} was copied to ${CONFIG_FILE} first - turri reads its own file from now on, and leaves ${LEGACY_CONFIG_FILE} as it is.`);
+  if (module !== undefined) notes.push(`It holds for ${module}.plain and every module built on it that has no file of its own, over ${CONFIG_FILE}.`);
+  notes.push(...overriddenBy(cwd, text, setting, module));
+  const what = value === undefined ? `${setting.key} unset - ${module !== undefined ? `${CONFIG_FILE}'s holds` : setting.unset}` : `${setting.key}: ${shownValue(value)}`;
+  return { file, said: [`${what} - written to ${file}, ${EFFECT_TEXT[setting.effect]}.`, ...notes].join("\n") };
+}
+
+/** A model this session was opened with, given way to the file's: said, or nothing when there was none. */
+function givenWay(cwd: string, which: "codingModel" | "harnessModel", what: string): string | undefined {
+  const given = modelSpec(configOverrides(cwd)[which]);
+  if (given === undefined) return undefined;
+  dropConfigOverride(cwd, which);
+  return `Chosen this session, and given way to the config: ${what} this session was opened with, ${given}.`;
+}
+
+/**
+ * A setting's value as a front end gives it - typed, not typed in - checked as /settings checks what is typed: what to
+ * write, undefined to unset it. `known`: whether a model can be reached here. One it cannot take throws `refused`.
+ */
+export function givenValue(cwd: string, setting: Setting, value: unknown, known?: (model: string) => boolean): unknown {
+  if (value === undefined || value === null) return undefined;
+  if (setting.kind === "list") {
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new TurriError("refused", `${setting.key} takes ${settingTakes(setting)}.`);
+    const unknown = setting.options !== undefined && setting.options.length > 0 ? value.filter((item) => !setting.options!.includes(item)) : [];
+    if (unknown.length > 0) throw new TurriError("refused", `Not one of ${setting.key}'s: ${unknown.join(", ")}. It takes ${setting.options!.join(", ")}.`);
+    return [...value];
+  }
+  const typed = String(value);
+  const outside = outsideProject(cwd, setting, typed);
+  if (outside !== undefined) throw new TurriError("refused", outside);
+  const parsed = parseValue(setting, typed, known);
+  if ("error" in parsed) throw new TurriError("refused", parsed.error);
+  return "unset" in parsed ? undefined : parsed.value;
+}
+
+/** Why a path setting's value is refused: it is outside the project. Undefined for one inside, or another kind. */
+function outsideProject(cwd: string, setting: Setting, typed: string): string | undefined {
+  if (setting.kind !== "path" || /^(unset|default|none|-)$/i.test(typed.trim())) return undefined;
+  const inside = relative(cwd, resolve(cwd, typed.trim()));
+  return inside.startsWith("..") || isAbsolute(inside) ? `${setting.key} takes a path inside the project, from its root - ${typed.trim()} is outside it.` : undefined;
 }
 
 export interface SettingsOptions {
@@ -126,37 +211,9 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
     seen = ctx;
   });
 
-  /**
-   * Write a setting - or unset it - into config.turri.yaml, or `module`'s own file, and change live what turri fixed at
-   * its start; says what it did and when it takes effect.
-   */
-  const change = async (setting: Setting, value: unknown, ctx: ExtensionContext, module?: string): Promise<string> => {
-    // The first setting written where the project is still read from config.yaml: copied to config.turri.yaml first.
-    const adopting = usesLegacyConfig(cwd);
-    const text = writeSetting(cwd, setting.key, value, module);
-    const file = module !== undefined ? moduleConfigFile(module) : CONFIG_FILE;
-    const notes: string[] = [];
-    // A model changed: the AWS region its Bedrock models need is worked out again - set, moved or taken back by turri.
-    if (setting.key.endsWith("-model") || setting.key.startsWith("models.")) applyBedrockRegion(cwd);
-    // What turri fixed at its start, changed now.
-    if (setting.key === "harness-model" || setting.key === "models.chat") {
-      const said = await options.live.chatModel(options.chatSpec(), ctx);
-      if (said !== undefined) notes.push(said);
-    }
-    if (setting.key === "coding-model" || setting.key === "models.coding" || setting.key === "models.default") {
-      const said = options.live.codingModel();
-      if (said !== undefined) notes.push(said);
-    }
-    if (setting.key === "parallel-jobs") {
-      const said = options.live.parallelJobs(typeof value === "number" ? value : undefined);
-      if (said !== undefined) notes.push(said);
-    }
-    if (adopting) notes.push(`${LEGACY_CONFIG_FILE} was copied to ${CONFIG_FILE} first - turri reads its own file from now on, and leaves ${LEGACY_CONFIG_FILE} as it is.`);
-    if (module !== undefined) notes.push(`It holds for ${module}.plain and every module built on it that has no file of its own, over ${CONFIG_FILE}.`);
-    notes.push(...overriddenBy(cwd, text, setting, module));
-    const what = value === undefined ? `${setting.key} unset - ${module !== undefined ? `${CONFIG_FILE}'s holds` : setting.unset}` : `${setting.key}: ${shownValue(value)}`;
-    return [`${what} - written to ${file}, ${EFFECT_TEXT[setting.effect]}.`, ...notes].join("\n");
-  };
+  /** Write a setting - or unset it - and say what it did and when it takes effect. */
+  const change = async (setting: Setting, value: unknown, ctx: ExtensionContext, module?: string): Promise<string> =>
+    (await changeSetting(cwd, setting, value, module, { chatModel: (spec) => options.live.chatModel(spec, ctx), chatSpec: options.chatSpec, parallelJobs: options.live.parallelJobs })).said;
 
   /** Set a setting to what was typed - or unset it - and say what it did and when it takes effect. */
   const apply = async (setting: Setting, typed: string, ctx: ExtensionContext): Promise<void> => {
@@ -385,10 +442,8 @@ function writtenValue(setting: Setting, given: string, cwd: string, ctx: Extensi
     resolvedModel = resolved.model;
     typed = `${resolvedModel}${level !== undefined ? `:${level}` : ""}`;
   }
-  if (setting.kind === "path" && !/^(unset|default|none|-)$/i.test(typed)) {
-    const inside = relative(cwd, resolve(cwd, typed));
-    if (inside.startsWith("..") || isAbsolute(inside)) throw new Error(`${setting.key} takes a path inside the project, from its root - ${typed} is outside it. Nothing was written.`);
-  }
+  const outside = outsideProject(cwd, setting, typed);
+  if (outside !== undefined) throw new Error(`${outside} Nothing was written.`);
   const parsed = parseValue(setting, typed, resolvedModel === undefined ? undefined : (model) => model === resolvedModel);
   if ("error" in parsed) throw new Error(`${parsed.error} Nothing was written.`);
   return "unset" in parsed ? undefined : parsed.value;
@@ -412,18 +467,7 @@ function describeSettings(cwd: string, rules: () => string[]): string {
 /** One setting, as the chat is told it: what it does, what it takes, what it is in each file. */
 function describeSetting(cwd: string, setting: Setting): string {
   const now = currentValue(readConfigText(cwd), setting.key);
-  const takes =
-    setting.kind === "boolean"
-      ? "true or false"
-      : setting.kind === "model"
-        ? "a model, provider/model-id[:thinking]"
-        : setting.kind === "path"
-          ? "a path from the project root"
-          : setting.kind === "list"
-            ? `a list${setting.options !== undefined ? ` of ${setting.options.join(", ")}` : ""}`
-            : setting.options !== undefined
-              ? `${setting.kind === "number" ? "a number - e.g. " : "one of "}${setting.options.join(", ")}`
-              : `a ${setting.kind}`;
+  const takes = settingTakes(setting);
   const modules = setting.projectOnly === true ? [] : moduleConfigsOf(cwd).flatMap((module) => {
     const own = currentValue(readModuleConfigText(cwd, module), setting.key);
     return own !== undefined ? [`${moduleConfigFile(module)}: ${shownValue(own)}`] : [];

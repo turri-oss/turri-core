@@ -336,6 +336,12 @@ describe("config settings for a host", () => {
     expect(review).toMatchObject({ kind: "boolean", unset: "true" });
     expect(host.EFFECT_TEXT[review.effect]).toMatch(/next pulse/);
     expect(host.configSettings().find((setting) => setting.key === "rules-off")!.options).toContain("turri-regeneration");
-    expect(host.currentValue("review: false\nmodels:\n  coding: anthropic/claude-opus-5-5:low\n", "models.coding")).toBe("anthropic/claude-opus-5-5:low");
+    const project = mkdtempSync(join(tmpdir(), "turri-read-setting-"));
+    writeFileSync(join(project, "config.turri.yaml"), "review: false\nmodels:\n  coding: { model: anthropic/claude-opus-5-5, thinking: low, turn-limit: 200 }\nagent-env:\n  files: [.env]\n");
+    expect(host.readSetting(project, "models.coding")).toBe("anthropic/claude-opus-5-5:low");
+    expect(host.readSetting(project, "models.coding.turn-limit")).toBe(200);
+    expect(host.readSetting(project, "review")).toBe(false);
+    expect(host.readSetting(project, "agent-env.files")).toEqual([".env"]);
+    expect(host.readSetting(project, "parallel-jobs")).toBeUndefined();
   });
 });

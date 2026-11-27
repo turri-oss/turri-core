@@ -233,9 +233,6 @@ export interface Convention {
 export function credentialsFile(agentDir?: string): string;
 
 // @public
-export function currentValue(text: string, key: string): unknown;
-
-// @public
 export function debugMode(project: string): boolean;
 
 // @public
@@ -849,6 +846,9 @@ export type ModelPair = Omit<ModelSet, "strong"> & {
 };
 
 // @public
+export type ModelRole = "default" | AgentRole;
+
+// @public
 interface ModelSet {
     // (undocumented)
     coding: string;
@@ -1100,6 +1100,11 @@ export function readLedger(project: string, query?: LedgerQuery): LedgerEntry[];
 export function readProjectConfig(root: string, module?: string): ProjectConfig;
 
 // @public
+export function readSetting<K extends SettingKey>(projectDir: string, key: K, options?: {
+    module?: string;
+}): SettingValues[K] | undefined;
+
+// @public
 export interface RoleChoice extends ModelChoice {
     // (undocumented)
     turnLimit?: number;
@@ -1193,7 +1198,7 @@ export interface Setting {
     about: string;
     // (undocumented)
     effect: Effect;
-    key: string;
+    key: SettingKey;
     // (undocumented)
     kind: SettingKind;
     min?: number;
@@ -1203,8 +1208,50 @@ export interface Setting {
     unset: string;
 }
 
+// @public
+export type SettingKey = keyof SettingValues;
+
 // @public (undocumented)
 export type SettingKind = "boolean" | "choice" | "number" | "model" | "list" | "path";
+
+// @public
+export function settingTakes(setting: Setting): string;
+
+// @public
+export type SettingValues = {
+    "harness-model": string;
+    "coding-model": string;
+    "judge-model": string;
+    module: string;
+    review: boolean;
+    "mutation-testing": boolean;
+    "allow-to-stop-jobs": boolean;
+    "launch-after-pulse": boolean;
+    sentinel: boolean | "ask";
+    "conformance-tests": boolean;
+    "test-dir": string;
+    "base-folder": string;
+    "unittests-script": string;
+    "conformance-tests-script": string;
+    "prepare-environment-script": string;
+    "testing-scripts-run-on": "in-place" | "copy";
+    "parallel-jobs": number;
+    "max-specs-per-pulse": number;
+    "max-lines-per-pulse": number;
+    "turn-limit": number;
+    "compact-at": number;
+    "rules-off": string[];
+    "agent-env.files": string[];
+    "agent-env.vars": string[];
+    toolchains: string[];
+    debug: boolean;
+    "cache-keep": number;
+    "ledger-keep": number;
+} & {
+    [R in ModelRole as `models.${R}`]: string;
+} & {
+    [R in ModelRole as `models.${R}.turn-limit`]: number;
+};
 
 // @public
 export function skillModel(root: string, role?: "harness" | "coding"): string | undefined;

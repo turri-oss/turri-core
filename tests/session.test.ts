@@ -281,8 +281,59 @@ describe("a session's settings", () => {
       expect(said).toContain("review: false");
       expect(turri.settings.get("review")).toBe(false);
       expect(readFileSync(join(dir, "config.turri.yaml"), "utf8")).toContain("review: false");
-      await expect(turri.settings.set("review", "maybe")).rejects.toSatisfy(code("refused"));
-      await expect(turri.settings.set("no-such-key", 1)).rejects.toSatisfy(code("not-found"));
+      await expect(turri.settings.set("review", "maybe" as never)).rejects.toSatisfy(code("refused"));
+      await expect(turri.settings.set("no-such-key" as never, 1 as never)).rejects.toSatisfy(code("not-found"));
+    } finally {
+      await turri.dispose();
+    }
+  });
+
+  it("are read and written by their type - a number, a list, a model, a choice", async () => {
+    const turri = await createTurri();
+    try {
+      await turri.settings.set("max-specs-per-pulse", 4);
+      await turri.settings.set("agent-env.vars", ["HOME", "PATH"]);
+      await turri.settings.set("models.coding", "anthropic/claude-opus-5-5:low");
+      await turri.settings.set("sentinel", false);
+      expect(turri.settings.get("max-specs-per-pulse")).toBe(4);
+      expect(turri.settings.get("agent-env.vars")).toEqual(["HOME", "PATH"]);
+      expect(turri.settings.get("models.coding")).toBe("anthropic/claude-opus-5-5:low");
+      expect(turri.settings.get("sentinel")).toBe(false);
+      await turri.settings.set("max-specs-per-pulse", undefined);
+      expect(turri.settings.get("max-specs-per-pulse")).toBeUndefined();
+    } finally {
+      await turri.dispose();
+    }
+  });
+
+  it("refuse what /settings refuses - a number below its least, a path outside the project, a project setting in a module's file", async () => {
+    const turri = await createTurri();
+    try {
+      await expect(turri.settings.set("max-specs-per-pulse", 0)).rejects.toSatisfy(code("refused"));
+      await expect(turri.settings.set("test-dir", "../elsewhere")).rejects.toSatisfy(code("refused"));
+      await expect(turri.settings.set("parallel-jobs", 2, { module: "backend" })).rejects.toSatisfy(code("refused"));
+      await expect(turri.settings.set("rules-off", ["no-such-rule"])).rejects.toSatisfy(code("refused"));
+    } finally {
+      await turri.dispose();
+    }
+  });
+
+  it("say a value the file has that its kind cannot take, naming the file", async () => {
+    writeFileSync(join(dir, "config.turri.yaml"), "review: maybe\n");
+    const turri = await createTurri();
+    try {
+      expect(() => turri.settings.get("review")).toThrow(/config\.turri\.yaml's review is maybe: it takes true or false/);
+      expect(() => turri.settings.get("review")).toSatisfy((read: () => unknown) => { try { read(); return false; } catch (error) { return isTurriError(error, "config-invalid"); } });
+    } finally {
+      await turri.dispose();
+    }
+  });
+
+  it("give the model the session was opened with way to the file's, as /settings does", async () => {
+    const turri = await createTurri({ overrides: { codingModel: "openai/gpt-6-luna" } });
+    try {
+      const { said } = await turri.settings.set("coding-model", "anthropic/claude-opus-5-5");
+      expect(said).toContain("given way to the config: the coding model this session was opened with, openai/gpt-6-luna");
     } finally {
       await turri.dispose();
     }

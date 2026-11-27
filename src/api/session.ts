@@ -87,6 +87,7 @@ export type { ExportResult, WorkRequest, WorkResult, WorkRunOptions } from "../w
 export type { ChatRole, NoticeInput } from "../notice.ts";
 export type { ChatRecord } from "../chat-records.ts";
 export type { ConfigLine, ConfigLineKind } from "../config.ts";
+export type { ModelRole, SettingKey, SettingValues } from "../config-edit.ts";
 export type { JobRef, TranscriptRecord } from "../chat-entries.ts";
 export type { JobStatus } from "../regenerate/jobs.ts";
 export type { AgentTally, BuildingSpec, SpecConflict, UsageReport } from "../regenerate/activity.ts";

@@ -59,6 +59,16 @@ const turri = await createTurri({ frontend: {}, agentDir, sessionDir: join(proje
 try {
   await assert.rejects(createTurri(), (error: unknown) => isTurriError(error, "session-open"));
   assert.deepEqual(turri.work.status(), { jobs: [], modules: [], planned: [], busy: false });
+  // Settings by their keys, each value its type.
+  const sentinel: boolean | "ask" | undefined = turri.settings.get("sentinel");
+  assert.equal(sentinel, false);
+  await turri.settings.set("agent-env.vars", ["HOME"]);
+  const vars: string[] | undefined = turri.settings.get("agent-env.vars");
+  assert.deepEqual(vars, ["HOME"]);
+  // @ts-expect-error a key there is no setting of
+  assert.throws(() => turri.settings.get("no-such-setting"), (error: unknown) => isTurriError(error, "not-found"));
+  // @ts-expect-error a setting's value of another type
+  await assert.rejects(turri.settings.set("review", "maybe"), (error: unknown) => isTurriError(error, "refused"));
   assert.deepEqual(turri.launches.list(), []);
   assert.deepEqual(turri.work.standing([file])[0]?.drift, readDrift(file));
   const chat = await turri.chats.open();

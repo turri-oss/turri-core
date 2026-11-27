@@ -24,7 +24,7 @@ export function credentialsFile(agentDir = getAgentDir()): string {
 }
 
 export { AGENT_ROLES, CONFIG_FILE, configForSpec, configLines, configuredModel, debugMode, DEFAULT_TEST_DIR, hasProjectConfig, moduleConfigsOf, readProjectConfig, skillModel, testDirOf, type AgentRole, type ConfigLine, type ConfigLineKind, type ProjectConfig, type RoleChoice, type SentinelSetting, type ThinkingLevel } from "../config.ts";
-export { configSettings, currentValue, EFFECT_TEXT, overriddenBy, readConfigText, type Effect, type Setting, type SettingKind } from "../config-edit.ts";
+export { configSettings, EFFECT_TEXT, overriddenBy, readConfigText, readSetting, settingTakes, type Effect, type ModelRole, type Setting, type SettingKey, type SettingKind, type SettingValues } from "../config-edit.ts";
 export { initConfig, PLAIN_PAINT, type InitConfigOptions, type ModelPair, type Paint } from "../init-config.ts";
 export { MODULES_DIR, projectDirOf } from "../regenerate/paths.ts";
 export { defaultParallelJobs } from "../regenerate/jobs.ts";

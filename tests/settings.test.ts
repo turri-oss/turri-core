@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerSettings, type LiveHooks } from "../src/settings.ts";
-import { modelSpec, projectModels, readProjectConfig } from "../src/config.ts";
+import { configOverrides, modelSpec, projectModels, readProjectConfig, setConfigOverrides } from "../src/config.ts";
 import { createJobRegistry } from "../src/regenerate/jobs.ts";
 
 let dir: string;
@@ -11,6 +11,7 @@ beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), "turri-settings-")));
 });
 afterEach(() => {
+  setConfigOverrides(dir, undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -35,7 +36,6 @@ function setUp(answers: string[] = [], extraModels: Array<{ provider: string; id
   const live: Array<[string, unknown]> = [];
   const hooks: LiveHooks = {
     chatModel: async (spec) => (live.push(["chat", spec]), `The conversation runs on ${spec} now.`),
-    codingModel: () => (live.push(["coding", undefined]), "Chosen this session, and given way to the config: --coding-model x."),
     parallelJobs: (count) => (live.push(["parallel", count]), `Up to ${count} pulses run at once now.`),
   };
   registerSettings(pi as never, { cwd: dir, rules: () => ["concise-specs", "integrations"], chatSpec: () => modelSpec(projectModels(readProjectConfig(dir)).harness), live: hooks });
@@ -123,11 +123,12 @@ describe("/settings", () => {
 
   it("lets the coding model chosen this session give way, and changes how many pulses run at once now", async () => {
     const { run, live, said } = setUp();
+    setConfigOverrides(dir, { codingModel: { model: "anthropic/claude-opus-5-5" } });
     await run("models.coding openai/gpt-6-luna:low");
-    expect(live[0]).toEqual(["coding", undefined]);
-    expect(said[0]).toContain("given way to the config");
+    expect(said[0]).toContain("given way to the config: the coding model this session was opened with, anthropic/claude-opus-5-5");
+    expect(configOverrides(dir).codingModel).toBeUndefined();
     await run("parallel-jobs 3");
-    expect(live[1]).toEqual(["parallel", 3]);
+    expect(live[0]).toEqual(["parallel", 3]);
     expect(said[1]).toContain("in effect now");
   });
 
@@ -161,7 +162,8 @@ describe("the settings tool", () => {
     const said = await call({ key: "coding-model", value: "gpt 6 luna:high" });
     expect(readFileSync(join(dir, "config.turri.yaml"), "utf8")).toBe("coding-model: openai/gpt-6-luna:high\n");
     expect(said).toContain("written to config.turri.yaml, in effect from the next pulse");
-    expect(live).toEqual([["coding", undefined]]);
+    expect(said).not.toContain("given way");
+    expect(live).toEqual([]);
   });
 
   it("asks which model was meant when a name fits several, and writes nothing", async () => {

@@ -6,9 +6,8 @@ import { isChatEntry, type ChatEntry } from "./chat-entries.ts";
 import { lastRun, type RunRecord } from "./chat-records.ts";
 import { interruptChat, type ChatInfo, type ChatState, type TurriCore, type TurriHost } from "./chats.ts";
 import type { ClientInfo } from "./client.ts";
-import { modelSpec, projectModels, readProjectConfig, setConfigOverrides, splitModelSpec, dropConfigOverride, type ConfigOverrides } from "./config.ts";
-import { currentValue, parseValue, readConfigText, readModuleConfigText, settingOf, shownValue, writeSetting, EFFECT_TEXT, overriddenBy } from "./config-edit.ts";
-import { applyBedrockRegion } from "./bedrock-region.ts";
+import { modelSpec, projectModels, readProjectConfig, setConfigOverrides, splitModelSpec, type ConfigOverrides } from "./config.ts";
+import { readSetting, settingOf, type SettingKey, type SettingValues } from "./config-edit.ts";
 import { createTurriCore, parallelJobs, plannedLoop, sessionLaunchesOf, sessionLoop, turnOnConformance } from "./extension.ts";
 import { PACKAGE_ROOT } from "./environment.ts";
 import { isTurriError, TurriError } from "./errors.ts";
@@ -32,7 +31,7 @@ import type { Launch } from "./launch-track.ts";
 import type { Conclusion, Notice, NoticeAnswer } from "./notice.ts";
 import type { SessionEvent, SkillProgress } from "./session-events.ts";
 import type { SessionSpending } from "./session-spending.ts";
-import { reachable, ruleNames, settingCandidates } from "./settings.ts";
+import { changeSetting, givenValue, reachable, ruleNames, settingCandidates } from "./settings.ts";
 import { discoverSkills } from "./skills.ts";
 import { runWork, type WorkRequest, type WorkResult, type WorkRunOptions } from "./work.ts";
 
@@ -307,12 +306,18 @@ export interface Turri {
   };
 
   readonly settings: {
-    /** A setting's value as config.turri.yaml - or `module`'s own file - has it. */
-    get(key: string, options?: { module?: string }): unknown;
-    /** Set a setting - undefined unsets it - as /settings does: written, and what turri fixed at its start changed now. */
-    set(key: string, value: unknown, options?: { module?: string }): Promise<{ file: string; said: string }>;
+    /**
+     * A setting's value as config.turri.yaml - or `module`'s own file - has it; undefined when unset there. One the file
+     * has that its kind cannot take throws `config-invalid`.
+     */
+    get<K extends SettingKey>(key: K, options?: { module?: string }): SettingValues[K] | undefined;
+    /**
+     * Set a setting - undefined unsets it - as /settings does: checked (`refused`, with why), written, and what turri
+     * fixed at its start changed now. `said` is what changed and when it takes effect, in a line or more.
+     */
+    set<K extends SettingKey>(key: K, value: SettingValues[K] | undefined, options?: { module?: string }): Promise<{ file: string; said: string }>;
     /** The values /settings offers for a setting after `typed`. */
-    choices(key: string, typed?: string): string[];
+    choices(key: SettingKey, typed?: string): string[];
     /**
      * Conformance tests turned on, as /conform does - the person's decision: `conformance-tests: true` written where the
      * module's value comes from (its own file, a required module's, else config.turri.yaml). Returns the file written.
@@ -646,11 +651,20 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       check: (request) => core.check(() => prepareCheck(cwd, request)),
     },
     settings: {
-      get(key, asked = {}) {
-        return currentValue(asked.module !== undefined ? readModuleConfigText(cwd, asked.module) : readConfigText(cwd), key);
-      },
+      get: (key, asked = {}) => readSetting(cwd, key, asked),
       async set(key, value, asked = {}) {
-        return setSetting(core, key, value, asked.module, reachableModels);
+        const setting = settingOf(key, ruleNames());
+        if (setting === undefined) throw new TurriError("not-found", `There is no setting ${String(key)}.`);
+        if (asked.module !== undefined && setting.projectOnly === true) throw new TurriError("refused", `${setting.key} is the whole project's: it is set in config.turri.yaml alone, never in a module's file.`);
+        const known = reachableModels();
+        const written = givenValue(cwd, setting, value, known.length > 0 ? (model) => known.includes(model) : undefined);
+        return changeSetting(cwd, setting, written, asked.module, {
+          parallelJobs: (count) => {
+            const limit = count ?? parallelJobs(cwd);
+            core.jobs.setMaxRunning(limit);
+            return `Up to ${limit} pulse${limit === 1 ? "" : "s"} run at once now.`;
+          },
+        });
       },
       choices(key, typed = "") {
         const setting = settingOf(key, ruleNames());
@@ -770,32 +784,6 @@ function eventStream(subscribe: (listener: (event: TurriEvent) => void) => () =>
       };
     },
   };
-}
-
-/** A setting written as /settings writes it, and what turri fixed at its start changed now. */
-async function setSetting(core: TurriCore, key: string, value: unknown, module: string | undefined, models: () => string[]): Promise<{ file: string; said: string }> {
-  const { cwd } = core;
-  const setting = settingOf(key, ruleNames());
-  if (setting === undefined) throw new TurriError("not-found", `There is no setting ${key}.`);
-  if (value !== undefined) {
-    const typed = Array.isArray(value) ? value.join(", ") : String(value);
-    const known = models();
-    const parsed = parseValue(setting, typed, known.length > 0 ? (model) => known.includes(model) : undefined);
-    if ("error" in parsed) throw new TurriError("refused", parsed.error);
-    if ("value" in parsed) value = parsed.value;
-  }
-  const text = writeSetting(cwd, setting.key, value, module);
-  const file = module !== undefined ? `config.turri.${module}.yaml` : "config.turri.yaml";
-  const notes: string[] = [];
-  // A model changed: the AWS region its Bedrock models need worked out again.
-  if (setting.key.endsWith("-model") || setting.key.startsWith("models.")) applyBedrockRegion(cwd);
-  // The session's own coding model gives way to the file's.
-  if (setting.key === "coding-model" || setting.key === "models.coding" || setting.key === "models.default") dropConfigOverride(cwd, "codingModel");
-  if (setting.key === "harness-model" || setting.key === "models.chat") dropConfigOverride(cwd, "harnessModel");
-  if (setting.key === "parallel-jobs") core.jobs.setMaxRunning(parallelJobs(cwd));
-  notes.push(...overriddenBy(cwd, text, setting, module));
-  const what = value === undefined ? `${setting.key} unset` : `${setting.key}: ${shownValue(value)}`;
-  return { file, said: [`${what} - written to ${file}, ${EFFECT_TEXT[setting.effect]}.`, ...notes].join("\n") };
 }
 
 /** A skill run outside any chat: its questions and escalations put through the front end, its progress as events. */

@@ -16,6 +16,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - **No protocols between core and front end:** `overrideConfig` and `TURRI_CODING_MODEL` become the session's `overrides`, held for its project - a `models:` entry for the role still wins over them; `setTurriRoot`/`turriRoot` become `client`; the reopen file and `TURRI_REOPENED_AFTER_CAPTURE` become `Frontend.openProject` and `captured`. The CLI's own concerns leave the core: update and PATH checks, the version line, themes, the old global pi extension file, `dropNoise` and the doctor's install checks.
 - **Errors:** refusals are `TurriError`s with a `code` (`config-invalid`, `refused`, `chat-limit`, `no-chat`, `chat-closed`, `not-found`, `extension-not-built`, `session-open`, `aborted`), told apart with `isTurriError`.
 - **Types:** `Job.details` is `JobDetails`; `ChatEntryMap`, `ChatMessageMap` and a constant for every message type are exported, with `isChatEntryOf`; `HighlightState` is opaque; `initConfig`'s model pair is `ModelPair`. Every type a public signature reaches has a public name.
+- **Settings by key and type:** `settings.get`, `set` and `choices` take a `SettingKey`, and a value of the setting's type (`SettingValues`); `get` throws `config-invalid` for a value the file has that its kind cannot take. `/project`'s `currentValue` is `readSetting`, typed the same way; `Setting.key` is a `SettingKey`.
 - **The check, by domain:** `checkPlainFile` and `checkPlainTargets` (`/plain`) are the \*\*\*plain language's check alone. What the project says of a module - two config files among those it requires, the steps of adding tests it skipped, a base folder not there - is `checkModule` and `checkModules` (`/project`), the check `turri parse` runs.
 - `chats.restore` reopens a run's chats except those open already, replacing `skipFirst`. `Chat.stop()` never ends the session: what a front end's interrupt does beyond it is its own.
 
@@ -24,6 +25,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - A session's work loop runs with no chat open, on the config's models: the coding model builds, the harness model plans.
 - A fresh chat of the person's starts on the project's harness model.
 - `launches.followLogs` and `followLaunchedLogs` stop on a signal.
+- `settings.set` writes through `/settings`' own path: a path outside the project and a project-wide setting in a module's file refused, the legacy config copied first, a module's file and what overrides it said, and the harness model the session was opened with giving way to the file's, as the coding model does.
 - `/plain` loads no pi: an editor reads, highlights and checks \*\*\*plain with no agent runtime.
 
 ### Fixed

@@ -12,6 +12,9 @@ import type { SessionEntry } from '@earendil-works/pi-coding-agent';
 import { ToolDefinition } from '@earendil-works/pi-coding-agent';
 
 // @public
+const AGENT_ROLES: readonly ["chat", "sentinel", "planner", "capture-exploration", "capture-analysis", "capture", "diagnosis", "launch", "coding", "conformance", "explorer", "reviewer", "test-reviewer", "judge", "arbiter", "debugger"];
+
+// @public
 export interface AgentRef {
     // (undocumented)
     label?: string;
@@ -20,6 +23,9 @@ export interface AgentRef {
     // (undocumented)
     role?: string;
 }
+
+// @public (undocumented)
+type AgentRole = (typeof AGENT_ROLES)[number];
 
 // @public
 export interface AgentTally {
@@ -1181,6 +1187,9 @@ export interface ModelEvent {
 }
 
 // @public
+export type ModelRole = "default" | AgentRole;
+
+// @public
 export interface ModuleCompletion {
     completed: number;
     conformanceTested: number;
@@ -1569,6 +1578,45 @@ export interface SessionSpending {
 }
 
 // @public
+export type SettingKey = keyof SettingValues;
+
+// @public
+export type SettingValues = {
+    "harness-model": string;
+    "coding-model": string;
+    "judge-model": string;
+    module: string;
+    review: boolean;
+    "mutation-testing": boolean;
+    "allow-to-stop-jobs": boolean;
+    "launch-after-pulse": boolean;
+    sentinel: boolean | "ask";
+    "conformance-tests": boolean;
+    "test-dir": string;
+    "base-folder": string;
+    "unittests-script": string;
+    "conformance-tests-script": string;
+    "prepare-environment-script": string;
+    "testing-scripts-run-on": "in-place" | "copy";
+    "parallel-jobs": number;
+    "max-specs-per-pulse": number;
+    "max-lines-per-pulse": number;
+    "turn-limit": number;
+    "compact-at": number;
+    "rules-off": string[];
+    "agent-env.files": string[];
+    "agent-env.vars": string[];
+    toolchains: string[];
+    debug: boolean;
+    "cache-keep": number;
+    "ledger-keep": number;
+} & {
+    [R in ModelRole as `models.${R}`]: string;
+} & {
+    [R in ModelRole as `models.${R}.turn-limit`]: number;
+};
+
+// @public
 export const SIDE_ENTRY = "turri_btw";
 
 // @public
@@ -1724,16 +1772,16 @@ export interface Turri {
     };
     // (undocumented)
     readonly settings: {
-        get(key: string, options?: {
+        get<K extends SettingKey>(key: K, options?: {
             module?: string;
-        }): unknown;
-        set(key: string, value: unknown, options?: {
+        }): SettingValues[K] | undefined;
+        set<K extends SettingKey>(key: K, value: SettingValues[K] | undefined, options?: {
             module?: string;
         }): Promise<{
             file: string;
             said: string;
         }>;
-        choices(key: string, typed?: string): string[];
+        choices(key: SettingKey, typed?: string): string[];
         turnOnConformanceTests(plainFile?: string): string;
     };
     // (undocumented)
