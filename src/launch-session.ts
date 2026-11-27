@@ -188,6 +188,17 @@ export function createSessionLaunches(options: {
       const theirs = new Set(later.flatMap((other) => specsOf(other).map(key)));
       return { ...base, launch, later, laterSpecs: specsOf(job).filter((spec) => theirs.has(key(spec))) };
     },
+    tryIt(work) {
+      let launch: Launch | undefined;
+      if ("job" in work) {
+        const landing = landedPulses.get(work.job.id);
+        if (landing === undefined || landing.launch === undefined) return undefined;
+        launch = track.runs(landing.codebase);
+        if (launch === undefined || !track.holds(landing.codebase, landing.commit)) return undefined;
+      } else launch = track.runs(work.check.module);
+      const said = launch?.summary?.trim();
+      return launch?.status === "launched" && said !== undefined && said !== "" ? said : undefined;
+    },
     resumeText(work) {
       if ("job" in work) {
         const landing = landedPulses.get(work.job.id);

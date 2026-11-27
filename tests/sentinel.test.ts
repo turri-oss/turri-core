@@ -589,6 +589,39 @@ describe("the sentinel's conclusion", () => {
     expect(heard).toEqual([`${second.id} holds`, `${first.id} wrong`]);
   });
 
+  it("carries how the person tries what was tested, as its launch said it - to the chat and to the host", async () => {
+    const heard: Array<string | undefined> = [];
+    const tried: Array<{ job?: string; check?: string }> = [];
+    const gate: SentinelLaunches = {
+      readyFor: async () => {},
+      readyForCheck: async () => {},
+      settled: async () => {},
+      tryIt: (work) => (tried.push("job" in work ? { job: work.job.id } : { check: work.check.id }), "From dist/tidy: `go run ./cmd/tidy plan <folder>` prints where each file goes."),
+    };
+    const { core, jobs, links } = session({ launches: gate, host: { onConcluded: (conclusion) => heard.push(conclusion.tryIt) } });
+    await core.open();
+    inChat(links[0]!.scope, () => jobs.start(pulse("tidy pulse 1", "tidy")));
+    await settled();
+    const job = jobs.list()[0]!.id;
+    core.concluded({ job, verdict: "holds", summary: "plan sorts by kind" });
+    // Not checked: nothing was tried, and there is nothing to try it from.
+    core.concluded({ job, verdict: "unchecked", summary: "Not checked: nothing runs." });
+    expect(heard).toEqual(["From dist/tidy: `go run ./cmd/tidy plan <folder>` prints where each file goes.", undefined]);
+    expect(tried).toEqual([{ job }]);
+  });
+
+  it("tells the chat to say what the sentinel found, and how the person tries it when its launch said", async () => {
+    const { concludedNote } = await import("../src/sentinel.ts");
+    const tryIt = "From dist/tidy: `go run ./cmd/tidy plan <folder>`.";
+    expect(concludedNote({ job: "p1", verdict: "holds", summary: "plan sorts by kind", module: "tidy", pulse: 1, tryIt })).toBe(
+      `The sentinel is done with tidy pulse 1 (p1): it holds.\nplan sorts by kind\n\nHow the person tries it themselves, as its launch said it: ${tryIt}\n\nTell the person, in a line, that the sentinel checked it and it holds - and what it checked - and how they try it themselves, in a line or two, from what its launch said. Do nothing else about it.`,
+    );
+    // A front end that shows the conclusion itself: the chat knows how, for when the person asks.
+    expect(concludedNote({ job: "p1", verdict: "holds", summary: "plan sorts by kind", module: "tidy", pulse: 1, tryIt }, { shown: true })).toBe(
+      `The sentinel is done with tidy pulse 1 (p1): it holds.\nplan sorts by kind\n\nHow the person tries it themselves, as its launch said it: ${tryIt}`,
+    );
+  });
+
   it("tells the chat to say what the sentinel found, and do nothing more", async () => {
     const { concludedNote } = await import("../src/sentinel.ts");
     expect(concludedNote({ job: "p1", verdict: "holds", summary: "GET /ping answers pong", module: "app", pulse: 2 })).toBe(

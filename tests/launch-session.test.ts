@@ -67,6 +67,8 @@ describe("what the sentinel is told runs for a pulse", () => {
     expect(told.later.map((job) => job.id)).toEqual(["p2", "p3"]);
     expect(told.laterSpecs).toEqual([{ module: "app", funcId: "greet" }]);
     expect(launches.forPulse(third.job).later).toEqual([]);
+    // How the person tries it, as the launch that holds it said - the agent's own words.
+    expect(launches.tryIt({ job: first.job })).toBe("runs");
     // What runs holds the first pulse's commit: carried on after a pause, it is told so.
     expect(launches.resumeText({ job: first.job })).toContain(`It still holds pulse p1's commit, ${first.commit.slice(0, 7)}.`);
   });

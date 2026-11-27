@@ -317,6 +317,11 @@ export interface SentinelLaunches {
   settled(codebase: string): Promise<void>;
   /** The codebases whose launches a launch replaces - what they started stopped: its own, and the modules below it. Default: its own. */
   replacing?(launch: Launch): string[];
+  /**
+   * How the person tries what the sentinel tested a pulse or a check in, as its launch said it - where it runs, or the
+   * commands to run it from `dist/<module>`. Nothing when that did not come up, or said nothing.
+   */
+  tryIt?(work: { job: Job } | { check: SentinelCheck }): string | undefined;
 }
 
 /** A chat's session, as stopping what it does reaches it. */
@@ -804,7 +809,16 @@ export function createChats(options: CoreOptions): TurriCore {
       if (target === undefined) return undefined;
       const module = conclusion.module ?? job?.module ?? check?.module;
       const pulse = conclusion.pulse ?? job?.pulse;
-      const told = { ...conclusion, ...(module !== undefined ? { module } : {}), ...(pulse !== undefined ? { pulse } : {}) };
+      // How the person tries it themselves, as the launch the sentinel tested in said it: they hear it whoever tested it.
+      let tryIt: string | undefined;
+      if (conclusion.verdict !== "unchecked" && conclusion.tryIt === undefined) {
+        try {
+          tryIt = job !== undefined ? options.launches?.tryIt?.({ job }) : check !== undefined ? options.launches?.tryIt?.({ check }) : undefined;
+        } catch {
+          /* what runs no longer holds it: nothing to say of it */
+        }
+      }
+      const told = { ...conclusion, ...(module !== undefined ? { module } : {}), ...(pulse !== undefined ? { pulse } : {}), ...(tryIt !== undefined ? { tryIt } : {}) };
       if (target.id !== shownId) target.unread = true;
       inChat(target.scope, () =>
         record(

@@ -85,7 +85,7 @@ Whatever the front end, the same rules hold: turri appends its entries to a chat
 | `launchOutput` | a launch's agent said more, as it streams - each `text` follows the one before | `launch` (its id), `codebase`, `text` |
 | `map` | the spec map changed, while the front end shows it (`shows.map`) | `pages` |
 | `notice`, `noticeOver` | put to the person; answered, dismissed or superseded - `job` or `check` filled in when the sentinel was checking one | `notice` |
-| `concluded` | the sentinel done with a pulse or a check | `chat`, `conclusion` |
+| `concluded` | the sentinel done with a pulse or a check | `chat`, `conclusion` - with `tryIt`, how the person tries what was tested as its launch said it (where it runs, or the commands to run a CLI or library from `dist/<module>`), for a front end to show with it |
 | `skillProgress` | a foreground skill's place in its phases; null as it ends | `chat?`, `progress` |
 | `captureProgress`, `captureEnded` | a capture's status; its end | `chat?`, `status` / `root`, `state`, `result` or `error` |
 | `incident` | a provider failing and waited out, a turn turri ended itself | `text`, `event` |

@@ -192,7 +192,7 @@ const ENTRY_SCHEMAS = {
     at: Str,
   }),
   [NOTICE_OVER_ENTRY]: Type.Object({ state: NoticeStates, summary: Str }),
-  [CONCLUDED_ENTRY]: Type.Object({ job: Opt(Str), check: Opt(Str), verdict: Verdict, summary: Str, module: Opt(Str), pulse: Opt(Type.Number()) }),
+  [CONCLUDED_ENTRY]: Type.Object({ job: Opt(Str), check: Opt(Str), verdict: Verdict, summary: Str, module: Opt(Str), pulse: Opt(Type.Number()), tryIt: Opt(Str) }),
   [SKILL_RUN_ENTRY]: Text,
 };
 

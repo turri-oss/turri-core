@@ -141,6 +141,11 @@ export interface Conclusion {
   summary: string;
   module?: string;
   pulse?: number;
+  /**
+   * How the person tries what was tested themselves, in the words of the launch the sentinel tested it in: where it runs,
+   * or the commands to run a command-line tool or a library from `dist/<module>`. Undefined when nothing launched said so.
+   */
+  tryIt?: string;
 }
 
 /**

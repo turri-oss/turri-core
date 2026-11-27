@@ -362,6 +362,7 @@ export interface Conclusion {
     pulse?: number;
     // (undocumented)
     summary: string;
+    tryIt?: string;
     // (undocumented)
     verdict: "holds" | "wrong" | "unchecked";
 }

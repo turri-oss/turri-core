@@ -567,21 +567,27 @@ export function concludedNote(conclusion: Conclusion, options: { shown?: boolean
     if (options.shown === true) return [`The sentinel did not do ${about} (${conclusion.check ?? conclusion.job}).`, conclusion.summary.trim()].join("\n");
     return [`The sentinel did not do ${about} (${conclusion.check ?? conclusion.job}).`, conclusion.summary.trim(), "", "Tell the person, in a line, that it was not checked and why. Do nothing else about it."].join("\n");
   }
+  // How the person tries it themselves, as the launch the sentinel tested in said it.
+  const tryIt = conclusion.tryIt?.trim();
+  const launched = tryIt !== undefined && tryIt !== "" ? ["", `How the person tries it themselves, as its launch said it: ${tryIt}`] : [];
   // The host showed the person the conclusion itself: what the sentinel found, for when they ask.
   if (options.shown === true) {
     return [
       `The sentinel is done with ${about} (${conclusion.check ?? conclusion.job}): ${conclusion.verdict === "holds" ? "it holds" : "something is wrong"}.`,
       conclusion.summary.trim(),
+      ...launched,
       ...(conclusion.verdict === "wrong" ? ["", "Its notice in this chat says what is wrong and what can be done; nothing is done about it until the person answers it."] : []),
     ].join("\n");
   }
+  const howTo = launched.length > 0 ? " - and how they try it themselves, in a line or two, from what its launch said" : "";
   return [
     `The sentinel is done with ${about} (${conclusion.check ?? conclusion.job}): ${conclusion.verdict === "holds" ? "it holds" : "something is wrong"}.`,
     conclusion.summary.trim(),
+    ...launched,
     "",
     conclusion.verdict === "holds"
-      ? "Tell the person, in a line, that the sentinel checked it and it holds - and what it checked. Do nothing else about it."
-      : "Tell the person, in a line, that the sentinel found something wrong, and that its notice in this chat says what and what can be done. Do nothing else about it until they answer the notice.",
+      ? `Tell the person, in a line, that the sentinel checked it and it holds - and what it checked${howTo}. Do nothing else about it.`
+      : `Tell the person, in a line, that the sentinel found something wrong, and that its notice in this chat says what and what can be done${howTo}. Do nothing else about it until they answer the notice.`,
   ].join("\n");
 }
 
