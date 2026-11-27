@@ -123,7 +123,7 @@ export function describeNotice(notice: NoticeInput): string {
 
 /** Whether a pulse went wrong: failed, stopped, or ran to its end with what it built not passing. */
 export function wentWrong(job: Job): boolean {
-  return job.status !== "succeeded" || (job.details as { passed?: unknown } | undefined)?.passed === false;
+  return job.status !== "succeeded" || job.details?.passed === false;
 }
 
 /**

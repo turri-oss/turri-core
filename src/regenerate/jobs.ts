@@ -8,6 +8,7 @@ import { firstLine, healing, record, type LedgerPlace } from "./ledger.ts";
 import { debugMode, moduleConfigFile, pinnedConfigModule, withConfigModule } from "../config.ts";
 import { currentChat } from "../chat-scope.ts";
 import { pulseEnded, pulseWrote } from "./pulse-files.ts";
+import type { SpecGap } from "./notes.ts";
 import { keepFailureReport } from "./failure-reports.ts";
 
 /**
@@ -114,7 +115,7 @@ export interface Job {
   /** What to tell the person when it lands, if shorter than the report. */
   announce?: string;
   error?: string;
-  details?: unknown;
+  details?: JobDetails;
   /**
    * A pulse of an earlier session, as the ledger recorded it - not this session's registry's: shown, never run, halted or
    * waited for. Its run, how and when that run was started, and what the ledger says of it, a line each.
@@ -129,7 +130,30 @@ export interface JobOutcome {
    * can carry detail it needs and the person does not; omitted, the report is shown.
    */
   announce?: string;
-  details?: unknown;
+  details?: JobDetails;
+}
+
+/**
+ * What a job's work says of how it went, beside its report - what turri reads to decide what comes next, and a front end
+ * to draw it. Each is optional: a job sets those of its kind, and one of an earlier turri may lack any.
+ */
+export interface JobDetails {
+  /** It ran to its end and what it built passed its gate. */
+  passed?: boolean;
+  /** What it built landed: committed in the codebase's history. */
+  landed?: boolean;
+  /** It had nothing to do, and did nothing: not a failure. */
+  skipped?: boolean;
+  /** Where its gate stopped one that did not pass. */
+  stoppedAt?: "unit tests" | "conformance" | "regression";
+  /** A conformance pulse not started: what it was to test is not built - said as a sentence. */
+  notBuilt?: string;
+  /** How a code pulse went, for its line in the notes: its rounds and test runs. */
+  story?: string;
+  /** Where the spec said nothing and its agents chose: a question and the assumption made, each. */
+  specGaps?: SpecGap[];
+  /** The commit it landed on. */
+  commit?: string;
 }
 
 export interface StartJobInput {
@@ -409,7 +433,7 @@ export function createJobRegistry(options?: {
       const retries = options?.retries ?? 0;
       /** A job's work ran, and did not do what it was asked: it threw, or said it did not pass. */
       const didNotPass = (outcome: JobOutcome) => {
-        const details = outcome.details as { passed?: boolean; skipped?: boolean } | undefined;
+        const details = outcome.details;
         return details?.passed === false && details.skipped !== true;
       };
       // A pulse: what its agents leave running is killed when it ends, and the modules it works in are its own.
@@ -463,6 +487,8 @@ export function createJobRegistry(options?: {
             continue;
           }
           job.failedForGood = true;
+          // What its last attempt said of itself - where its gate stopped it - stays with the job that failed.
+          if (outcome?.details !== undefined) job.details = outcome.details;
           if (options?.diagnose !== undefined) {
             sink.stage("the pulse failed again - working out why, and what has to be done");
             job.diagnosis = await withActivity(sink, () => healing("diagnosis", () => options.diagnose!(job, failures, log?.file), (found) => found));
@@ -557,7 +583,7 @@ export function createJobRegistry(options?: {
           if (ran && project !== undefined && !pulseEnded({ job: id, project, ...(input.module !== undefined ? { module: input.module } : {}), lanes: claimed })) delete finished.logFile;
           // Why one that did not land did not, kept past the session whatever the debug setting (failure-reports.ts).
           if (ran && project !== undefined) keepFailureReport(project, finished);
-          const outcome = finished.details as { landed?: boolean; passed?: boolean } | undefined;
+          const outcome = finished.details;
           const stopReason = stopReasons.get(id);
           record(
             {
@@ -670,7 +696,7 @@ export function firstRegeneration(jobs: Job[], since: number): { started?: numbe
   const pulses = jobs.filter((job) => job.kind === "regenerate" && job.queuedAt >= since && job.status !== "queued");
   const started = Math.min(...pulses.map((job) => job.startedAt));
   const landed = Math.min(
-    ...pulses.filter((job) => job.status === "succeeded" && (job.details as { landed?: boolean } | undefined)?.landed === true && job.finishedAt !== undefined).map((job) => job.finishedAt!),
+    ...pulses.filter((job) => job.status === "succeeded" && job.details?.landed === true && job.finishedAt !== undefined).map((job) => job.finishedAt!),
   );
   return { ...(Number.isFinite(started) ? { started: started - since } : {}), ...(Number.isFinite(landed) ? { landed: landed - since } : {}) };
 }

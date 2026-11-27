@@ -122,6 +122,15 @@ describe("a run of work", () => {
     expect((await run.done).status).toBe("completed");
   });
 
+  it("says why a pulse that stopped at its unit tests did not land, from its details", async () => {
+    const app = spec("app", "Print one.");
+    const jobs = createJobRegistry({ retries: 1 });
+    const loop = createWorkLoop({ registry: jobs, cwd: dir, planner: false, run: async () => ({ landed: false, report: "Its unit tests never passed.", stoppedAt: "unit tests" }) });
+    const result = await (await runWork({ loop, jobs, onFinish: () => () => {} }, "regenerate", { plainFile: app })).done;
+    expect(result.jobs[0]).toMatchObject({ status: "failed", details: { passed: false, landed: false, stoppedAt: "unit tests" } });
+    expect(loop.mapPlan().codebases[0]?.stuck?.cause).toBe("its unit tests never passed");
+  });
+
   it("ends stopped when its signal is aborted, what was running rolled back", async () => {
     const app = spec("app", "Print one.");
     const controller = new AbortController();

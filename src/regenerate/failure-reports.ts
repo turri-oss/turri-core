@@ -32,7 +32,7 @@ export function reportsDir(project: string): string {
 /** Whether a pulse ended without landing: failed, stopped, or finished with nothing landed. */
 export function didNotLand(job: Job): boolean {
   if (job.status === "failed" || job.status === "stopped") return true;
-  return job.status === "succeeded" && (job.details as { landed?: boolean } | undefined)?.landed === false;
+  return job.status === "succeeded" && job.details?.landed === false;
 }
 
 /** Whether the project keeps a ledger, and so its reports. */

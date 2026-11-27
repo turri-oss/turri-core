@@ -83,7 +83,7 @@ export function createSessionLaunches(options: {
       return false;
     }
   };
-  const landedJob = (job: Job) => job.status === "succeeded" && (job.details as { landed?: unknown } | undefined)?.landed === true && job.module !== undefined;
+  const landedJob = (job: Job) => job.status === "succeeded" && job.details?.landed === true && job.module !== undefined;
 
   /** The pulse's landing, once the loop has said its commit - none for one that did not land, or never said. */
   const landingOf = async (job: Job): Promise<Landed | undefined> => {

@@ -9,7 +9,7 @@ import { llmChunkAgents, MAX_LINES_PER_JOB, MAX_SPECS_PER_JOB, planChunks, steps
 import { commitNotes, landWork, lastCommit, recordHistory, resetToLastCommit } from "./lineage.ts";
 import { firstLine, record } from "./ledger.ts";
 import { NOTES_FILE, recordPulse, type SpecGap } from "./notes.ts";
-import { formatDuration, type Job, type JobRegistry, type PulseCases } from "./jobs.ts";
+import { formatDuration, type Job, type JobDetails, type JobRegistry, type PulseCases } from "./jobs.ts";
 import { moduleLanes } from "./lanes.ts";
 import {
   adoptDigests,
@@ -103,7 +103,7 @@ export type JobRunner = (
     steering?: JobSteering;
   },
   onDelta: (delta: string) => void,
-) => Promise<{ landed: boolean; report: string; story?: string; specGaps?: SpecGap[] }>;
+) => Promise<{ landed: boolean; report: string; story?: string; specGaps?: SpecGap[]; stoppedAt?: NonNullable<JobDetails["stoppedAt"]> }>;
 
 /** A codebase as the loop sees it, for the person. */
 export interface ModuleStatus {
@@ -1057,7 +1057,9 @@ export function createWorkLoop(options: {
             ...(result.story !== undefined ? { story: result.story } : {}),
             // The spec gaps its agents met, for a headless run to say - in the chat the report puts them to the person.
             ...(result.specGaps !== undefined && result.specGaps.length > 0 ? { specGaps: result.specGaps } : {}),
-          },
+            // Where its gate stopped it - the cause said of a pulse that did not land.
+            ...(result.stoppedAt !== undefined ? { stoppedAt: result.stoppedAt } : {}),
+          } satisfies JobDetails,
         };
       },
     });
@@ -1097,7 +1099,7 @@ export function createWorkLoop(options: {
   const pulseOf = (running: NonNullable<ModuleState["running"]>) => ({ number: running.number, before: serializeTree(running.from), after: serializeTree(running.after) });
   // What went wrong in a pulse that did not land, in a few words: the tests it stopped at, else its error's first line.
   const causeOf = (job: Job | undefined): { cause?: string } => {
-    const stoppedAt = (job?.details as { stoppedAt?: unknown } | undefined)?.stoppedAt;
+    const stoppedAt = job?.details?.stoppedAt;
     if (stoppedAt === "unit tests" || stoppedAt === "conformance" || stoppedAt === "regression") {
       return { cause: stoppedAt === "unit tests" ? "its unit tests never passed" : stoppedAt === "conformance" ? "its conformance tests never passed" : "the whole conformance suite never passed" };
     }
@@ -1108,13 +1110,13 @@ export function createWorkLoop(options: {
   const settle = (state: ModuleState, settled: Job | undefined) => {
     const running = state.running;
     state.running = undefined;
-    const landed = settled?.status === "succeeded" && (settled.details as { landed?: boolean } | undefined)?.landed === true;
+    const landed = settled?.status === "succeeded" && settled.details?.landed === true;
     if (running !== undefined && !landed && running.planned.track === "conformance") {
       // Conformance tests that did not pass - nor the code fixes they made - are gone, and they halt: the code goes on.
       resetToLastCommit(tipEntry(state).buildDir);
       state.conformancePlan = undefined;
       if (running.stopping !== true) {
-        const unbuilt = (settled?.details as { notBuilt?: string } | undefined)?.notBuilt;
+        const unbuilt = settled?.details?.notBuilt;
         const why =
           settled?.status === "stopped"
             ? `pulse ${running.jobId} was stopped`
@@ -1163,7 +1165,7 @@ export function createWorkLoop(options: {
       const tip = tipEntry(state);
       const commit = lastCommit(tip.buildDir);
       if (commit !== undefined) {
-        settled.details = { ...(settled.details as object), commit };
+        settled.details = { ...settled.details, commit };
         try {
           options.landed?.({ job: settled, plainFile: tip.plainFile, moduleName: tip.moduleName, commit, title: running.planned.title });
         } catch {
@@ -1181,7 +1183,7 @@ export function createWorkLoop(options: {
    */
   const notePulse = (state: ModuleState, running: NonNullable<ModuleState["running"]>, settled: Job | undefined, landed: boolean) => {
     const tip = tipEntry(state);
-    const details = settled?.details as { story?: string; notBuilt?: string } | undefined;
+    const details = settled?.details;
     const outcome = landed
       ? "landed"
       : settled?.status === "stopped" || running.stopping === true
@@ -2424,7 +2426,12 @@ const defaultConformanceRunner: JobRunner = async (job, onDelta) => {
     writeTestsRecord(result.conformanceDir, job.planned.step.tree);
     landWork(job.buildDir, `conformance tests: ${job.planned.title}`);
   }
-  return { landed: result.passed, report: describeSpecDiffConformance(result), ...(result.specGaps !== undefined ? { specGaps: result.specGaps } : {}) };
+  return {
+    landed: result.passed,
+    report: describeSpecDiffConformance(result),
+    ...(result.specGaps !== undefined ? { specGaps: result.specGaps } : {}),
+    ...(result.stoppedAt !== null ? { stoppedAt: result.stoppedAt } : {}),
+  };
 };
 
 /** The functional specs a pulse covers, by case, each with the module whose spec it is: a host's to light and mark. */
@@ -2459,6 +2466,7 @@ const defaultRunner: JobRunner = async (job, onDelta) => {
   // Landed code can be tried.
   return { landed: result.passed, report: describeSpecDiff(result), story: codeStory(result),
     ...(result.specGaps !== undefined ? { specGaps: result.specGaps } : {}),
+    ...(result.stoppedAt !== null ? { stoppedAt: result.stoppedAt } : {}),
   };
 };
 

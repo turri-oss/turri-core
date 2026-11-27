@@ -213,7 +213,7 @@ export function startRunReport(options: RunReportOptions): RunReporter {
     const callsOf = new Map<string, UsageTotals>();
     for (const event of events) if (event.job !== undefined) addEvent(callsOf.get(event.job) ?? callsOf.set(event.job, emptyTotals()).get(event.job)!, event, false);
     const list = jobs.map((job) => {
-      const landed = job.status === "succeeded" && (job.details as { landed?: boolean } | undefined)?.landed === true;
+      const landed = job.status === "succeeded" && job.details?.landed === true;
       const ran = job.status !== "queued";
       const usage = sumTotals(callsOf.get(job.id) ?? emptyTotals(), (() => {
         const tokens = emptyTotals();
@@ -270,7 +270,7 @@ export function startRunReport(options: RunReportOptions): RunReporter {
   /** The spec gaps the pulses' agents met, in the order the pulses started: questions a person would want to decide. */
   const specGapsOf = (jobs: Job[]) =>
     jobs.flatMap((job) => {
-      const details = job.details as { landed?: boolean; specGaps?: SpecGap[] } | undefined;
+      const details = job.details;
       return (details?.specGaps ?? []).map((gap) => ({
         module: job.module ?? null,
         pulse: job.pulse ?? null,

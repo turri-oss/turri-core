@@ -11,7 +11,7 @@ export function spinner(now: number): string {
 
 /** A pulse that ran to its end and whose build did not pass is not a success. */
 export function didNotPass(job: Job): boolean {
-  return job.status === "succeeded" && (job.details as { passed?: unknown } | undefined)?.passed === false;
+  return job.status === "succeeded" && job.details?.passed === false;
 }
 
 interface MarkPaint {

@@ -61,6 +61,13 @@ import {
   SIDE_ENTRY,
   SKILL_MESSAGE_ENTRY,
   VERSION_ENTRY,
+  SPEC_CONFLICT_MESSAGE,
+  SENTINEL_PULSE_MESSAGE,
+  SENTINEL_CHECK_MESSAGE,
+  SENTINEL_RESUME_MESSAGE,
+  JOB_LANDED_MESSAGE,
+  NOTICE_ANSWER_MESSAGE,
+  LAUNCH_MESSAGE,
   type CommandOutcome,
   type Exchange,
   type JobAnnouncement,
@@ -289,7 +296,7 @@ export function chatAskUserTool(dialogs?: AskUserIO, afterAnswer?: (answer: stri
     async execute(...args: Parameters<typeof tool.execute>) {
       conversation = args[4] as ExtensionContext;
       const result = await tool.execute(...args);
-      const answer = (result.details as { answer?: string } | undefined)?.answer;
+      const answer = result.details?.answer;
       const note = answer !== undefined && answer !== "" ? afterAnswer?.(answer) : undefined;
       return note !== undefined ? { ...result, content: [...result.content, { type: "text" as const, text: note }] } : result;
     },
@@ -532,7 +539,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     // A spec that contradicts itself is the person's to settle, now: the agent is started on it.
     if (job.specConflict !== undefined) {
       sendChatMessage(pi,
-        { customType: "turri_spec_conflict", content: specConflictTask(job.specConflict), display: false, details: { jobId: job.id } },
+        { customType: SPEC_CONFLICT_MESSAGE, content: specConflictTask(job.specConflict), display: false, details: { jobId: job.id } },
         { triggerTurn: true },
       );
       return;
@@ -566,7 +573,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       launch,
       reaction: JOB_FINISHED_REACTION,
     });
-    sendChatMessage(pi, { customType: "turri_sentinel_pulse", content, display: false, details: { jobId: job.id, status: job.status } }, { triggerTurn: true });
+    sendChatMessage(pi, { customType: SENTINEL_PULSE_MESSAGE, content, display: false, details: { jobId: job.id, status: job.status } }, { triggerTurn: true });
   };
   // The sentinel's: functional specs a host asked it to check, in what is launched of the module - told, in a
   // conversation of its own for the check, its hidden first message `turri_sentinel_check`. It launches nothing.
@@ -582,7 +589,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       ...(context.focused !== undefined ? { focused: context.focused } : {}),
     });
     sendChatMessage(pi,
-      { customType: "turri_sentinel_check", content, display: false, details: { checkId: check.id, module: check.module, funcIds: check.funcIds } },
+      { customType: SENTINEL_CHECK_MESSAGE, content, display: false, details: { checkId: check.id, module: check.module, funcIds: check.funcIds } },
       { triggerTurn: true },
     );
   };
@@ -591,7 +598,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     const launches = sessionLaunches.get(jobs);
     if (launches === undefined) return;
     const content = launches.resumeText(work);
-    sendChatMessage(pi, { customType: "turri_sentinel_resume", content, display: false }, { triggerTurn: true });
+    sendChatMessage(pi, { customType: SENTINEL_RESUME_MESSAGE, content, display: false }, { triggerTurn: true });
   };
   // A launch this chat is to hear of ended: its agent told how it went, to tell the person.
   const launched = (launch: Launch) => tellLaunch(pi, jobs, launch);
@@ -611,7 +618,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       /* a config that cannot be read launches nothing */
     }
     sendChatMessage(pi,
-      { customType: "turri_job_landed", content: landedNote(job, { shown, launching }), display: false, details: { jobId: job.id, status: job.status } },
+      { customType: JOB_LANDED_MESSAGE, content: landedNote(job, { shown, launching }), display: false, details: { jobId: job.id, status: job.status } },
       shown ? { triggerTurn: false } : { triggerTurn: true, deliverAs: "followUp" },
     );
   };
@@ -638,7 +645,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     noticeOver: notices.over,
     concluded: notices.concluded,
     act: (task) => {
-      sendChatMessage(pi, { customType: "turri_notice_answer", content: task, display: false }, { triggerTurn: true, deliverAs: "followUp" });
+      sendChatMessage(pi, { customType: NOTICE_ANSWER_MESSAGE, content: task, display: false }, { triggerTurn: true, deliverAs: "followUp" });
     },
     thinkingLevel: () => pi.getThinkingLevel(),
     context: contextNow,
@@ -2376,7 +2383,7 @@ export function pulseEndNote(job: Job, options: { launching?: boolean; quiet?: b
         ? `Pulse ${job.id} (${job.kind}) was stopped after ${formatDuration(job)}. ${job.error ?? STOPPED_ON_REQUEST}${job.error === undefined || job.error === STOPPED_ON_REQUEST ? " The person stopped it; what it was building counts as not built." : ""}`
         : `Pulse ${job.id} (${job.kind}) failed after ${formatDuration(job)}.\n\n${job.error ?? ""}`;
   if (options.quiet) return `${head}\n\nThis result is in notifications. It needs no announcement in the chat.`;
-  const landed = job.status === "succeeded" && (job.details as { landed?: unknown } | undefined)?.landed === true;
+  const landed = job.status === "succeeded" && job.details?.landed === true;
   if (!landed || options.launching !== true) return `${head}\n\n${JOB_FINISHED_REACTION}`;
   return [
     head,
@@ -2693,7 +2700,7 @@ async function askOnTheSide(pi: ExtensionAPI, ctx: ExtensionContext, cwd: string
 function tellLaunch(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch): void {
   const job = "pulse" in launch.cause ? jobs.get(launch.cause.pulse) : undefined;
   sendChatMessage(pi,
-    { customType: "turri_launch", content: launchedNote(launch, job), display: false, details: { launch: launch.id, status: launch.status } },
+    { customType: LAUNCH_MESSAGE, content: launchedNote(launch, job), display: false, details: { launch: launch.id, status: launch.status } },
     { triggerTurn: true, deliverAs: "followUp" },
   );
 }
@@ -2702,7 +2709,7 @@ function tellLaunch(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch): void {
 function tellReplaced(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch, next: Launch): void {
   const job = "pulse" in next.cause ? jobs.get(next.cause.pulse) : undefined;
   sendChatMessage(pi,
-    { customType: "turri_launch", content: replacedNote(launch, next, job), display: false, details: { launch: launch.id, status: launch.status, replacedBy: next.id } },
+    { customType: LAUNCH_MESSAGE, content: replacedNote(launch, next, job), display: false, details: { launch: launch.id, status: launch.status, replacedBy: next.id } },
     { triggerTurn: true, deliverAs: "followUp" },
   );
 }
@@ -2739,7 +2746,7 @@ function announceJob(pi: ExtensionAPI, job: Job): void {
     // Its module, kind and number - never what it regenerates, which is the agents' words and long.
     summary: pulseName(job),
     status: job.status,
-    incomplete: job.status === "succeeded" && (job.details as { passed?: unknown } | undefined)?.passed === false,
+    incomplete: job.status === "succeeded" && job.details?.passed === false,
     duration: formatDuration(job),
     spent: describeUsage(job.usage) || undefined,
     text:
