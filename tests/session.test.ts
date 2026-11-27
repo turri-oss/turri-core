@@ -125,6 +125,22 @@ describe("a session with no front end", () => {
     expect(readProjectConfig(dir).review).toBe(true);
   });
 
+  it("adopts the one pi session a front end's print mode makes, turri's extension built into it", async () => {
+    const turri = await createTurri({ persist: false });
+    try {
+      const { api, started } = piApi();
+      await turri.extension(api);
+      const session = standInSession(started);
+      const chat = turri.chats.adopt(session as unknown as AgentSession);
+      expect(turri.chats.list().map((each) => each.id)).toEqual([chat.id]);
+      expect(chat.session).toBe(session);
+      // Still no chat of its own to open.
+      await expect(turri.chats.open()).rejects.toSatisfy(code("no-chat"));
+    } finally {
+      await turri.dispose();
+    }
+  });
+
   it("refuses work with no module named and none in the config, as a TurriError", async () => {
     const turri = await createTurri();
     try {

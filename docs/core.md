@@ -63,6 +63,8 @@ Every member is optional; a front end says only what it does differently.
 | `shows: { pulseEnds?, notices?, map? }` | what the front end shows the person itself, from the events: pulse ends and the sentinel's conclusions - the chat's agent is told them with no turn of its own - notices, which a chat then never puts as a question, and the spec map, which the session then watches - its files each second, its marks as the work moves - sending `map` as it changes |
 | `sentinel: { tools?, surface? }` | the sentinel's own tools beside turri's - a front end's browser - and where the person watches it use them |
 
+**pi's print mode** makes its one session itself, with `turri.extension` built in, and hands it to no extension: the front end that runs it adopts it (`chats.adopt`) - pi's `AgentSession.prototype.bindExtensions` is where print mode binds it - in a session with no front end, so the chat has its title, its entries and its cost in `spending()`.
+
 **No front end** is unattended: no chats, the sentinel never opens, nobody is asked - a start over is what `startOver` says, a function of the caller's asking whoever it likes, and otherwise refused with why, never waited on.
 
 Whatever the front end, the same rules hold: turri appends its entries to a chat's transcript (a transcript is a record; whether to draw one is the front end's choice), a chat is marked unread when something happens in it out of sight, its `"question"` status is turri's own pending asks, and what turri says outside any transcript is said in the chat shown and sent once - as a `notification`, or as the event of its own that tells it (`incident`, `orphansStopped`).
