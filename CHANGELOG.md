@@ -24,6 +24,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 
 - A session's work loop runs with no chat open, on the config's models: the coding model builds, the harness model plans.
 - A person's chat runs on `harness-model`: put on it as it starts and whenever it changes, a model chosen in the chat holding until then. While it cannot be reached - no such model, or its provider not signed in - the chat refuses what is sent to it and says why, rather than reaching pi's own choice of model: `Chat.outOfReach()`, the `outOfReach` event, and `chats.onHarnessModel()` after a sign-in.
+- A front end with no chats: `sessions: { kind: "none" }` - it answers questions and hears the events, and no chat opens, so neither does the sentinel. `Frontend.ask`'s `chat` is optional, none for a question outside any chat.
 - `startOver` takes a function, asked for the run alone with what would be started over and why (`StartOverQuestion`): a command with no front end asks at its terminal. `false` is "no": the rest of the chain is regenerated, as a "no" through the front end did; absent or unanswered, the run ends at once.
 - `launches.followLogs` and `followLaunchedLogs` stop on a signal.
 - `launchOutput` events: each launch's agent's words as they stream. `launches.launch` takes `onOutput`, `signal`, `guidance`, `inModule` and `again`, and `launchModule` `onOutput`.

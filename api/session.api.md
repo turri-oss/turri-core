@@ -479,7 +479,7 @@ export function formatDuration(job: Job): string;
 // @public
 export interface Frontend {
     ask?(question: Question, context: {
-        chat: string;
+        chat?: string;
         signal: AbortSignal;
     }): Promise<string | undefined>;
     extensions?: ExtensionFactory[];
@@ -495,7 +495,7 @@ export interface Frontend {
         tools?: ToolDefinition[];
         surface?: string;
     };
-    sessions?: ManagedSessions | ExternalSessions;
+    sessions?: ManagedSessions | ExternalSessions | NoSessions;
     shows?: {
         pulseEnds?: boolean;
         notices?: boolean;
@@ -1281,6 +1281,12 @@ export interface ModuleStatus {
         old?: true;
     };
     why?: string;
+}
+
+// @public
+export interface NoSessions {
+    // (undocumented)
+    kind: "none";
 }
 
 // @public (undocumented)

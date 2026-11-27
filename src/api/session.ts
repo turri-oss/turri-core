@@ -13,6 +13,7 @@ export {
   type HaltTarget,
   type LaunchOptions,
   type ManagedSessions,
+  type NoSessions,
   type Question,
   type RevealTarget,
   type SessionOverrides,

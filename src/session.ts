@@ -71,6 +71,14 @@ export interface ExternalSessions {
   release?(chat: string, session: AgentSession): Promise<void>;
 }
 
+/**
+ * The front end has no chats: it answers turri's questions (`ask`) and shows what it does from the events - a command
+ * run at a terminal. No chat opens (`chats.open` is refused with `no-chat`), so neither does the sentinel.
+ */
+export interface NoSessions {
+  kind: "none";
+}
+
 export interface SessionRequest {
   chat: string;
   /** A saved conversation to reopen; none, a fresh one. */
@@ -90,12 +98,13 @@ export interface Frontend {
   extensions?: ExtensionFactory[];
   /**
    * Put a question to the person - ask_user's, a skill's interview, a review gate's - and resolve with what they chose
-   * or typed; undefined when they gave no answer. `signal` is aborted when the question is over without it - declined,
-   * or its turn stopped: the front end closes it.
+   * or typed; undefined when they gave no answer. `chat` is the chat that asks, none for a question outside any chat - a
+   * skill's run or a start over asked of `skills.run` or `work`. `signal` is aborted when the question is over without
+   * an answer - declined, or its turn stopped: the front end closes it.
    */
-  ask?(question: Question, context: { chat: string; signal: AbortSignal }): Promise<string | undefined>;
-  /** Where the chats' pi sessions are made. Default: `{ kind: "managed" }`. */
-  sessions?: ManagedSessions | ExternalSessions;
+  ask?(question: Question, context: { chat?: string; signal: AbortSignal }): Promise<string | undefined>;
+  /** Where the chats' pi sessions are made - none, for a front end with no chats. Default: `{ kind: "managed" }`. */
+  sessions?: ManagedSessions | ExternalSessions | NoSessions;
   /** The person asked to see something the front end shows - `/pulses`: true when it shows it, else the chat lists it. */
   reveal?(target: RevealTarget, context: { chat: string }): boolean;
   /**
@@ -431,6 +440,9 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
   const mapTimer = frontend?.shows?.map === true ? setInterval(sendMap, MAP_EVERY_MS) : undefined;
   mapTimer?.unref();
 
+  // Where chats live: none without a front end, or with one that has none; else turri's own sessions, or the front end's.
+  const given = frontend === undefined ? undefined : (frontend.sessions ?? { kind: "managed" as const });
+  const sessions = given?.kind === "none" ? undefined : given;
   const ask = frontend?.ask;
   const dialogsFor = ask !== undefined ? (chat: string): AskUserIO => frontendDialogs(ask, chat) : undefined;
   const host: TurriHost = {
@@ -459,7 +471,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
   };
   const core: TurriCore = createTurriCore(host, {
     mode: frontend !== undefined ? "host" : "chat",
-    persist: options.persist ?? frontend !== undefined,
+    persist: options.persist ?? sessions !== undefined,
     ...(dialogsFor !== undefined ? { dialogs: dialogsFor } : {}),
     ...(client !== undefined ? { client } : {}),
     ...(frontend?.openProject !== undefined ? { openProject: frontend.openProject } : {}),
@@ -484,8 +496,6 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     for (const own of extensions) await own(pi);
   };
 
-  // Where chats live: none without a front end; else turri's own sessions, or the front end's.
-  const sessions = frontend === undefined ? undefined : (frontend.sessions ?? { kind: "managed" as const });
   if (sessions?.kind === "managed") {
     core.setDriver({
       async create(chat, sessionFile) {
@@ -603,7 +613,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
           loop: sessionLoop(core),
           jobs: core.jobs,
           onFinish: (listener) => (finished.add(listener), () => void finished.delete(listener)),
-          ...(ask !== undefined ? { ask: (title: string, body: string) => askYesNo(ask, chat ?? core.shown() ?? "", title, body) } : {}),
+          ...(ask !== undefined ? { ask: (title: string, body: string) => askYesNo(ask, chat ?? core.shown(), title, body) } : {}),
         },
         kind,
         { ...asked, plainFile },
@@ -642,7 +652,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       focused: () => core.shown(),
       focus: (id) => core.show(id),
       async open(asked = {}) {
-        if (sessions === undefined) throw new TurriError("no-chat", "A session with no front end has no chats: open it with a frontend.");
+        if (sessions === undefined) throw new TurriError("no-chat", frontend === undefined ? "A session with no front end has no chats: open it with a frontend." : "This front end has no chats (sessions: none).");
         try {
           const info = await core.open({ ...(asked.sessionFile !== undefined ? { sessionFile: asked.sessionFile } : {}), ...(asked.title !== undefined ? { title: asked.title } : {}), ...(asked.focus === false ? { hidden: true } : {}) });
           return handle(info.id);
@@ -817,20 +827,20 @@ function sessionConfigOverrides(overrides: SessionOverrides | undefined): Config
   } as ConfigOverrides;
 }
 
-/** The front end's `ask` as the dialogs turri's questions are put in, for one chat. */
-function frontendDialogs(ask: NonNullable<Frontend["ask"]>, chat: string): AskUserIO {
-  const signalOf = (asked: DialogAsked | undefined) => asked?.signal ?? new AbortController().signal;
+/** The front end's `ask` as the dialogs turri's questions are put in, for one chat - or none, outside any. */
+function frontendDialogs(ask: NonNullable<Frontend["ask"]>, chat: string | undefined): AskUserIO {
+  const asking = (asked: DialogAsked | undefined) => ({ ...(chat !== undefined ? { chat } : {}), signal: asked?.signal ?? new AbortController().signal });
   return {
-    select: (title, options, context, at, asked) => ask({ kind: "select", title, options, ...(context !== undefined ? { context } : {}), ...(at !== undefined ? { at } : {}) }, { chat, signal: signalOf(asked) }),
-    input: (title, context, asked) => ask({ kind: "input", title, ...(context !== undefined ? { context } : {}) }, { chat, signal: signalOf(asked) }),
+    select: (title, options, context, at, asked) => ask({ kind: "select", title, options, ...(context !== undefined ? { context } : {}), ...(at !== undefined ? { at } : {}) }, asking(asked)),
+    input: (title, context, asked) => ask({ kind: "input", title, ...(context !== undefined ? { context } : {}) }, asking(asked)),
   };
 }
 
 const YES = "Yes";
 
 /** A yes or no put to the person through the front end: true for yes; undefined when they gave no answer. */
-async function askYesNo(ask: NonNullable<Frontend["ask"]>, chat: string, title: string, body: string): Promise<boolean | undefined> {
-  const answer = await ask({ kind: "select", title, options: [YES, "No"], context: body }, { chat, signal: new AbortController().signal });
+async function askYesNo(ask: NonNullable<Frontend["ask"]>, chat: string | undefined, title: string, body: string): Promise<boolean | undefined> {
+  const answer = await ask({ kind: "select", title, options: [YES, "No"], context: body }, { ...(chat !== undefined ? { chat } : {}), signal: new AbortController().signal });
   return answer === undefined ? undefined : answer === YES;
 }
 
@@ -886,7 +896,7 @@ async function runNamedSkill(core: TurriCore, name: string, options: SkillRunOpt
   const phases = skill.steps.map((step) => step.name);
   const models = projectModels(readProjectConfig(cwd));
   const model = options.model ?? modelSpec(skill.model === "coding" ? models.coding : models.harness);
-  const io = ask !== undefined ? frontendDialogs(ask, "") : undefined;
+  const io = ask !== undefined ? frontendDialogs(ask, undefined) : undefined;
   progress({ skill: skill.name, phases, current: -1, attempt: 1 });
   try {
     const result = await runSkill({
@@ -905,7 +915,7 @@ async function runNamedSkill(core: TurriCore, name: string, options: SkillRunOpt
         outcome: () => {},
       },
       ...(io !== undefined ? { askUser: (request) => runAsk(request, io) } : {}),
-      escalate: async ({ question, critique }) => (ask !== undefined ? (await askYesNo(ask, "", `Review gate: ${skill.name} - ${question}`, critique)) === true : false),
+      escalate: async ({ question, critique }) => (ask !== undefined ? (await askYesNo(ask, undefined, `Review gate: ${skill.name} - ${question}`, critique)) === true : false),
     });
     return { ok: result.ok, artifacts: result.artifacts, output: result.output };
   } finally {

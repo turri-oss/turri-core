@@ -104,6 +104,14 @@ try {
   await turri.dispose();
 }
 
+// A command at a terminal: it answers questions, and has no chats.
+const command = await createTurri({ frontend: { sessions: { kind: "none" }, ask: async (_question, context) => (context.chat === undefined ? "No" : undefined) } });
+try {
+  await assert.rejects(command.chats.open(), (error: unknown) => isTurriError(error, "no-chat"));
+} finally {
+  await command.dispose();
+}
+
 // A run's start over, answered by whoever runs it - a command at its terminal.
 const startOver: WorkRunOptions["startOver"] = async (question: StartOverQuestion) => (question.codebases.length > 0 ? false : undefined);
 assert.equal(typeof startOver, "function");

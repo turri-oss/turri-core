@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -81,6 +81,10 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
 const { createTurri } = await import("../src/session.ts");
 const { isTurriError } = await import("../src/errors.ts");
 const { readProjectConfig } = await import("../src/config.ts");
+const { chainSpec } = await import("../src/regenerate/loop.ts");
+const { recordHistory } = await import("../src/regenerate/lineage.ts");
+const { writeCodeRecord } = await import("../src/regenerate/records.ts");
+const { resolveRequiresChain } = await import("../src/regenerate/requires.ts");
 
 let dir: string;
 let cwd: string;
@@ -125,6 +129,40 @@ describe("a session with no front end", () => {
     const turri = await createTurri();
     try {
       await expect(turri.work.regenerate({})).rejects.toSatisfy(code("refused"));
+    } finally {
+      await turri.dispose();
+    }
+  });
+});
+
+describe("a front end with no chats", () => {
+  it("is asked turri's questions outside any chat, and opens none", async () => {
+    writeFileSync(join(dir, "config.turri.yaml"), "review: false\nsentinel: true\n");
+    writeFileSync(join(dir, "base.plain"), "***implementation reqs***\n\n- Python.\n\n***functional specs***\n\n# base-one\nBase one.\n");
+    const app = join(dir, "app.plain");
+    const appSpec = (requires: string) => `${requires}***implementation reqs***\n\n- Python.\n\n***functional specs***\n\n# app-one\nApp one.\n`;
+    writeFileSync(app, appSpec(""));
+    // app built before it required base: it can only be started over.
+    const built = join(dir, "plain_modules", "app", "code");
+    mkdirSync(built, { recursive: true });
+    writeFileSync(join(built, "main.py"), "print(1)\n");
+    writeCodeRecord(built, chainSpec(resolveRequiresChain(app, [], undefined, { allowNoFunctionalities: true })).tree);
+    recordHistory(built, "app pulse 1 landed");
+    writeFileSync(app, appSpec("---\nrequires:\n  - base\n---\n\n"));
+
+    const asked: Array<{ title: string; chat?: string }> = [];
+    const events: TurriEvent[] = [];
+    const turri = await createTurri({
+      frontend: { sessions: { kind: "none" }, ask: async (question, context) => (asked.push({ title: question.title, ...(context.chat !== undefined ? { chat: context.chat } : {}) }), "No") },
+      onEvent: (event) => events.push(event),
+    });
+    try {
+      await expect(turri.chats.open()).rejects.toSatisfy(code("no-chat"));
+      const result = await (await turri.work.regenerate({ plainFile: app, startOver: "ask" })).done;
+      expect(asked).toEqual([{ title: "Start over?" }]);
+      expect(result.status).toBe("incomplete");
+      expect(turri.chats.list()).toEqual([]);
+      expect(events.filter((event) => event.type === "chats").flatMap((event) => event.chats)).toEqual([]);
     } finally {
       await turri.dispose();
     }
