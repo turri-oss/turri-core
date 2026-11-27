@@ -87,6 +87,7 @@
     "stdlib",
     "docs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ]
 }

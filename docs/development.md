@@ -44,19 +44,19 @@ The workflow signs in to npm with npm's trusted publishing (OIDC), not a token: 
 
 | path | what it is |
 |---|---|
-| `src/index.ts`, `src/api/`, `src/host.ts` | the session entry and the named public entry points |
-| `src/extension.ts` | the [pi](https://pi.dev) extension: every conversation tool and command, and `createTurriCore`; the CLI takes it through `/terminal` |
-| `src/view.ts` | `TurriView`: what a front-end draws of the session that the core does not - the hooks turri's CLI draws its terminal through - see [the core](core.md) |
-| `src/chat-entries.ts` | what the core appends to a chat and the messages it sends that a front-end draws: their types and data, for the CLI's renderers and turri-app |
-| `src/session-events.ts` | `SessionEvent` and foreground skill progress as data |
+| `src/api/` | the five public entries - `session.ts` (`.`), `plain.ts`, `project.ts`, `models.ts`, `system.ts` - each a list of exports, reported in `api/` |
+| `src/session.ts` | `createTurri`: the one session every front end opens - its `Frontend`, events and namespaces - over the core (`createTurriCore`) and its chats |
+| `src/work.ts` | regenerate and conform work, as the chat's tools and a front end ask it: the loop's call (`planWork`), its checks (`askLoop`), and a run of it - start over, report, export, drain, verdict (`runWork`) |
+| `src/errors.ts`, `src/client.ts`, `src/project.ts` | `TurriError` and its codes; who runs turri (`ClientInfo`); what can be asked of a project with no session (drift, a launch of its own) |
+| `src/extension.ts` | the [pi](https://pi.dev) extension: every conversation tool and command, and `createTurriCore`, the core the session is built on |
+| `src/chat-entries.ts` | what the core appends to a chat and the messages it sends: their types and data, for every front end that draws them |
+| `src/session-events.ts` | what the core says happened, internally, and foreground skill progress as data - the session turns it into its events |
 | `tests/boundary.test.ts` | the core's boundary with the terminal: no pi-tui, none of pi's terminal, no renderer, key or screen of the core's own |
-| `src/headless.ts` | `runHeadless`: an unattended run - `turri regenerate`, `conform` - driven as the chat drives the work loop, everything a person sees and is asked through its `HeadlessView`, printing nothing and never exiting |
 | `src/setup.ts`, `src/doctor-tool.ts`, `src/environment.ts`, `src/stack.ts` | what `turri doctor` and the chat's `doctor` tool check - this machine, and in a project what its modules need of it; `turri doctor` prints them in turri's CLI |
 | `src/init-config.ts` | a project's first `config.turri.yaml`, as `turri init-config` and a host write it |
 | `src/chats.ts`, `src/chat-scope.ts`, `src/chat-records.ts` | the session's [chats](chats.md): which chat a pulse is told to, each chat's scope - its id and stack - and `.turri/chats.json` |
-| `src/chat-ui.ts`, `src/chat-queue.ts`, `src/notifications.ts` | a hidden chat's stand-in for the screen, a message taken out of a session's queue (`unqueue`), and the terminal session's inbox of finished pulses and notices (`TerminalNotifications`) |
+| `src/chat-queue.ts` | a message taken out of a session's queue (`unqueue`) |
 | `src/sentinel.ts`, `src/sentinel-chat.ts` | [the sentinel](sentinel.md): its prompt, what it is told of a pulse, its fenced tools, its guidance; notices - what is appended of them, the dialog, their answers |
-| `src/host.ts`, `src/host-session.ts` | the package's `./host`, and `createTurri`, the session for a host |
 | `src/skill.ts` | parses `SKILL.md` into steps and gates |
 | `src/graph.ts` | compiles a skill into a LangGraph `StateGraph`: step -> gate -> route |
 | `src/judge.ts` | runs independent judges, applies the quorum, builds the critique |

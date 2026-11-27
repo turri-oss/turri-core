@@ -37,7 +37,7 @@ They are turri's documentation of the whole product, kept here with the core tha
 | what the agents can and cannot reach | [the sandbox](sandbox.md) |
 | how skill review gates and judges work | [skills and gates](skills-and-gates.md) |
 | how the parser matches the reference implementation | [the \*\*\*plain parser](parser.md) |
-| how a desktop app or an editor runs turri's chats itself | [running turri in a host](hosting.md) |
+| how a front end - a desktop app, an editor - runs turri's session | [the core](core.md) |
 | what is this package's and what is turri's CLI's, and how the CLI draws the core | [the core](core.md) |
 | where the code for something lives | [development](development.md#layout) |
 
@@ -60,6 +60,5 @@ They are turri's documentation of the whole product, kept here with the core tha
 | [Skills and gates](skills-and-gates.md) | the gate syntax, what the harness enforces, what a step can do, the rules, trying the gates |
 | [The \*\*\*plain parser](parser.md) | the TypeScript port, `turri parse`, inheritance, the iterator, fidelity |
 | [Theming](theming.md) | the turri themes, contrast, backgrounds, the font |
-| [Running turri in a host](hosting.md) | `@turri-dev/core/host`: the session and its chats in a host's own windows - their jobs, their questions - and what a host shows beside them |
-| [The core](core.md) | this package and turri's CLI: the boundary, the view, the entries a chat keeps, unattended runs, what else the CLI takes from the core, importing it, turri-app |
+| [The core](core.md) | the interface every front end builds on: the five entries, the session, the front end, events, the transcript's entries, errors, the boundary, importing and versioning |
 | [Development](development.md) | tests, the source layout, known edges |

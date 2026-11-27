@@ -27,7 +27,7 @@ _Not yet run at these commits._ The comparison is run outside this repository - 
 | `src/plain/markdown.ts` | mistletoe's AST + `PlainRenderer` (mdast + a matching serializer) |
 | `src/plain/liquid.ts` | the reference implementation's Liquid nodes + the two filters in `plain_spec.py` (liquidjs) |
 | `src/plain/files.ts` | `loaders.open_from` / `get_loaded_templates` / `liquid_error_message` / `relative_resource_path`, base64 blob detection |
-| `src/plain/module-concepts.ts`, `src/plain/graph.ts` | nothing - turri's own, for a host: the concepts a module can name and where each is defined, and a project's \*\*\*plain as a graph of modules, items and concepts (see [hosting](hosting.md#plain-for-a-host)). The parser keeps, beside the reference's result, which module each item an import brought is written in (`importedFrom`) |
+| `src/plain/module-concepts.ts`, `src/plain/graph.ts` | nothing - turri's own, for a host: the concepts a module can name and where each is defined, and a project's \*\*\*plain as a graph of modules, items and concepts (see [hosting](core.md)). The parser keeps, beside the reference's result, which module each item an import brought is written in (`importedFrom`) |
 | `src/plain/stdlib.ts` | nothing - turri's own: `stdlib/` is a reserved import prefix, read from turri's standard library only, and a project module at such a path is an error (see [the standard library](authoring-plain.md#the-standard-library)) |
 
 The ported functions keep the reference's names where it keeps them: `getFrids`, `getSpecificationsForFrid`, `getFridsRange` - a frid there is a functional spec's func-id.
