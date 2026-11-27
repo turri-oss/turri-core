@@ -133,6 +133,37 @@ describe("what quotes hold, and a file's text in a here-document", () => {
   });
 });
 
+describe("commands that write only where they may, as agents write them", () => {
+  /** The sentinel: reads the whole project, writes nothing there - only its home and $TMPDIR. */
+  const readOnly: CommandFence = { ...coder, cwd: project, read: [project], write: [] };
+
+  it.each([
+    ["a folder the line names in a variable, then cds into", 'D=$TMPDIR/t1; rm -rf $D; mkdir -p $D/images; cd $D\ntouch photo.jpg "images/photo (2).jpg"\necho new > photo.jpg'],
+    ["a variable set from another, braced and exported", 'export OUT=${TMPDIR}/o; cd "$OUT" && touch a.txt && mkdir large'],
+    ["a folder only running the line tells", 'cd "$(mktemp -d)"; touch a.txt; mkdir large'],
+    ["an option's value", "truncate -s 1073741825 $TMPDIR/big.mp4; mkdir -m 700 $TMPDIR/d; touch -t 202401010000 $TMPDIR/a; cp -S .bak $TMPDIR/a $TMPDIR/b"],
+  ])("lets through %s", (_what, command) => {
+    expect(refused(command, readOnly)).toBeUndefined();
+  });
+
+  it("reads a program's here-document as its code, not the shell's - and the shell's own lines after it as the shell's", () => {
+    // An apostrophe in a comment puts the shell's quotes out of step with Python's: the `>/,` after it was a redirection.
+    const python = "python3 - <<'EOF'\n# moves each file into its kind's folder\ns = s.replace('into folder/<kind>/, creating it', 'x')\nopen('internal/apply/apply.go', 'w').write(s)\nEOF";
+    expect(refused(`cat > internal/plan/plan.go <<'EOF'\n// into folder/<kind>/, as planned\nEOF\n${python}\ngrep -n Kind internal/apply/apply.go`)).toBeUndefined();
+    expect(refused(`${python}\necho x > notes.txt`, readOnly)?.reason).toContain("`notes.txt` is outside what this command may write");
+  });
+
+  it.each([
+    ["a variable the line set, written into", `D=${project}/plain_modules; touch $D/x`, "$D/x"],
+    ["a variable the line set, climbing out", "D=$HOME/../..; mkdir $D/x", "$D/x"],
+    ["a folder cd'd into through a variable, written in", "D=$TMPDIR; cd $D; touch ../../../x", "../../../x"],
+    ["an option's value beside its operand", "truncate -s 10 notes.txt", "notes.txt"],
+    ["the folder cp's -t names", "cp -t out $TMPDIR/a.txt", "out"],
+  ])("still refuses %s", (_what, command, word) => {
+    expect(refused(command, readOnly)?.reason).toContain(`\`${word}\` is outside what this command may write`);
+  });
+});
+
 describe("a redirection after a program's operands", () => {
   it("is not taken for the operand it follows - the refusal names what is written", () => {
     const readOnly: CommandFence = { ...coder, cwd: project, read: [project], write: [] };

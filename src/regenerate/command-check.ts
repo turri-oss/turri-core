@@ -337,36 +337,53 @@ const DATA_SINKS = new Set(["cat", "tee"]);
  * newlines put out of the way - a `>` in `grep "</content>"` redirects nothing, a `;` in a string ends no command - and
  * the body of a here-document fed to cat or tee with a quoted delimiter, so not expanded, is blanked: it is the text of
  * a file being written, and a `../lib/logger` or a `>` in it is code, not a path or a redirection. A `$(...)` in double
- * quotes, an unquoted delimiter's body and a here-document fed to anything else - a shell, an interpreter - run, and are
- * read as they are.
+ * quotes, an unquoted delimiter's body and a here-document fed to a shell run as shell, and are read as they are. One
+ * with a quoted delimiter fed to anything else - `python3 - <<'EOF'`, `node`, `ruby` - is that program's code, never the
+ * shell's: its operators are put out of the way, and its quotes, so they leave the shell's reading of the rest alone -
+ * `bodies` says where each is, a program's paths to be checked and nothing else.
  */
-export function shellCode(command: string): string {
+function readShell(command: string): { code: string; bodies: Array<{ from: number; to: number }> } {
   const lines = command.split("\n");
-  const out: string[] = [];
+  let code = "";
+  /** The shell's own text since the last program's body: read as one, a string spanning lines and all. */
+  let shell = "";
+  const bodies: Array<{ from: number; to: number }> = [];
+  const line = (index: number) => lines[index]! + (index < lines.length - 1 ? "\n" : "");
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!;
-    out.push(line);
+    shell += line(index);
     // The here-documents this line opens, in order: each body runs to its delimiter alone on a line.
-    const opened: Array<{ delimiter: string; strip: boolean; data: boolean }> = [];
-    for (const match of maskQuotes(line).matchAll(HEREDOC)) {
+    const opened: Array<{ delimiter: string; strip: boolean; body: "data" | "shell" | "program" }> = [];
+    for (const match of maskQuotes(lines[index]!).matchAll(HEREDOC)) {
       const quoted = match[2] ?? match[3];
-      const before = line.slice(0, match.index).split(/&&|\|\||[;|]/).pop() ?? "";
+      const before = lines[index]!.slice(0, match.index).split(/&&|\|\||[;|]/).pop() ?? "";
       const program = programOf(before)?.program;
-      opened.push({ delimiter: quoted ?? match[4]!, strip: match[1] === "-", data: quoted !== undefined && program !== undefined && DATA_SINKS.has(program) });
+      const body = quoted === undefined || program === undefined || /^(ba|z|da|k)?sh$/.test(program) ? "shell" : DATA_SINKS.has(program) ? "data" : "program";
+      opened.push({ delimiter: quoted ?? match[4]!, strip: match[1] === "-", body });
     }
     for (const heredoc of opened) {
       while (index + 1 < lines.length) {
         index += 1;
-        const body = lines[index]!;
-        if ((heredoc.strip ? body.replace(/^\t+/, "") : body) === heredoc.delimiter) {
-          out.push(body);
+        const text = lines[index]!;
+        if ((heredoc.strip ? text.replace(/^\t+/, "") : text) === heredoc.delimiter) {
+          shell += line(index);
           break;
         }
-        out.push(heredoc.data ? " ".repeat(body.length) : body);
+        if (heredoc.body === "shell") shell += line(index);
+        else if (heredoc.body === "data") shell += line(index).replace(/[^\n]/g, " ");
+        else {
+          code += maskQuotes(shell);
+          shell = "";
+          bodies.push({ from: code.length, to: code.length + line(index).length });
+          code += line(index).replace(/[<>|&;'"`]/g, " ");
+        }
       }
     }
   }
-  return maskQuotes(out.join("\n"));
+  return { code: code + maskQuotes(shell), bodies };
+}
+
+export function shellCode(command: string): string {
+  return readShell(command).code;
 }
 
 /** `text` with what its quotes hold out of the shell's way: operators and newlines in a string are a space each. */
@@ -427,23 +444,44 @@ class Paths {
   }
 }
 
-/** What a word that names a path names, from `cwd`: `~`, `$HOME`, `$TMPDIR` as the fence has them; nothing when it cannot be told. */
-function resolveWord(word: string, cwd: string, fence: CommandFence, paths: Paths): string | undefined {
+/** The variables a command line set itself, as it set them - undefined for one set to what only running it tells. */
+type Known = Map<string, string | undefined>;
+
+/**
+ * A word with its `~` and variables put in: `$HOME` and `$TMPDIR` as the fence has them, and what the command line set
+ * itself before it (`D=$TMPDIR/t; cd $D`). Nothing when a variable cannot be known - one from outside the line, one set
+ * to `$(...)` - or the word is worked out at run time.
+ */
+function expanded(word: string, fence: CommandFence, known: Known): string | undefined {
   let path = word;
-  const home = fence.home;
   if (path === "~" || path.startsWith("~/")) {
-    if (home === undefined) return undefined;
-    path = home + path.slice(1);
-  } else if (/^\$\{?HOME\}?(\/|$)/.test(path)) {
-    if (home === undefined) return undefined;
-    path = path.replace(/^\$\{?HOME\}?/, home);
-  } else if (/^\$\{?TMPDIR\}?(\/|$)/.test(path)) {
-    if (fence.tmp === undefined) return undefined;
-    path = path.replace(/^\$\{?TMPDIR\}?/, fence.tmp);
+    if (fence.home === undefined) return undefined;
+    path = fence.home + path.slice(1);
   }
-  // A variable we cannot know, or a glob: told apart at run time, by the sandbox.
-  if (path.includes("$")) return undefined;
-  return paths.path.resolve(cwd, path);
+  let unknown = false;
+  path = path.replace(/\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g, (_whole, braced: string | undefined, bare: string | undefined) => {
+    const name = braced ?? bare!;
+    const value = name === "HOME" ? fence.home : name === "TMPDIR" ? fence.tmp : known.get(name);
+    if (value === undefined) unknown = true;
+    return value ?? "";
+  });
+  // A variable we cannot know, a substitution or a glob: told apart at run time, by the sandbox.
+  return unknown || /[$`]/.test(path) ? undefined : path;
+}
+
+/** What a word that names a path names, from `cwd`; nothing when it cannot be told - from a folder the line cannot tell, too. */
+function resolveWord(word: string, cwd: string | undefined, fence: CommandFence, paths: Paths, known: Known = new Map()): string | undefined {
+  const path = expanded(word, fence, known);
+  if (path === undefined || (cwd === undefined && !paths.path.isAbsolute(path))) return undefined;
+  return paths.path.resolve(cwd ?? "", path);
+}
+
+/** The variables a simple command sets, when that is all it does: `D=$TMPDIR/t1`, `export A=1 B=2`. */
+function assignments(segment: string): Array<[string, string]> | undefined {
+  const all = words(segment);
+  const set = all[0] === "export" ? all.slice(1) : all;
+  if (set.length === 0 || !set.every((word) => /^[A-Za-z_]\w*=/.test(word))) return undefined;
+  return set.map((word) => [word.slice(0, word.indexOf("=")), word.slice(word.indexOf("=") + 1)]);
 }
 
 /** The words of a command that name paths: absolute, home- or TMPDIR-relative, or climbing with `..` - in quotes too. */
@@ -486,6 +524,21 @@ function pathWords(text: string, paths: Paths, fence: CommandFence): string[] {
   });
 }
 
+/**
+ * The options of the programs that write which take the next word as their value - a size, a mode, a date, a reference
+ * file - never a file written: `truncate -s 1073741825 big.mp4` writes big.mp4 alone. `-t` names the folder cp, mv,
+ * install and ln write into.
+ */
+const VALUE_OPTIONS: Record<string, string[]> = {
+  truncate: ["-s", "-r"],
+  touch: ["-t", "-d", "-r"],
+  mkdir: ["-m"],
+  install: ["-m", "-o", "-g", "-S", "-t"],
+  cp: ["-S", "-t"],
+  mv: ["-S", "-t"],
+  ln: ["-S", "-t"],
+};
+
 /** The words a simple command writes to: redirections, tee, the target of cp and mv, a file edited in place. */
 function writeTargets(segment: string): string[] {
   const targets: string[] = [];
@@ -496,9 +549,20 @@ function writeTargets(segment: string): string[] {
     const found = programOf(part);
     if (found === undefined) continue;
     const { program, args } = found;
-    // A redirection among its words - `2>/dev/null`, `>out.txt` - is the shell's, read above: never an operand.
-    const operands = args.filter((arg) => !arg.startsWith("-") && !/^(\d|&)?[<>]/.test(arg));
-    if (program === "tee") targets.push(...operands);
+    // A redirection among its words - `2>/dev/null`, `>out.txt` - is the shell's, read above: never an operand; nor is an
+    // option's value.
+    const valued = VALUE_OPTIONS[program] ?? [];
+    const operands: string[] = [];
+    let into: string | undefined;
+    for (let at = 0; at < args.length; at += 1) {
+      const arg = args[at]!;
+      if (valued.includes(arg)) {
+        if (arg === "-t" && program !== "touch") into = args[at + 1];
+        at += 1;
+      } else if (!arg.startsWith("-") && !/^(\d|&)?[<>]/.test(arg)) operands.push(arg);
+    }
+    if (into !== undefined) targets.push(into);
+    else if (program === "tee") targets.push(...operands);
     else if ((program === "cp" || program === "mv" || program === "install" || program === "ln") && operands.length >= 2) targets.push(operands[operands.length - 1]!);
     else if (["touch", "rm", "rmdir", "mkdir", "truncate", "chmod", "chown"].includes(program)) targets.push(...operands.slice(program === "chmod" || program === "chown" ? 1 : 0));
     else if ((program === "sed" || program === "perl") && args.some((arg) => /^-p?i/.test(arg))) targets.push(...operands.slice(1));
@@ -541,29 +605,45 @@ export function checkCommand(command: string, fence: CommandFence): CheckResult 
     }
   }
 
-  // Paths, a simple command at a time from where the cds before it left it - read as the shell reads its operators.
-  let cwd = fence.cwd;
-  for (const segment of shellCode(command).split(/&&|\|\||[;\n]/)) {
-    for (const word of pathWords(segment, paths, fence)) {
-      const target = resolveWord(word, cwd, fence, paths);
-      if (target !== undefined && !paths.inside(target, readable)) {
-        return refusal("path", `\`${word}\` is outside what this command may reach (${target}). ${reach(fence)} Everything you need from outside them is in your prompt.`);
+  // Paths, a simple command at a time from where the cds before it left it - read as the shell reads its operators, with
+  // the variables the line set itself. A cd the line cannot tell - `cd "$(mktemp -d)"` - leaves the folder unknown: what
+  // is named from it is told apart at run time, by the sandbox. A program's here-document is checked for its paths alone.
+  const { code, bodies } = readShell(command);
+  const known: Known = new Map();
+  let cwd: string | undefined = fence.cwd;
+  const outside = (word: string): CheckResult | undefined => {
+    const target = resolveWord(word, cwd, fence, paths, known);
+    if (target === undefined || paths.inside(target, readable)) return undefined;
+    return refusal("path", `\`${word}\` is outside what this command may reach (${target}). ${reach(fence)} Everything you need from outside them is in your prompt.`);
+  };
+  let at = 0;
+  for (const body of [...bodies, { from: code.length, to: code.length }]) {
+    for (const segment of code.slice(at, body.from).split(/&&|\|\||[;\n]/)) {
+      for (const word of pathWords(segment, paths, fence)) {
+        const refused = outside(word);
+        if (refused !== undefined) return refused;
+      }
+      for (const word of writeTargets(segment)) {
+        if (isCredentialFile(word)) {
+          return refusal("credential", `${word.split(/[\\/]/).pop()} holds credentials, and they are the person's to provide - never an agent's to write, not even a placeholder. If the software needs one that is missing, say so and name the variable.`);
+        }
+        const target = resolveWord(word, cwd, fence, paths, known);
+        if (target !== undefined && !paths.inside(target, writable)) {
+          return refusal("path", `\`${word}\` is outside what this command may write (${target}). ${reach(fence)}`);
+        }
+      }
+      for (const [name, value] of assignments(segment) ?? []) known.set(name, expanded(value, fence, known));
+      const cd = programOf(segment);
+      if (cd?.program === "cd") {
+        const [to, ...more] = cd.args.filter((arg) => !/^-[LPe@]+$/.test(arg));
+        cwd = more.length > 0 || to === "-" ? undefined : to === undefined ? fence.home : resolveWord(to, cwd, fence, paths, known);
       }
     }
-    for (const word of writeTargets(segment)) {
-      if (isCredentialFile(word)) {
-        return refusal("credential", `${word.split(/[\\/]/).pop()} holds credentials, and they are the person's to provide - never an agent's to write, not even a placeholder. If the software needs one that is missing, say so and name the variable.`);
-      }
-      const target = resolveWord(word, cwd, fence, paths);
-      if (target !== undefined && !paths.inside(target, writable)) {
-        return refusal("path", `\`${word}\` is outside what this command may write (${target}). ${reach(fence)}`);
-      }
+    for (const word of pathWords(code.slice(body.from, body.to), paths, fence)) {
+      const refused = outside(word);
+      if (refused !== undefined) return refused;
     }
-    const cd = /^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*$/.exec(segment);
-    if (cd !== null) {
-      const to = resolveWord(cd[1]!.replace(/^["']|["']$/g, ""), cwd, fence, paths);
-      if (to !== undefined) cwd = to;
-    }
+    at = body.to;
   }
   return { ok: true };
 }

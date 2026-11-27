@@ -39,6 +39,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 
 ### Fixed
 
+- The command check refused commands that write only where they may: a `cd` into a folder a variable of the same line names (`D=$TMPDIR/t1; cd $D; touch a.txt`), an option's value read as a file written (`truncate -s 1073741825 big.mp4`), and the body of a here-document fed to an interpreter (`python3 - <<'EOF'`) read as shell - a `>` in its text a redirection, its quotes leaving the shell's out of step for the rest of the line, which could also let a write after it through. A variable the line sets is now followed, a `cd` it cannot tell leaves the folder to the OS sandbox, option values are skipped, `cp -t` names its target, and a program's here-document is checked for its paths alone.
 - The person's message after a note turri told a chat with no turn of its own - a pulse end or the sentinel's conclusion, under `shows.pulseEnds` - was read by the model as part of that note: pi gives the model every custom message as the person's. Each of turri's own messages now reaches the model inside a `<turri-note>`, and the chat's prompt says what is outside one is the person's.
 - A pulse that stopped at its tests is said to have stopped there: `stoppedAt` reaches its job, and a job that failed for good keeps its last attempt's details.
 - A front end's question dialog declined while it opened is closed.
