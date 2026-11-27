@@ -99,7 +99,7 @@ describe("what a skill run says", () => {
   it("goes on when the caller's listener throws, the throw a warning", async () => {
     skillFolder("drafting");
     const warned: string[] = [];
-    const warn = (warning: Error) => void warned.push(warning.message);
+    const warn = (warning: Error & { code?: string }) => void (warning.code === "TURRI_LISTENER" && warned.push(warning.message));
     process.on("warning", warn);
     const turri = await createTurri();
     try {

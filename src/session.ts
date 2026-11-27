@@ -463,7 +463,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       try {
         listener(event);
       } catch (error) {
-        process.emitWarning(error instanceof Error ? error : String(error), { code: "TURRI_LISTENER" });
+        listenerThrew(error);
       }
     }
   };
@@ -886,6 +886,15 @@ function sessionConfigOverrides(overrides: SessionOverrides | undefined): Config
   } as ConfigOverrides;
 }
 
+/**
+ * A front end's listener threw: a warning coded `TURRI_LISTENER`, its stack the detail - never turri's own error. Given
+ * an Error, Node drops the code, so the warning is the message.
+ */
+function listenerThrew(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  process.emitWarning(message, { code: "TURRI_LISTENER", ...(error instanceof Error && error.stack !== undefined ? { detail: error.stack } : {}) });
+}
+
 /** The front end's `ask` as the dialogs turri's questions are put in, for one chat - or none, outside any. */
 function frontendDialogs(ask: NonNullable<Frontend["ask"]>, chat: string | undefined): AskUserIO {
   const asking = (asked: DialogAsked | undefined) => ({ ...(chat !== undefined ? { chat } : {}), signal: asked?.signal ?? new AbortController().signal });
@@ -1000,7 +1009,7 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
     try {
       options.onReport?.(report);
     } catch (error) {
-      process.emitWarning(error instanceof Error ? error : String(error), { code: "TURRI_LISTENER" });
+      listenerThrew(error);
     }
   };
   // A step's artifact comes as it ends, and the judges' verdicts after the gate that asked them: the last step's, the last gate's.

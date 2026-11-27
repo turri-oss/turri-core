@@ -187,7 +187,7 @@ describe("a session's events", () => {
       await turri.chats.open();
       expect(counts.at(-1)).toBe(1);
       expect(all.filter((type) => type === "chats").length).toBeGreaterThan(counts.length);
-      expect(warned).toHaveBeenCalledWith(expect.objectContaining({ message: "a front end's mistake" }), { code: "TURRI_LISTENER" });
+      expect(warned).toHaveBeenCalledWith("a front end's mistake", expect.objectContaining({ code: "TURRI_LISTENER" }));
     } finally {
       await turri.dispose();
       warned.mockRestore();
