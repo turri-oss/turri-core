@@ -316,8 +316,8 @@ export function createTurriCore(
   options: {
     persist?: boolean;
     dialogs?: (chat: string) => AskUserIO | undefined;
-    /** A host can run the session without supplying any callbacks. */
-    mode?: "chat" | "host";
+    /** How the ledger records the run (`run.started`'s `mode`): the front end's word for it. Default: `unattended`. */
+    mode?: string;
     /** Who runs turri: the front end's name and version, for the banner, the ledger and run reports. Default: the core. */
     client?: ClientInfo;
     /**
@@ -331,7 +331,7 @@ export function createTurriCore(
 ): TurriCore {
   setClient(options.client);
   const cwd = process.cwd();
-  const mode = options.mode ?? (Object.keys(host).length > 0 ? "host" : "chat");
+  const mode = options.mode ?? "unattended";
   // The AWS region the project's Bedrock models need, before any model is called - a host has no shell to export it in.
   applyBedrockRegion(cwd);
   let core: TurriCore | undefined;

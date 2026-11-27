@@ -326,6 +326,7 @@ export interface ClientInfo {
     // (undocumented)
     changed?: boolean;
     commit?: string;
+    mode?: string;
     name: string;
     // (undocumented)
     version: string;

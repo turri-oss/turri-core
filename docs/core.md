@@ -23,7 +23,7 @@ import { createTurri } from "@turri-dev/core";
 
 const turri = await createTurri({
   frontend,                                  // what the front end does - none: unattended
-  client: { name: "turri", version: "0.5.0" },  // who runs turri: the banner shows it, the ledger and run reports record it
+  client: { name: "turri", version: "0.5.0", mode: "chat" },  // who runs turri, and how: the banner shows it, the ledger and run reports record it
   overrides: { codingModel: "anthropic/claude-haiku-5-5:low" },  // this session's own config values
   onEvent: (event) => {},                    // a listener from the moment it opens
 });
@@ -36,7 +36,7 @@ try {
 
 One session a process, on the project in the process's working folder: a second `createTurri` while one is open throws `session-open`. Several projects in one process - a `cwd` option - is a later step, which will add to this and change nothing in it.
 
-**Options.** `frontend` (below); `client`; `overrides` - `harnessModel`, `codingModel`, `judgeModel` (`provider/model-id[:thinking]`), `review`, `mutationTesting`, `debug` - read in the project as config.turri.yaml's keys, a `models:` entry still winning over them, cleared as the session closes, and a key set with `/settings` dropping the session's value for it; `persist` - keep the open chats in `.turri/chats.json` for `chats.restore("last")`, on by default with a front end; `agentDir`, `sessionDir` - pi's folder and where managed chats are saved; `captured` - opened in the project a capture wrote, its report told in the first chat; `onEvent`.
+**Options.** `frontend` (below); `client` - the front end's `name` and `version`, its `commit` and `changed` when it runs from a clone, and `mode`, its own word for how it runs turri this time (`chat` in a terminal, `regenerate` for a command run unattended, `host` in a desktop app), which the ledger's `run.started` records - the core cannot tell a terminal from an app; without one it is `frontend`, or `unattended` with no front end; `overrides` - `harnessModel`, `codingModel`, `judgeModel` (`provider/model-id[:thinking]`), `review`, `mutationTesting`, `debug` - read in the project as config.turri.yaml's keys, a `models:` entry still winning over them, cleared as the session closes, and a key set with `/settings` dropping the session's value for it; `persist` - keep the open chats in `.turri/chats.json` for `chats.restore("last")`, on by default with a front end; `agentDir`, `sessionDir` - pi's folder and where managed chats are saved; `captured` - opened in the project a capture wrote, its report told in the first chat; `onEvent`.
 
 **`chats`.** `list()`, `get(id)`, `focused()`, `focus(id)` - the chat the person looks at, where a pulse a closed chat asked for is told; `open({ sessionFile?, title?, focus? })` - a fresh chat or a saved one, focused unless `focus: false`, at most nine (`chat-limit`), and none without a front end (`no-chat`); `adopt(session)` - a pi session the front end made with `turri.extension` in it, as a chat; `restore(run?)` - a run's chats, the last one by default, except those open already; `close(id)`; `onHarnessModel()`. A `Chat` has `id`, `info()`, `session` (pi's `AgentSession`: prompt it, subscribe to it, set its model), `entries()`, `stop()` - its turn, a command, a compaction or a retry stopped, `idle` when it did nothing, never the session ended - `decline()`, every question it asks declined - and `outOfReach()`. A handle to a closed chat throws `chat-closed`.
 

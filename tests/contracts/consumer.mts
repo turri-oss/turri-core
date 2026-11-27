@@ -108,7 +108,7 @@ try {
 }
 
 // A command at a terminal: it answers questions, and has no chats.
-const command = await createTurri({ frontend: { sessions: { kind: "none" }, ask: async (_question, context) => (context.chat === undefined ? "No" : undefined) } });
+const command = await createTurri({ frontend: { sessions: { kind: "none" }, ask: async (_question, context) => (context.chat === undefined ? "No" : undefined) }, client: { name: "consumer", version: "0.0.0", mode: "regenerate" } });
 try {
   await assert.rejects(command.chats.open(), (error: unknown) => isTurriError(error, "no-chat"));
 } finally {

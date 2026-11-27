@@ -173,7 +173,7 @@ It is in `.turri/ledger/` in the project, a JSON line an event, one file a run -
 
 | | |
 | --- | --- |
-| runs | `run.started` (how it was started, turri's version and commit, the machine), `run.ended` |
+| runs | `run.started` (how it was started - the front end's own word, `mode` - who started it - `client` - turri's version and commit, the machine), `run.ended` |
 | pulses | `job.queued` (with the functional specs it covers, by case), `job.diff` (its \*\*\*plain diff, whole, and where its lines are written - again each time steering moves it), `job.started`, every `job.stage`, `job.retried`, `job.finished` - its status, whether it landed, how long it ran, what it cost, how it ended |
 | the work loop | `loop.halted`, `loop.stopped` (a pulse \*\*\*plain moved on from), `loop.renamed` (a pure rename turri made itself - a func-id or a scenario-id, from and to), `planner.failed`, `planner.fellBack` |
 | the model | `model.call` (time and tokens), `model.turn`, `model.compaction`, `provider.retry`, `provider.stall`, `provider.error`, `turn.stopped` (a turn turri ended itself, and why) |

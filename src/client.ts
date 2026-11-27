@@ -12,6 +12,12 @@ export interface ClientInfo {
   /** The commit it runs from, when it runs from a clone - and whether the clone has changes on it. */
   commit?: string;
   changed?: boolean;
+  /**
+   * How it runs turri this time, in its own word - the ledger's `run.started` records it as the run's `mode`: `chat`
+   * for a conversation in a terminal, `regenerate` for a command run unattended, `host` for a desktop app. Without one,
+   * `frontend` - or `unattended`, with no front end.
+   */
+  mode?: string;
 }
 
 /** What is recorded of who ran turri. */

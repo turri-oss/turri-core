@@ -531,7 +531,8 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     ...(frontend?.openPiSettings !== undefined ? { openPiSettings: frontend.openPiSettings } : {}),
   };
   const core: TurriCore = createTurriCore(host, {
-    mode: frontend !== undefined ? "host" : "chat",
+    // How the run is recorded in the ledger: in the front end's own word - the core cannot tell a terminal from an app.
+    mode: client?.mode ?? (frontend !== undefined ? "frontend" : "unattended"),
     persist: options.persist ?? sessions !== undefined,
     ...(dialogsFor !== undefined ? { dialogs: dialogsFor } : {}),
     ...(client !== undefined ? { client } : {}),

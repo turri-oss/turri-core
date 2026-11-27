@@ -185,6 +185,28 @@ describe("a front end with no chats", () => {
   });
 });
 
+describe("the run a session is in the ledger", () => {
+  it("is recorded in the front end's own word for how it runs turri - frontend, or unattended with none, when it says none", async () => {
+    const { onLedgerEvent, record } = await import("../src/regenerate/ledger.ts");
+    vi.stubEnv("TURRI_LEDGER", "on");
+    const modes: unknown[] = [];
+    const stop = onLedgerEvent((entry) => void (entry.kind === "run.started" && modes.push(entry.mode)));
+    try {
+      const none = { sessions: { kind: "none" } } as const;
+      for (const options of [{ frontend: none, client: { name: "turri", version: "0.2.0", mode: "chat" } }, { frontend: none }, {}, { client: { name: "turri", version: "0.2.0", mode: "print" } }]) {
+        const turri = await createTurri(options);
+        // A run is begun in the ledger with its first event.
+        record({ kind: "model.turn" });
+        await turri.dispose();
+      }
+      expect(modes).toEqual(["chat", "frontend", "unattended", "print"]);
+    } finally {
+      stop();
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("a session's events", () => {
   it("are heard by type or all, stop with their signal, and a listener's throw reaches no one else", async () => {
     const warned = vi.spyOn(process, "emitWarning").mockImplementation(() => {});
