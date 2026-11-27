@@ -2,7 +2,7 @@ import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-
 import { Type } from "typebox";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { applyBedrockRegion } from "./bedrock-region.ts";
-import { CONFIG_FILE, LEGACY_CONFIG_FILE, moduleConfigFile, moduleConfigsOf, THINKING_LEVELS, usesLegacyConfig } from "./config.ts";
+import { CONFIG_FILE, LEGACY_CONFIG_FILE, moduleConfigFile, moduleConfigsOf, splitModelSpec, THINKING_LEVELS, usesLegacyConfig } from "./config.ts";
 import {
   currentValue,
   dotenvFiles,
@@ -88,18 +88,22 @@ const COMPLETIONS_SHOWN = 40;
  * A model setting's are every model pi can reach, signed in - `models` - and after a colon, that model's thinking levels.
  */
 export function settingCandidates(setting: Setting, typed: string, where: { cwd: string; models: () => string[] }): string[] {
+  if (setting.kind === "model") {
+    const models = where.models();
+    const matching = models.filter((model) => model.startsWith(typed));
+    const colon = typed.lastIndexOf(":");
+    if (colon === -1 || (matching.length > 0 && !models.includes(typed.slice(0, colon)))) return matching;
+    const levels = THINKING_LEVELS.map((level) => `${typed.slice(0, colon)}:${level}`).filter((candidate) => candidate.startsWith(typed));
+    return [...new Set([...matching, ...levels])];
+  }
   const candidates =
     setting.kind === "boolean"
       ? ["true", "false"]
-      : setting.kind === "model"
-        ? typed.includes(":")
-          ? THINKING_LEVELS.map((level) => `${typed.slice(0, typed.lastIndexOf(":"))}:${level}`)
-          : where.models()
-        : setting.kind === "path"
-          ? pathOptions(where.cwd, setting.key)
-          : setting.key === "agent-env.files"
-            ? dotenvFiles(where.cwd)
-            : (setting.options ?? []);
+      : setting.kind === "path"
+        ? pathOptions(where.cwd, setting.key)
+        : setting.key === "agent-env.files"
+          ? dotenvFiles(where.cwd)
+          : (setting.options ?? []);
   return candidates.filter((candidate) => candidate.startsWith(typed));
 }
 
@@ -190,7 +194,7 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
       case "model": {
         const model = await pick(reachable(ctx));
         // Typed with its level - provider/id:low - it is whole already.
-        if (model === undefined || model === "unset" || model.includes(":")) return model;
+        if (model === undefined || model === "unset" || splitModelSpec(model).thinking !== undefined) return model;
         const level = await ctx.ui.select(`${model} - how hard it thinks`, [...THINKING_LEVELS, "the role's own level"]);
         if (level === undefined) return undefined;
         return level === "the role's own level" ? model : `${model}:${level}`;
@@ -370,19 +374,22 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
 /** What a setting is set to, read from what the chat gave: a model's name resolved, a path kept inside the project - or why not. */
 function writtenValue(setting: Setting, given: string, cwd: string, ctx: ExtensionContext): unknown {
   let typed = given.trim();
+  let resolvedModel: string | undefined;
   if (setting.kind === "model" && !/^(unset|default|none|-)$/i.test(typed)) {
     const colon = typed.lastIndexOf(":");
     const level = colon !== -1 && (THINKING_LEVELS as readonly string[]).includes(typed.slice(colon + 1)) ? typed.slice(colon + 1) : undefined;
     const name = level !== undefined ? typed.slice(0, colon) : typed;
     const resolved = resolveModel(name, ctx.modelRegistry);
     if (!resolved.ok) throw new Error(`Nothing was written.\n${describeResolution(resolved)}`);
-    typed = `${resolved.model}${level !== undefined ? `:${level}` : ""}`;
+    // The registry has resolved the whole id, including any provider-specific tag.
+    resolvedModel = resolved.model;
+    typed = `${resolvedModel}${level !== undefined ? `:${level}` : ""}`;
   }
   if (setting.kind === "path" && !/^(unset|default|none|-)$/i.test(typed)) {
     const inside = relative(cwd, resolve(cwd, typed));
     if (inside.startsWith("..") || isAbsolute(inside)) throw new Error(`${setting.key} takes a path inside the project, from its root - ${typed} is outside it. Nothing was written.`);
   }
-  const parsed = parseValue(setting, typed);
+  const parsed = parseValue(setting, typed, resolvedModel === undefined ? undefined : (model) => model === resolvedModel);
   if ("error" in parsed) throw new Error(`${parsed.error} Nothing was written.`);
   return "unset" in parsed ? undefined : parsed.value;
 }

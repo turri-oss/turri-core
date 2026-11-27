@@ -1,7 +1,8 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { writeTestScripts } from "./test-scripts.ts";
 
 /** Each chat's tools as pi holds them: registered, and active - what the model is offered. */
 const chats: Array<{ registered: string[]; active: string[] }> = [];
@@ -49,7 +50,8 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
         sessionFile: undefined,
         messages: [],
         sessionManager: { getSessionName: () => undefined },
-        extensionRunner: { getUIContext: () => undefined },
+        getSessionStats: () => ({ cost: 0 }),
+        extensionRunner: { getUIContext: () => undefined, createContext: () => ({}) },
         subscribe: () => () => {},
         bindExtensions: async () => {
           for (const handler of started) {
@@ -89,6 +91,31 @@ const offered = (chat: number) => ({
   conform: chats[chat]!.active.includes("conform"),
   evaluate: chats[chat]!.registered.includes("evaluate_tests"),
   turnOn: chats[chat]!.registered.includes("turn_on_conformance_tests"),
+});
+
+describe("a host looking ahead", () => {
+  it("shows the next prompt and holds the plan across chats without starting a pulse", async () => {
+    const planner = vi.spyOn(await import("../src/regenerate/chunk-plan.ts"), "llmChunkAgents").mockReturnValue({ group: async () => undefined, place: async () => undefined });
+    writeTestScripts(dir);
+    const session = await createTurri();
+    try {
+      expect(session.standing()[0]?.module).toBe("app");
+      await expect(session.lookAhead("app.plain")).rejects.toThrow(/no chat is open/i);
+      await session.openChat();
+      const { next } = await session.lookAhead("app.plain");
+      expect(next).toHaveLength(1);
+      expect(next[0]?.task).toContain("Say hello.");
+      await session.openChat();
+      expect(session.status()).toMatchObject({ jobs: [], modules: [{ module: "app", lookedAhead: true }], planned: [{ module: "app", lookedAhead: true }] });
+      expect(session.jobs()).toEqual([]);
+      expect(existsSync(join(dir, "plain_modules", "app", "code"))).toBe(false);
+      writeFileSync(join(dir, "config.turri.yaml"), "models: [\n");
+      await expect(session.lookAhead("app.plain")).rejects.toThrow(/Nothing was started/);
+    } finally {
+      await session.dispose();
+      planner.mockRestore();
+    }
+  });
 });
 
 describe("a host turning conformance tests on", () => {

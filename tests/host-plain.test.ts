@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { conceptBeingTyped, conceptsOf, findConcepts, plainGraph, STDLIB_KINDS, stdlibTemplates } from "../src/host.ts";
+import { checkPlainFile, checkPlainTargets, conceptBeingTyped, conceptsOf, findConcepts, plainGraph, STDLIB_KINDS, stdlibTemplates } from "../src/api/plain.ts";
 import { DEFAULT_CONCEPTS } from "../src/plain/concepts.ts";
 import { STDLIB_ROOT } from "../src/plain/stdlib.ts";
 
@@ -167,6 +167,30 @@ describe("the test plain files of a project", () => {
     expect(of("app", "gone.plain")).toMatchObject({ item: null, error: expect.stringContaining("no such functional spec") });
     expect(of("app", "bad.plain")).toMatchObject({ item: null, error: expect.any(String) });
   });
+
+  it("links scenarios from a stack's own or inherited test folder once, and flags copies in the wrong root", () => {
+    write("config.turri.yaml", "test-dir: tests\n");
+    write("config.turri.base.yaml", "test-dir: tests/stack\n");
+    const content = (module: string, funcId: string) => `---\nmodule: ${module}\nfunc_id: ${funcId}\n---\n\n***conformance tests***\n\n# works\nIt works.\n`;
+    const specs = [["base", "sign-up"], ["app", "fill-cart"]] as const;
+    for (const [module, id] of specs) {
+      mkdirSync(join(project, "tests", "stack", module), { recursive: true });
+      write(join("tests", "stack", module, `${id}.plain`), content(module, id));
+    }
+    testPlain("app", "old.plain", content("app", "fill-cart"));
+    const graph = plainGraph(project);
+    expect(graph.testPlainFiles).toHaveLength(3);
+    for (const [module, id] of specs) {
+      const parsed = checkPlainFile(join(project, `${module}.plain`));
+      expect(parsed.functionalSpecs).toContainEqual(expect.objectContaining({ funcId: id, conformance: 1 }));
+      expect(graph.items.find((item) => item.module === module && item.funcId === id)).toMatchObject({
+        testPlainFile: join(project, "tests", "stack", module, `${id}.plain`), scenarios: { conformance: [{ id: "works" }] },
+      });
+      expect(checkPlainTargets(join(project, "tests", "stack", module))[0]?.error).toContain(`the test folder of \`${module}\``);
+    }
+    expect(graph.testPlainFiles.find((node) => node.file.endsWith("old.plain"))).toMatchObject({ item: null, error: expect.stringContaining("tests/stack/app/") });
+    expect(checkPlainTargets(join(project, "app.plain")).at(-1)?.problems).toEqual([expect.stringContaining("tests/app/old.plain")]);
+  });
 });
 
 describe("the linked resources an item names", () => {
@@ -249,7 +273,7 @@ describe("concepts in a piece of text", () => {
 
 describe("where a module's test plain files are", () => {
   it("is the project's tests folder unless test-dir names another, its stack's over the project's", async () => {
-    const { DEFAULT_TEST_DIR, testDirOf } = await import("../src/host.ts");
+    const { DEFAULT_TEST_DIR, testDirOf } = await import("../src/api/config.ts");
     expect(DEFAULT_TEST_DIR).toBe("tests");
     writeFileSync(join(project, "config.turri.yaml"), "");
     expect(testDirOf(join(project, "app.plain"))).toBe(join(project, "tests"));

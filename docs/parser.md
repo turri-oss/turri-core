@@ -59,6 +59,8 @@ Either section may be left out, but one that is there has at least one scenario:
 
 ## Checking \*\*\*plain
 
+The project-wide stray-file check and `plainGraph` use the same inventory of test folders: the project's `test-dir` and the effective one for each module, including inherited settings. Overlapping roots list a file once. A file left under the old root after its module's `test-dir` changes is reported with its correct location and does not bind in the graph.
+
 ```bash
 turri parse <file.plain>        # one module
 turri parse .                   # every .plain module in a directory

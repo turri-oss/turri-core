@@ -15,11 +15,16 @@ turri doctor
 
 | import | what |
 | --- | --- |
-| `@turri-dev/core` | the [pi](https://pi.dev) extension, and `createTurriCore`, the session it is built into - with the view a front-end draws it through |
-| `@turri-dev/core/host` | for a host that runs the chats in its own windows: `createTurri`, and what a host shows beside them - see [running turri in a host](docs/hosting.md) |
-| `@turri-dev/core/<path>` | any other module, by its path under `src/`: `@turri-dev/core/view`, `@turri-dev/core/headless`, `@turri-dev/core/chat-entries` |
+| `@turri-dev/core` | `createTurri`: a project's chats, live work, plan previews and typed session events |
+| `@turri-dev/core/host` | [desktop integration](docs/hosting.md): diagnostics, sign-in and saved conversations |
+| `@turri-dev/core/plain` | parse, check, highlight and explore a project's specs, including their standing on disk |
+| `@turri-dev/core/config` | read settings and models, and initialise a project |
+| `@turri-dev/core/ledger` | observe events and read runs and pulses back |
+| `@turri-dev/core/terminal` | the pi extension, terminal driver and view hooks |
+| `@turri-dev/core/commands` | unattended runs and the operations behind the CLI commands |
+| `@turri-dev/core/startup` | Node checks, package identity and launch settings before loading pi |
 
-The package runs on Node 22.19 or newer, with git and bash. A 0.x release may change any of it.
+The package is ESM only, with TypeScript declarations, for Node 22.19 or newer. The host and the core use one `@earendil-works/pi-coding-agent` peer (1.6.0). The harness uses git and bash. A 0.x release may change the API.
 
 ## Working on it
 

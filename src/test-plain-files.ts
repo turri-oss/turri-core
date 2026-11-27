@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { DEFAULT_TEST_DIR, testDirOf } from "./config.ts";
+import { DEFAULT_TEST_DIR, moduleConfigsOf, readProjectConfig, testDirOf } from "./config.ts";
 import { PLAIN_SOURCE_FILE_EXTENSION } from "./plain/parser.ts";
 import { FUNC_ID_KEY, loadFrontmatter, MODULE_KEY } from "./plain/test-plain-file.ts";
-import { isProjectDir, isWithin, projectDirOf } from "./regenerate/paths.ts";
+import { discoverTestPlainFiles } from "./plain/project.ts";
+import { isProjectDir, isWithin, projectDirOf, slashed } from "./regenerate/paths.ts";
 
 /**
  * Where a project's test plain files are, and what each belongs to: `<test-dir>/<module>/`, every `.plain` file in it
@@ -76,6 +77,19 @@ export interface TestPlace {
   directory: boolean;
 }
 
+/** Module settings can add roots to the project setting; several modules can inherit the same one. */
+function testLayout(root: string) {
+  const defaultDir = resolve(root, readProjectConfig(root).testDir ?? DEFAULT_TEST_DIR);
+  const moduleDirs = new Map([...projectModules(root)].map(([module, file]) => [module, testDirOf(file)]));
+  const dirs = [...new Set([defaultDir, ...moduleDirs.values()])];
+  const deepest = [...dirs].sort((a, b) => b.length - a.length);
+  const rootOf = (path: string, module: string | undefined) => {
+    const expected = module === undefined ? undefined : moduleDirs.get(module);
+    return module !== undefined && expected !== undefined && isWithin(path, join(expected, module)) ? expected : deepest.find((dir) => isWithin(path, dir));
+  };
+  return { moduleDirs, dirs, rootOf };
+}
+
 /**
  * Where a path is, when it is a test plain file - under the project's test folder, or a .plain file whose frontmatter
  * binds it with `module:` and `func_id:` - or the test folder, or a folder in it. Undefined for anything else.
@@ -84,9 +98,13 @@ export function testPlaceOf(path: string): TestPlace | undefined {
   const absolute = resolve(path);
   const directory = existsSync(absolute) && statSync(absolute).isDirectory();
   const projectDir = projectOfTestPath(absolute, directory);
-  const testDir = testDirOf(join(projectDir, "x.plain"));
+  const defaultDir = resolve(projectDir, readProjectConfig(projectDir).testDir ?? DEFAULT_TEST_DIR);
   const metadata = directory || !existsSync(absolute) ? {} : frontmatterOf(absolute);
   const bound = typeof metadata[MODULE_KEY] === "string" && typeof metadata[FUNC_ID_KEY] === "string";
+  // Checking a module in the project root is common and needs no inventory of all its siblings.
+  const testDir = (directory || bound || dirname(absolute) !== projectDir) && moduleConfigsOf(projectDir).length > 0
+    ? testLayout(projectDir).rootOf(absolute, bound ? metadata[MODULE_KEY] as string : undefined) ?? defaultDir
+    : defaultDir;
   if (!isWithin(absolute, testDir) && !bound) return undefined;
   const parts = isWithin(absolute, testDir) ? relative(testDir, absolute).split(sep).filter(Boolean) : [];
   const folderModule = directory ? parts[0] : parts.length > 1 ? parts[0] : undefined;
@@ -142,33 +160,24 @@ export function refuseTestPlainFile(path: string): void {
   if (refusal !== undefined) throw new Error(refusal);
 }
 
-/**
- * The test plain files of a project that are not where they belong, each with where it does: a file outside any
- * module's folder, in the folder of a module there is not, or in a module's folder its `module:` does not name. Strays
- * are not read when a module is parsed; this is where they are found.
- */
-export function strayTestPlainFiles(projectDir: string): Array<{ file: string; problem: string }> {
-  const testDir = testDirOf(join(projectDir, "x.plain"));
-  const modules = projectModules(projectDir);
-  const strays: Array<{ file: string; problem: string }> = [];
-  for (const path of plainFilesUnder(testDir)) {
-    const file = shown(path, projectDir);
+/** Every test plain file in the project's and its modules' configured roots, once, with any placement error. */
+export function projectTestFiles(projectDir: string): Array<{ path: string; file: string; testDir: string; problem?: string }> {
+  const root = resolve(projectDir);
+  const { moduleDirs, dirs, rootOf } = testLayout(root);
+  const files = new Map(discoverTestPlainFiles(dirs, root));
+  return [...files].map(([path, file]) => {
+    const named = frontmatterOf(path)[MODULE_KEY];
+    const module = typeof named === "string" ? named : undefined;
+    const testDir = rootOf(path, module)!;
     const folder = relative(testDir, dirname(path)).split(sep).filter(Boolean)[0];
-    const metadata = frontmatterOf(path);
-    const named = typeof metadata[MODULE_KEY] === "string" ? (metadata[MODULE_KEY] as string) : undefined;
-    const home = (module: string) => `${shown(join(testDir, module), projectDir)}${sep}`;
-    if (folder === undefined) {
-      strays.push({ file, problem: named === undefined ? "move it to the folder of its module, in the test folder" : `move it to ${home(named)} (its module: ${named})` });
-    } else if (!modules.has(folder)) {
-      strays.push({
-        file,
-        problem: named === undefined ? `no module ${folder}` : `no module ${folder}; module: ${named} is in ${home(named)}`,
-      });
-    } else if (named !== undefined && named !== folder) {
-      strays.push({ file, problem: `its module: is ${named}, not ${folder}; move it to ${home(named)}` });
-    }
-  }
-  return strays;
+    const home = (name: string) => `${slashed(relative(root, join(moduleDirs.get(name) ?? testDir, name)))}/`;
+    let problem: string | undefined;
+    if (folder === undefined) problem = module === undefined ? "move it to the folder of its module, in the test folder" : `move it to ${home(module)} (its module: ${module})`;
+    else if (!moduleDirs.has(folder)) problem = module === undefined ? `no module ${folder}` : `no module ${folder}; module: ${module} is in ${home(module)}`;
+    else if (module !== undefined && folder !== module) problem = `its module: is ${module}, not ${folder}; move it to ${home(module)}`;
+    else if (moduleDirs.get(folder) !== testDir) problem = `move it to ${home(folder)} (the test folder configured for ${folder})`;
+    return { path, file, testDir, ...(problem === undefined ? {} : { problem }) };
+  });
 }
 
 /** The module a test plain file belongs to, by its folder, and that module's .plain file when the project has one. */

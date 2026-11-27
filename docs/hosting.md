@@ -1,18 +1,20 @@
 # Running turri in a host
 
-`turri` runs its chats in a terminal. A host - a desktop app, an editor - can run the same session itself, its chats in its own windows, and show what turri's terminal would draw in its own way: the jobs, the questions, the \*\*\*plain description. It imports turri from npm as `@turri-dev/core/host`.
+`turri` runs its chats in a terminal. A host - a desktop app, an editor - can run the same session itself, its chats in its own windows, and show the jobs, the questions and the \*\*\*plain description in its own way. Import `createTurri` from `@turri-dev/core`.
 
-## What the host entry gives
+## What a host can use
 
-`@turri-dev/core/host` is turri's compiled code (`dist/host.js`, with its types) - the conversation and what a host shows beside it:
+The root entry owns the session; `/host` adds desktop operations, `/plain` the parser and project reader, `/config` settings and `/ledger` recorded facts. See the [import map](core.md#importing-the-core) for the full boundary.
 
 | export | what it is |
 | --- | --- |
 | `createTurri(options)` | a turri session: its [chats](chats.md), each a [pi](https://pi.dev) session with every tool, slash command, rule and skill the terminal has, on one job registry and work loop. The host opens, closes and shows them, is told of their jobs and asks their questions, and asks the sentinel to check functional specs (`check`) - see [the session in a host](#the-session-in-a-host). |
 | `SENTINEL`, `SENTINEL_START`, `Notice`, `NoticeAnswer`, `Conclusion`, `SentinelCheck`, `CheckRequest` | the [sentinel](sentinel.md)'s chat role, the answers to the question before it starts, its notices and how they are answered, its conclusions - a pulse's by `job`, a check's by `check` - and the checks a host asks of it - see [the sentinel](#the-sentinel). |
 | `MAX_CHATS`, `ChatInfo`, `ChatStatus` | the most chats a session has open - nine - and what the host is told of each. |
-| `pi` | [pi](https://pi.dev) itself, as turri is built against it. Make the host's own extensions and UI with this one, not another copy. |
-| `readProjectConfig`, `projectModels`, `modelSpec`, `configForSpec`, `hasProjectConfig`, `stacksOf` | the project's settings, as [config.turri.yaml](config.md) has them. |
+| `savedChatFiles`, `credentialsFile`, `loginDeviceId` | desktop operations from `/host`: list saved conversation paths, locate the credential store or get the device id for sign-in. For pi extensions use the shared pi peer. |
+| `readProjectConfig`, `projectModels`, `modelSpec`, `configForSpec`, `hasProjectConfig`, `moduleConfigsOf` | the project's settings, as [config.turri.yaml](config.md) has them. |
+| `configuredModel(config, key)` | the model and thinking set **on that key** from `configSettings()` (`coding-model`, `models.planner`, etc.). A role with only a turn limit gives `undefined`. A settings sheet uses this to edit a value; `projectModels(config)` says what will actually run after inheritance. |
+| `configLines(projectDir)` | current config findings, even before a chat opens. Each has `kind`, `file` and `text`. Like the banner, it applies turri's automatic key renames and reports them. |
 | `configSettings`, `currentValue`, `readConfigText`, `overriddenBy`, `EFFECT_TEXT` | every setting of config.turri.yaml as [/settings](config.md#changing-it-from-the-chat) knows it - its key, what it does, its kind (a yes or no, one of a few words, a number, a model, a list, a path, a budget), its words or the values offered first, what it is unset and when a change takes effect - and what the file has now (`currentValue(readConfigText(dir), key)`), and what wins over it. Change one as the person would, by sending `/settings <key> <value>` to the chat: turri checks it and writes it with the file's comments kept. A setting's values for a list are the session's `settingChoices(key, typed?)`: what /settings's completions offer after `typed`, in their order, but whole - uncapped, where the terminal shows forty - and without unset, which the host draws itself; the values alone. A model setting's are every model of every provider signed in to, from the model registry the chats use, whether or not one has run /settings - and after a colon, that model's thinking levels. An unknown key gives `[]`. |
 | `debugMode` | whether turri keeps, in a project, what it writes only for debugging it - `debug:`, or `TURRI_DEBUG` over it (see [debug mode](config.md#debug-mode)). |
 | `initConfig(dir, { vendor, bedrock, models, force, catalogue })`, `VENDORS`, `BEDROCK_REGIONS`, `BEDROCK_DEFAULT` | a project's first config.turri.yaml, as `turri init-config` writes it - async, it may read [pi](https://pi.dev)'s catalogue - see [a project's first config](#a-projects-first-config). |
@@ -25,22 +27,26 @@
 | `highlightLines`, `roleOf` | \*\*\*plain's lines coloured by turri's own [\*\*\*plain](https://plainlang.org/docs/) grammar, each piece by its `PlainRole`: `section`, `concept`, `link`, `literal`, `keyword`, `module`, `comment`, `bullet` and `id` - the `# <id>` heading of a functional spec or a scenario, and a test plain file's `func_id:` value, the functional spec it binds to. A test plain file's `module:` value is a `module`, whole - `my-app`, `billing.v2` - as a module name listed under `import:` or `requires:` is. |
 | `plainGraph(projectDir)` | a project's \*\*\*plain as a graph to move around in: its modules with what each imports and requires and what imports and requires it, each item of their sections with its line, and the concepts - an item linked to those it names and to where each is defined - see [\*\*\*plain for a host](#plain-for-a-host). |
 | `testDirOf(plainFile)`, `DEFAULT_TEST_DIR` | the absolute folder a module's test plain files are in - `test-dir`, its module's own file's over the project's, else `tests` (`DEFAULT_TEST_DIR`), from the project's folder - for a host that lists a project's modules by walking its .plain files and leaves the test plain files out. It is a module's, not a project's, because a module's `config.turri.<module>.yaml` may name a folder of its own. |
+| Scenario links in `plainGraph(projectDir)` | Modules can share a test folder, inherit one or use separate ones. The graph lists a file once even when roots overlap. A copy left in the wrong root is reported without replacing the correct link. |
 | `conceptsOf(plainFile)`, `findConcepts(text)`, `conceptBeingTyped(text)` | the concepts a module can name, with what each is and the module that defines it; the concepts written in a piece of text; the one being typed at its end. |
 | `stdlibTemplates()`, `isStack`, `STDLIB_KINDS` | turri's standard library: every template with its kind, file, text, imports and its conformance template or the stack it tests, and the kinds in order with their titles. |
-| `projectStanding(projectDir, { loop?, files? })`, `ModuleStanding` | how every module of a project stands, in one call - see [how a project stands](#how-a-project-stands). |
+| `session.standing(files?)`, `projectStanding(projectDir, files?)` | how every module stands, live or from disk, in one call - see [how a project stands](#how-a-project-stands). |
 | `requiresOrder(projectDir, { files? })` | a project's .plain files, absolute, in the order they are built: each after every module it requires, as its requires chain (`resolveRequiresChain`) has them - the files taken in the order given, by name without `files`, each brought in after what it requires. A module whose chain does not resolve - it does not parse, a module it requires is not there, a cycle - goes after what its front matter says it requires, as far as those are found; none is left out. Only the files given are in it: `files`, absolute or from the project, else every .plain file in the project's folder. |
-| `functionalityCompletion`, `createWorkLoop`, `createJobRegistry`, `describeModules`, `PlannedPulse` | how far each functional spec is built - each module's `specified`, `withScenarios` (those tested, which tested-of-specified counts over), `completed`, `conformanceTested`, `tested` and `incomplete` - and the work a \*\*\*plain change would plan, before it runs: the session's `turri.loop` `lookAhead(plainFile)` plans a module as regenerate would and starts nothing, and `plannedPulse(rowId)` gives a planned row's cases and - the next pulse of its codebase - its coding agent's whole prompt (`PlannedPulse`), from the plan regenerate then runs ([looking ahead](regenerating.md#a-whole-module)). |
-| `onModelEvent`, `describeTurnIncident` | a provider failing and waited out, a turn turri ended itself. |
+| `session.lookAhead(plainFile)` | with a chat open, plan as regenerate would and hold that plan. Returns `{ statuses, next }`, including each available next pulse's cases and prompt. Starts no pulse ([looking ahead](regenerating.md#a-whole-module)). |
+| `session.status()`, `session.jobs()`, `session.job(id)` | module status, unreplaced jobs and planned rows; every job including retries; an individual job. |
+| `session.launches()` | this run's launches in request order, each with its latest state, including stopped or replaced launches. A reopened window can read them even if it missed every `onLaunch` callback. |
+| `session.spending()` | dollars spent since the project session opened: `chat`, `sentinel`, `regeneration`, and `other` calls grouped by `{ role, cost }` (`role: null` if unlabelled). Available without any event subscriber. |
+| `onEvent`, `session.entries(chat)` | typed session events, including skill progress, transcript entries, provider incidents and non-pulse agent costs; a chat's current branch of turri entries. |
 | `onLedgerEvent`, `readLedger`, `ledgerDir`, `runViews`, `pulseView`, `describePulseView`, `describeRuns`, `ledgerProjects`, `earlierPulses`, `asJob` | what turri did, as facts - the [ledger](using.md#the-ledger): each event heard as it is recorded, and every run and pulse read back, earlier sessions' too - see [the ledger in a host](#the-ledger-in-a-host). |
 | `doctor({ dir, models, env })`, `Check`, `Level` | whether the machine - and, with `dir`, that project - is ready for turri, as `turri doctor` checks it: a list of checks to show in the host's own way - see [doctor in a host](#doctor-in-a-host). |
-| `sweepOrphanedGroups` | stop what a turri killed outright left running, before anything starts. |
+| `orphansStopped` | the session stops orphaned process groups itself at startup and reports their count when it stopped any. |
 
 It is turri's own code, as the terminal runs it: a 0.x release may change any of it.
 
 ## A project's first config
 
 ```js
-import { initConfig, piModelCatalogue, bedrockMakers, bedrockModelsIn, bedrockDefaultModels } from "@turri-dev/core/host";
+import { initConfig, piModelCatalogue, bedrockMakers, bedrockModelsIn, bedrockDefaultModels } from "@turri-dev/core/config";
 
 const catalogue = await piModelCatalogue();
 bedrockMakers(catalogue);                                     // [{ maker: "xai", label: "xAI", regions: ["global", "us", "in-region"] }, ...]
@@ -61,16 +67,16 @@ The message says whose models were written - "with xAI's models on Amazon Bedroc
 ## How a project stands
 
 ```js
-import { projectStanding } from "@turri-dev/core/host";
+import { projectStanding } from "@turri-dev/core/plain";
 
-for (const { plainFile, module, drift, driftError, completion, completionError } of projectStanding(projectDir, { loop: turri.loop })) {
-  // drift: loop.drift(plainFile)'s reports; completion: functionalityCompletion(plainFile)'s chains.
+for (const { plainFile, module, drift, driftError, completion, completionError } of projectStanding(projectDir)) {
+  // From the records on disk. With a session, turri.standing() also knows running pulses and halts.
 }
 ```
 
 `projectStanding` gives each module of the project what `drift` and `functionalityCompletion` give it asked alone - `drift`, every codebase of its requires chain with what is left to regenerate there, and `completion`, its chain's functional specs completed and conformance tested - in one call. Asked module by module, each call parses and reads the whole chain below the module again: on a project of a dozen modules in one chain, seconds. Asked of the project, each file is parsed once and each codebase's record read once, the modules below shared by every chain they are in.
 
-- `loop` is the work loop whose `drift` is read - the session's `turri.loop`, which knows the pulses running and the codebases halted. Without one, a loop of its own, asked nothing, reads the codebases as their records have them - drift plans and starts nothing.
+- Both standing readers plan and start nothing. A worker needs no session, job registry or work loop.
 - `files` are the .plain files to look at, absolute or from the project. Without them, every .plain file in the project's folder.
 - A module drift or completion cannot say - one that does not parse, a module it requires not there - has `driftError` or `completionError`, the message, in place of the answer; the others are answered all the same.
 
@@ -101,11 +107,27 @@ What matters only in a terminal - `turri` on the PATH, a plain `pi` an older tur
 
 ## The session in a host
 
+Run one project session per engine process, with the project as its working directory. `createTurri()` records host mode even with no callbacks; its banner reports the embedded version and project config, without the terminal's CLI update and PATH checks. Supply `onEvent` to observe startup as well as later events:
+
+| `event.type` | what to read |
+| --- | --- |
+| `orphansStopped` | `count` process groups cleaned up by turri at startup |
+| `incident` | the model `event` (with `job` when part of a pulse) and `text` for display |
+| `agentCost` | a model call outside a pulse: optional `role`, this call's `cost`, and the session's `total` for that role. Pulse costs are already in the job's usage. |
+| `skillProgress` | `chat` and `progress`: skill name, phase names, current index (`-1` while starting), attempt and optional description. `null` clears it. |
+| `captureProgress` | `chat` and a `CaptureStatus` snapshot for the `/capture` that chat started. `capturePhases(status)` returns the phase names and current index for the actual pipeline. |
+| `captureEnded` | `chat`, the source `root` and `state`. On `completed`, `result.plainDir` is the project to offer to open, and `result.reportFile` the report. On `failed`, `error` says why; `stopped` means the run was interrupted. |
+| `entry` | `chat` and the typed turri transcript `entry`. Use `entries(chat)` to replay the current branch; subscribe to the chat's pi session for its ordinary messages. |
+
 ```js
-import { createTurri, pi } from "@turri-dev/core/host";
+import { createTurri } from "@turri-dev/core";
 
 process.chdir(project);                // the session is the project's in the process's working folder
 const turri = await createTurri({
+  onEvent: (event) => {                // registered before startup and before any restored chat opens
+    if (event.type === "skillProgress") showSkill(event.chat, event.progress); // null clears it
+    if (event.type === "entry") showTranscriptEntry(event.chat, event.entry);
+  },
   onJobChange: (job) => {},            // a job started, moved on, did something, or ended - any chat's
   onPlanChange: () => {},              // what is planned changed with no job
   dialogs: (chat) => ({ select, input }), // a chat's questions, put in the host's own dialogs - each with a signal to close it
@@ -140,8 +162,11 @@ turri.turnOnConformanceTests("app.plain"); // conformance tests on: the file wri
 await turri.answer(notice.id, { action: 0 }); // or { steer: "…" }, { dismiss: true }, { ignore: true }: "done", "dismissed", "ignored", "refused", "over", "missing"
 turri.onChats((chats) => {});          // a chat opened, closed, renamed, working or done
 await turri.closeChat(chat.id);        // its turn stopped, its conversation deleted - its pulses run on
-turri.jobs;                            // the session's job registry: every pulse any chat started
-turri.loop;                            // its work loop, once a chat is open
+turri.jobs();                          // every pulse any chat started
+turri.status();                        // modules, unreplaced jobs, planned rows (including held previews)
+turri.launches();                      // current state of all launches, oldest first; onLaunch reports changes
+turri.spending();                      // this run's costs, across live and closed conversations and all jobs
+turri.entries(other.id);               // turri's typed entries and custom messages, in branch order
 await turri.dispose();                 // every chat let go, what launches started stopped
 ```
 
@@ -149,7 +174,11 @@ await turri.dispose();                 // every chat let go, what launches start
 - **Interrupting.** `interrupt(id)` is the terminal's ctrl+c for a host's key or button: it stops what that chat is doing - its turn, a skill or a tool in it, a `!` command, a compaction - and nothing in the other chats (`stopped`). A skill stopped keeps its run, to be continued. A question of the chat's open in the host's dialogs when its turn is stopped is over - declined - and its dialog's `signal` aborted, for the host to close it. A chat doing nothing ends the session, every chat with it, as `dispose` does (`ended`): turri never exits the host's process, so the host closes what showed it. An interrupt straight after one that stopped something is `ignored`, so pressing twice to be sure ends nothing. `session.abort()` is the chat's turn alone, and never ends the session.
 - **Declining a question.** `decline(id)` is ctrl+c at a question in turri's terminal: the question the chat asks now - its ask_user, a skill's interview, a review gate's escalation, whatever goes through the host's dialogs - declined. The asker is told "The user declined to answer the question." and the turn goes on; a review gate declined stands. It declines each question it is called at, however many in a row, and never stops the turn - that is `interrupt`. `none` when the chat asks nothing now, `missing` for a chat not open. A dialog that resolves with `undefined` is something else - dismissed, and in a question of several answers "done" with the boxes ticked so far.
 - **The record.** The chats are recorded in `.turri/chats.json` as the terminal records them, and `restore: true` reopens the last ended session's - without it, a host starts with none and deletes nothing. A chat closed is deleted; a session's chats are kept until five newer sessions have recorded theirs.
-- **The jobs.** The host is told of each job as it changes, and has the registry and the loop themselves, so it shows the very jobs the chats run. Its buttons are best a chat's commands - `session.prompt("/regenerate app.plain")`, `session.prompt("/conform app.plain app:add-task")` - so the plan is the chats', and no model turn stands between the button and the pulse. A job's \*\*\*plain diff is `job.diff`, and `job.diffWhere` places its lines in the `.plain` files: by a line's place in the diff, its `file`, its `line` there, the `section` it is in and `written` - the line as the file has it. The diff is \*\*\*plain as read, a link `[text](path)` in it as `` `[resource]text` ``, so a host that finds the lines again in a file's text - after an edit since the pulse started - matches them by `written`, never by the diff's text. A `job.diff` in a ledger written before `written` was added has none. `job.cases` is the functional specs the pulse covers, as planned, by what it does to each - `{ add, patch, again, delete }`, each a list of `{ module, funcId }`, `module` the pulse's own or one below it: new, changed, regenerated again with its text unchanged, taken out. A host lights those specs from it, and marks a line of the diff as regenerated again from `again` - never from the diff, where such a line is unchanged. A pulse of none is mechanical - reqs, or definitions none uses; a job that is not a pulse has no `cases`. The ledger's `job.queued` carries them too. `job.building` is the one functional spec a job is on now, when it is on one: `{ spec: { module, funcId }, label, text, since }` - `spec` the functional spec as data, `label` and `text` what the terminal shows (`core:add-task, functional spec of 3`, its text with its scenarios). Only a conformance run of one named functional spec sets it; a pulse the work loop plans covers its functional specs together and leaves it unset - light those from `cases`.
+- **Spending.** Closing a chat or starting a fresh conversation for the sentinel keeps its cost in the same total. Reopening a saved chat adds only its new costs; pi's `getSessionStats().cost` on that chat still shows its whole conversation. `regeneration` includes all job usage, even for a failed or replaced job. `other` excludes those calls. Read `spending()` when drawing the window and after a chat usage change, `onJobChange` or an `agentCost` event.
+- **The jobs.** Read `turri.status()` after `onPlanChange` or `onJobChange`. `turri.lookAhead(file)` previews the plan; to run it, send the chat `/regenerate app.plain`. No model turn stands between the command and the pulse. `turri.jobs()` includes replaced jobs; `status().jobs` leaves them out.
+  - `job.diff` is the \*\*\*plain diff. `job.diffWhere` maps lines to their `file`, `line`, `section` and `written` text. Match `written` after a later edit: the diff may show a resource marker instead of the source link. Older ledgers may lack `written`.
+  - `job.cases` groups `{ module, funcId }` by `add`, `patch`, `again` and `delete`. Use `again` to mark unchanged specs regenerated on request. A mechanical pulse has no functional specs; a non-pulse job has no `cases`. `job.queued` records them in the ledger too.
+  - `job.building`, when present, names one functional spec: `{ spec: { module, funcId }, label, text, since }`. A single-spec conformance run can set it; a planned pulse covers its functional specs together, through `cases`.
 - **The questions.** `dialogs(chat)` gives a chat's two dialogs: `select(title, options, context, at, { signal })` and `input(title, context, { signal })`, each resolving with the answer, or undefined when the person dismissed it. `signal` is aborted when the question is over without the dialog's answer - declined by `decline`, or its turn stopped (`interrupt`, `session.abort()`): the host closes the dialog it opened for it, whatever it resolves with then being ignored. A host may leave it unread. The chat's questions, a skill's interview and a review gate's escalation are put in them; without them, in the `uiContext`'s own dialogs.
 - **The surface.** What turri tells the model of where the person watches the work is the terminal's by default: regen, the side panel on `ctrl+h`, `/pulses`. In a host none of that is there, and the model would send the person to keys and panels that do not exist. `surface` is the host's own description of its UI - the views it has in place of the terminal's, what its marks and buttons mean, where questions appear - in its own words. Given, turri leaves every terminal instruction out of what the model is told and puts the surface in turri's identity, as a `<surface>` block, where the identity speaks of regen. It reaches the side questions and the tools' own words too: a pulse not found says the `pulses` tool lists them, not `/pulses`. Text only the person sees in the terminal - the job panel, the side panel - is the terminal's and stays as it is. Without `surface`, the prompt is the terminal's, byte for byte. What the conversation is to do once something is launched belongs there too - open it in the host's preview, say what to test: it is told once each launch it asked for ends, and - with `sentinel: false` - each launch after a pulse under `launch-after-pulse`, and does then what it was told to do once something is launched. With the sentinel on, the sentinel tests what is launched after a pulse, and the conversation only says it landed. With `sentinel: false`, the chat that asked for a pulse that lands under `launch-after-pulse` is told as it lands that its commit is being launched in the background - to say so in a line and offer nothing else - and then told the launch's end. Every launch, as it is asked for, starts and ends, comes to the host as `onLaunch(launch)` - its codebase, commit, status and summary. `summary` is what the launch agent said - where it runs, or why it did not come up - and nothing of turri's: show its first line as the launch's line. What turri stopped for the launch comes apart, in `stopped`, one entry a process, as it stops them - while the launch runs too: `why` (`below` - a launch of a module below it in its chain, whose code it holds; `held` - a server of another module's launch that held what it needs, `held` saying what, "port 5173"; `left-behind` - one an earlier turri session left running), the `module` whose launch started it, that `launch` and its `commit` when known, the process's `name`, `pid` and `url`. Show it beside the launch from those fields - "stopped bestiary's launch at befa07f - upgrades holds its code" - never by reading a sentence. `launchText(launch)`, exported beside the type, is the two together as the chat and the terminal read them - turri's lines, then the summary - for a host that shows the whole at a click. One whose code runs already - the chat asking for what runs, a pulse that landed only tests - comes once, `status: "launched"` with `already: true`, its own cause and the commit it was asked for; the launch that started what runs is not told again. One that ended with a newer launch of its codebase - or of a module built on it - waiting comes with its real status and `replacedBy`, the newer one's id: that one starts at once and stops what it started, so draw it as replaced rather than as running - the chat that asked for it is told so, and hears the newer one's end instead, as for one `superseded` as it waited (`supersededBy`). A launch whose servers a newer launch stopped later - one of a module built on it, which holds its code, or one that needed a port or anything else they held - comes again too, with `replacedBy` set: nothing of it runs, and the newer launch's `stopped` says what it stopped, whose it was and why (see [across a project](launch.md#across-a-project)). The newer launch may be of another codebase: what runs of a module is its own newest launch's unless one has `replacedBy`, and then the launch that id names. What a launch started, halted on request (`/halt launched`, the `halt` tool) with nothing of it left running, comes again as `status: "stopped"`, "Stopped on request.": nothing of the codebase is launched from then on, and its next launch launches anew. A launch that said a server runs is `launched` only while one it started itself runs: something else answering at its port - another turri's server, another program - makes it `failed`, its summary saying what holds the port, whose it is and how to free it. What an earlier turri's launches left running - a host that quit without `dispose`, a turri killed outright - is stopped as the session starts and before each launch of its codebase, and the next launch's `stopped` has it, `why: "left-behind"` (see [what an earlier session left running](launch.md#what-an-earlier-session-left-running)).
 - **The banner.** The first chat's session starts with turri's banner, an entry `customType: "turri_banner"`. Its `data.config` is what turri says of the project's config files, a line each - `{ kind, file, text }`, `text` as the terminal shows it: `renamed`, a key turri renamed in the file itself, its value kept (`release-after-pulse` to `launch-after-pulse`) - information, nothing to do; `old-beside-new`, a file that sets an old name beside its new one, the old doing nothing - take it out; `unknown`, keys turri does not read - a setting it no longer has, a misspelt one. Draw `renamed` as information, the others as warnings, by `kind`, never by the words. `ConfigLine` and `ConfigLineKind` are exported.
@@ -162,7 +191,7 @@ Conformance tests are on only with `conformance-tests: true` ([config](config.md
 
 A host's chats run the [background skills](skills-and-gates.md) in the background, as the terminal's do - the two that write the testing scripts: `cultivate` returns at once, and nothing of the run shows while it runs. Its result's `details` say what it started: `{ background: true, kind?, plainFile? }` - `kind` the testing script it writes, `unit` or `conformance`, and `plainFile` the module it is for, relative to the project, each left out when there is none; `started: false` too when the skill was running already and nothing new was started - enough to show "writing the unit testing script for hello.plain, in the background" with no table of which skill writes which. Its end goes to the chat that started it, once that chat is idle: a run that did its work as an entry of its session, `turri_skill_run` (`data.text`, the line - `Unit testing script written: test_scripts/run_unittests_python.sh.`), that starts no turn; one that did not as a hidden message to its agent, `customType: "turri_skill_run"` (`details.skills`), that starts a turn in which the chat tells the person what went wrong, its `details` `{ skills, runs }` - `runs` one `{ skill, kind?, plainFile? }` for each run in it, for a turn marked "unit testing script not written · hello.plain". Meanwhile a module that lacks the script waits for it, its `why` in `mapPlan()` and `status()` `waiting for its unit testing script, which is being written` - or its conformance testing script - and starts by itself once it is written. `onPlanChange` fires as it starts waiting and as it stops - the script written, or the run ended without it - as it does whenever a module's `why` changes.
 
-A codebase that started from a [base folder](regenerating.md#the-base-folder) says so in its module's status: `loop.status()` gives `base: { folder, files }` - the folder as `base-folder:` named it, and how many of the files that came from it the codebase has still - for "started from `brand` · 12 files" in a module's head. A module built on such a codebase has the same, carried up with the code; one that started from none, or has no code yet, has no `base`. It is read again only when a pulse lands, so a host may read it on every `onPlanChange`. The record behind it, `code/.turri-base.json`, is turri's own: a host reads `base`, never the file.
+A codebase that started from a [base folder](regenerating.md#the-base-folder) says so in `turri.status().modules`: `base: { folder, files }` gives the configured folder and how many of its files remain. A module built on it inherits `base`; a codebase with no base or no code yet omits it. turri refreshes it when a pulse lands.
 
 ### The sentinel
 
@@ -201,7 +230,7 @@ the chat, and the toolbar's buttons send them too.
 ## \*\*\*plain for a host
 
 ```js
-import { conceptBeingTyped, conceptsOf, findConcepts, plainGraph, stdlibTemplates, STDLIB_KINDS } from "@turri-dev/core/host";
+import { conceptBeingTyped, conceptsOf, findConcepts, plainGraph, stdlibTemplates, STDLIB_KINDS } from "@turri-dev/core/plain";
 
 const { modules, items, concepts, testPlainFiles } = plainGraph(projectDir);
 const app = modules.find((module) => module.module === "app");
@@ -228,7 +257,7 @@ concepts.find((concept) => concept.definition === "/…/base.plain:8");
 `createTurri` starts the ledger itself, in the process's working folder - the project's - so a host needs nothing to have one: its pulses are recorded as `host` runs, each event with the chat its work was asked for in, and the chats' `pulses` already tells the model of earlier sessions' pulses. What the host can do with it is show it.
 
 ```js
-import { onLedgerEvent, pulseView, readLedger, runViews } from "@turri-dev/core/host";
+import { onLedgerEvent, pulseView, readLedger, runViews, earlierPulses, ledgerProjects } from "@turri-dev/core/ledger";
 
 // Each event as it is recorded - written or not, so a project with ledger-keep: 0 is heard too.
 const stop = onLedgerEvent((entry, project) => {
@@ -243,7 +272,7 @@ const runs = runViews(projectDir);
 const view = pulseView("646d", readLedger(projectDir, { job: "646d" }));
 
 // Earlier sessions' pulses as jobs, to list beside this session's - none this session's registry knows.
-const { jobs, more } = earlierPulses(ledgerProjects(projectDir), new Set(turri.jobs.list().map((job) => job.id)));
+const { jobs, more } = earlierPulses(ledgerProjects(projectDir), new Set(turri.jobs().map((job) => job.id)));
 ```
 
 - **Live.** `onLedgerEvent(listener)` is told every event as turri records it, with the project it is about, until what it returns is called; a listener that throws misses that event and nothing else. It is the pulse's own detail - its stages, test runs, verdicts, refusals - where `onJobChange` is the job as a whole.

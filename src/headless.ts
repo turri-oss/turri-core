@@ -1,4 +1,5 @@
 import { sweepOrphanedGroups } from "./regenerate/shell.ts";
+import { nextPulses } from "./preview.ts";
 import { refuseTestPlainFile } from "./test-plain-files.ts";
 import { relative, resolve, sep } from "node:path";
 import {
@@ -35,7 +36,7 @@ import { startRunReport, type ModuleState, type RunReporter } from "./run-report
  * HeadlessView, and how the run ended - with the exit code the command ends with - is returned. A run refused before it
  * starts - a test plain file, a config that does not parse, a --build-dir the export would wipe something in - throws.
  */
-export interface HeadlessRun {
+export interface HeadlessOptions {
   plainFile: string;
   /** Where the code is exported to as the run ends, however it ends: the furthest-built codebase's last commit. */
   buildDir?: string;
@@ -43,10 +44,14 @@ export interface HeadlessRun {
   report?: string;
   /** The command, as the report gives it: its name and its arguments. */
   command?: string[];
-  /** Plan and tell the next pulses, starting nothing - `ask` a look ahead. */
-  dryRun?: boolean;
   /** Start over, unasked, a codebase that has to be on a module it now requires (`--start-over`). */
   startOver?: boolean;
+}
+
+/** The internal driver. The public command selects an operation rather than receiving a work loop. */
+export interface HeadlessRun extends HeadlessOptions {
+  /** Plan and tell the next pulses, starting nothing - `ask` a look ahead. */
+  dryRun?: boolean;
   /** The request: bring up, regenerate, conformance. */
   ask: (loop: WorkLoop) => Promise<ModuleStatus[]>;
 }
@@ -147,11 +152,17 @@ export async function runHeadless(options: HeadlessRun, view: HeadlessView): Pro
           models: reportModels(project, model),
         })
       : undefined;
+  const stopHearing = onModelEvent((event) => {
+    const line = describeTurnIncident(event);
+    if (line !== undefined) view.turnIncident(event, line);
+  });
   try {
     return await runLoopReporting({ ...options, plainFile, project, model, projectDir, reporter: report, exported: () => exported }, view);
   } catch (error) {
     report?.crashed(error);
     throw error;
+  } finally {
+    stopHearing();
   }
 }
 
@@ -185,11 +196,6 @@ async function runLoopReporting(
       view.pulseFinished(job);
       report?.write();
     },
-  });
-  // A provider failing and waited out, a turn turri ended itself: said as they happen, not left in the job logs alone.
-  onModelEvent((event) => {
-    const line = describeTurnIncident(event);
-    if (line !== undefined) view.turnIncident(event, line);
   });
   const planner = modelSpec(projectModels(project).harness);
   const loop = createWorkLoop({
@@ -241,13 +247,7 @@ async function runLoopReporting(
 
   if (options.dryRun === true) {
     // The next pulse of each codebase, from the plan the look ahead kept - the one regenerate would start.
-    for (const status of planned) {
-      const first = status.planned[0];
-      if (first === undefined || first.afterCode === true || first.planning === true) continue;
-      const next = await loop.plannedPulse(`planned-${status.module}-1`);
-      if (next === undefined) continue;
-      view.nextPulse(next);
-    }
+    for await (const next of nextPulses(loop, planned)) view.nextPulse(next);
     return { status: "dry_run", exitCode: 0 };
   }
 

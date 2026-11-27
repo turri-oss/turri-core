@@ -45,11 +45,14 @@ import { changedFiles, projectFiles } from "./plain-files.ts";
 import { whyFailed } from "./regenerate/diagnose-job.ts";
 import { didNotLand } from "./regenerate/failure-reports.ts";
 import { conformanceRefusal, createWorkLoop, TestingStepsMissing, describeModules, isUpToDate, type ModuleStatus, type PlannedPulse, type WorkLoop } from "./regenerate/loop.ts";
-import { didNotPass, PANEL_KEY, spinner } from "./regenerate/job-panel.ts";
-import { skillAboutLine, skillProgressLine } from "./skill-progress.ts";
+import { didNotPass, PANEL_KEY } from "./regenerate/job-panel.ts";
+import { emitSessionEvent, type SkillProgress } from "./session-events.ts";
+import { createSessionSpending } from "./session-spending.ts";
+import { lookAhead } from "./preview.ts";
 import { defaultMapFiles } from "./regenerate/spec-map.ts";
 import {
   BANNER_ENTRY,
+  appendChatEntry, sendChatMessage,
   COMMAND_OUTCOME,
   HISTORY_ENTRY,
   INTERVIEW_ENTRY,
@@ -320,10 +323,13 @@ export function createTurriCore(
     persist?: boolean;
     dialogs?: (chat: string) => AskUserIO | undefined;
     view?: TurriView;
+    /** A host can run the session without supplying any callbacks. */
+    mode?: "chat" | "host";
   } = {},
 ): TurriCore {
   dropNoise();
   const cwd = process.cwd();
+  const mode = options.mode ?? (Object.keys(host).length > 0 ? "host" : "chat");
   // The AWS region the project's Bedrock models need, before any model is called - a host has no shell to export it in.
   applyBedrockRegion(cwd);
   let core: TurriCore | undefined;
@@ -395,12 +401,16 @@ export function createTurriCore(
     },
   });
   sessionLaunches.set(jobs, launches);
+  let closeLedger: (() => void) | undefined;
+  const spending = createSessionSpending();
   core = createChats({
+    spending,
+    onDispose: () => { stopModelEvents(); closeLedger?.(); },
     cwd,
     launches,
     host,
     jobs,
-    extension: (pi, link) => turriExtension(pi, core!, link, busy),
+    extension: (pi, link) => turriExtension(pi, core!, link, busy, mode),
     // A finished pulse goes to the sentinel when the project wants one - read as each pulse finishes - the person asked
     // first under `sentinel: ask`, and what they choose for the project written.
     sentinel: () => sentinelSetting(cwd),
@@ -418,20 +428,31 @@ export function createTurriCore(
   // What this session does, as facts, in the project's .turri/ledger - a pulse's own in its project. Said once, in the
   // chat shown, when it cannot be written.
   if (ledgerWanted()) {
-    startLedger({
-      mode: Object.keys(host).length > 0 ? "host" : "chat",
+    closeLedger = startLedger({
+      mode,
       project: cwd,
       warn: (message) => session.notify(message, "warning"),
     });
   }
   // What a turri that was killed left running - its commands' process groups - stopped as this one starts.
   const orphans = sweepOrphanedGroups();
-  if (orphans > 0) session.notify(`Stopped ${orphans} process group${orphans === 1 ? "" : "s"} a turri that was killed left running.`, "info");
+  if (orphans > 0) {
+    emitSessionEvent(host, { type: "orphansStopped", count: orphans });
+    session.notify(`Stopped ${orphans} process group${orphans === 1 ? "" : "s"} a turri that was killed left running.`, "info");
+  }
   // A pulse's provider failing and waited out, or a turn turri ended itself: said in the chat shown as it happens - the
   // job panel's activity holds it too, but scrolls by.
-  onModelEvent((event) => {
+  const stopModelEvents = onModelEvent((event) => {
     const line = describeTurnIncident(event);
-    if (line !== undefined) session.notify(event.job !== undefined ? `${event.job}: ${line}` : line, "warning");
+    if (line !== undefined) {
+      emitSessionEvent(host, { type: "incident", event, text: line });
+      session.notify(event.job !== undefined ? `${event.job}: ${line}` : line, "warning");
+    }
+    const cost = event.usage?.cost ?? 0;
+    if (event.kind === "call" && event.job === undefined && cost > 0) {
+      const total = spending.agent(event.role, cost);
+      emitSessionEvent(host, { type: "agentCost", role: event.role, cost, total });
+    }
   });
   // Sub-agents think as hard as the chat that started them, not pi's default - and reach the providers its extensions
   // registered - a company's own gateway - which they load none of.
@@ -470,7 +491,7 @@ export function sessionLoop(session: TurriCore): WorkLoop {
  * turri's extension, built into one chat of the session: its tools, commands and handlers run in the chat's scope -
  * its id on the pulses it asks for - on the session's job registry and work loop.
  */
-function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, busy: () => boolean) {
+function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, busy: () => boolean, mode: "chat" | "host") {
   const pi = scopedToChat(api, link.scope);
   const { cwd, host, jobs } = session;
   // The session's sentinel: its own prompt and tools - the project to read, notices, its guidance - and nothing that
@@ -510,7 +531,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     if (toldByWaitingCall(jobs, job) && job.specConflict === undefined) return;
     // A spec that contradicts itself is the person's to settle, now: the agent is started on it.
     if (job.specConflict !== undefined) {
-      void pi.sendMessage(
+      sendChatMessage(pi,
         { customType: "turri_spec_conflict", content: specConflictTask(job.specConflict), display: false, details: { jobId: job.id } },
         { triggerTurn: true },
       );
@@ -523,7 +544,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       /* a config that cannot be read launches nothing */
     }
     const quiet = session.terminal && job.status === "succeeded" && !didNotPass(job);
-    void pi.sendMessage(
+    sendChatMessage(pi,
       {
         customType: "turri_job",
         content: pulseEndNote(job, { launching, quiet }),
@@ -545,7 +566,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       launch,
       reaction: JOB_FINISHED_REACTION,
     });
-    void pi.sendMessage({ customType: "turri_sentinel_pulse", content, display: false, details: { jobId: job.id, status: job.status } }, { triggerTurn: true });
+    sendChatMessage(pi, { customType: "turri_sentinel_pulse", content, display: false, details: { jobId: job.id, status: job.status } }, { triggerTurn: true });
   };
   // The sentinel's: functional specs a host asked it to check, in what is launched of the module - told, in a
   // conversation of its own for the check, its hidden first message `turri_sentinel_check`. It launches nothing.
@@ -560,7 +581,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       ...(current !== undefined ? { dir: launchedDir(current) } : {}),
       ...(context.focused !== undefined ? { focused: context.focused } : {}),
     });
-    void pi.sendMessage(
+    sendChatMessage(pi,
       { customType: "turri_sentinel_check", content, display: false, details: { checkId: check.id, module: check.module, funcIds: check.funcIds } },
       { triggerTurn: true },
     );
@@ -570,7 +591,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     const launches = sessionLaunches.get(jobs);
     if (launches === undefined) return;
     const content = launches.resumeText(work);
-    void pi.sendMessage({ customType: "turri_sentinel_resume", content, display: false }, { triggerTurn: true });
+    sendChatMessage(pi, { customType: "turri_sentinel_resume", content, display: false }, { triggerTurn: true });
   };
   // A launch this chat is to hear of ended: its agent told how it went, to tell the person.
   const launched = (launch: Launch) => tellLaunch(pi, jobs, launch);
@@ -589,7 +610,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     } catch {
       /* a config that cannot be read launches nothing */
     }
-    void pi.sendMessage(
+    sendChatMessage(pi,
       { customType: "turri_job_landed", content: landedNote(job, { shown, launching }), display: false, details: { jobId: job.id, status: job.status } },
       shown ? { triggerTurn: false } : { triggerTurn: true, deliverAs: "followUp" },
     );
@@ -617,7 +638,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     noticeOver: notices.over,
     concluded: notices.concluded,
     act: (task) => {
-      void pi.sendMessage({ customType: "turri_notice_answer", content: task, display: false }, { triggerTurn: true, deliverAs: "followUp" });
+      sendChatMessage(pi, { customType: "turri_notice_answer", content: task, display: false }, { triggerTurn: true, deliverAs: "followUp" });
     },
     thinkingLevel: () => pi.getThinkingLevel(),
     context: contextNow,
@@ -767,7 +788,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
 
   // What only a screen draws of the chat - its renderers, the banner's painting, the side panel's key - the view's.
   session.view?.chat?.(pi, { session, link, context: contextNow });
-  registerBranding(pi, discoveredSkills);
+  registerBranding(pi, discoveredSkills, mode);
   registerJobTools(pi, session);
   // The skills the person starts themselves - a project's, marked command-only: each has its command, and cultivate starts it only
   // once its command is typed, or picked among the options the conversation offers with ask_user.
@@ -813,7 +834,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     for (const controller of backgroundSkillRuns.values()) controller.abort();
   });
   // An existing codebase captured into ***plain, in the background: the person starts it, never the chat's agent.
-  registerCapture(pi, cwd, skillRunEnds, session.view);
+  registerCapture(pi, session, link.id, skillRunEnds);
   const startInBackground = (
     skill: (typeof skills)[number],
     params: { context?: string },
@@ -1030,7 +1051,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
           const session = link.session();
           // Read by the skill's agent, not this one: out of this chat's queue, and into its chat where it was read.
           void (session !== undefined ? unqueue(session, text) : Promise.resolve(false)).then((taken) => {
-            if (taken) pi.appendEntry(SKILL_MESSAGE_ENTRY, { text, skill: skill.name });
+            if (taken) appendChatEntry(pi, SKILL_MESSAGE_ENTRY, { text, skill: skill.name });
           });
         },
       };
@@ -1061,35 +1082,15 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
 
       // Above the input, while it runs: every phase by name, the one it is in, and how far through - and under it, what that phase does.
       const phases = skill.steps.map((step) => step.name);
-      const progress = { current: -1, attempt: 1 };
-      if (ctx.hasUI) {
-        ctx.ui.setWidget("turri-skill", (tui, theme) => {
-          // The spinner on the phase it is in moves.
-          const redraw = setInterval(() => tui.requestRender(), 1000);
-          redraw.unref?.();
-          const style = {
-            heading: (text: string) => theme.bold(theme.fg("accent", text)),
-            done: (text: string) => theme.fg("success", text),
-            now: (text: string) => theme.bold(theme.fg("accent", text)),
-            muted: (text: string) => theme.fg("muted", text),
-          };
-          return {
-            render: (width: number) => {
-              const about = skill.steps[progress.current]?.about;
-              const now = { skill: skill.name, phases, current: progress.current, attempt: progress.attempt, frame: spinner(Date.now()), ...(about !== undefined ? { about } : {}) };
-              const under = skillAboutLine(now, width, style);
-              return [skillProgressLine(now, width, style), ...(under !== undefined ? [under] : [])];
-            },
-            invalidate: () => {},
-            dispose: () => clearInterval(redraw),
-          };
-        });
-      }
+      const progressChanged = (progress: SkillProgress | null) => {
+        emitSessionEvent(host, { type: "skillProgress", chat: link.id, progress });
+        if (ctx.hasUI) session.view?.skillProgress?.(ctx, progress);
+      };
 
       const report: Reporter = {
         step: (name, attempt) => {
-          progress.current = phases.indexOf(name);
-          progress.attempt = attempt;
+          const current = phases.indexOf(name);
+          progressChanged({ skill: skill.name, phases, current, attempt, about: skill.steps[current]?.about });
           live.step = skillStatus(skill, name, attempt).slice(skill.name.length + 2);
           live.stepStarted = Date.now();
           push(`step ${name} (attempt ${attempt})`);
@@ -1135,6 +1136,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
         written();
         ran_();
       };
+      progressChanged({ skill: skill.name, phases, current: -1, attempt: 1 });
       const ran = await captureConsole(() =>
         runSkill({
         skillDir: skill.dir,
@@ -1197,7 +1199,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
         .finally(() => {
           ended();
           clearInterval(ticker);
-          if (ctx.hasUI) ctx.ui.setWidget("turri-skill", undefined);
+          progressChanged(null);
         });
       if (ran === undefined) {
         const text = [`${skill.name}: stopped by the person, in its ${live.step || "first"} step. It can be continued with resume: true.`, "", "<trace>", ...trace, "</trace>"].join("\n");
@@ -1394,7 +1396,7 @@ export function asksOneByOne(words: string): boolean {
 /** Keep a command's output in the transcript without adding a message to the model's context. */
 function showCommandEntry(pi: ExtensionAPI, ctx: ExtensionContext, entry: CommandOutcome & { text: string }): void {
   try {
-    pi.appendEntry(COMMAND_OUTCOME, entry);
+    appendChatEntry(pi, COMMAND_OUTCOME, entry);
   } catch {
     if (ctx.hasUI) ctx.ui.notify(entry.text, entry.level);
   }
@@ -1418,8 +1420,8 @@ export function shownAfterCommand(
 ): void {
   showCommandEntry(pi, ctx, { command, text, level, ...(echoed ? { echoed } : {}) });
   const content = `The person ran ${command}, and was shown:\n${text}${react !== undefined ? `\n\n${react}` : ""}`;
-  if (react === undefined) void pi.sendMessage({ customType: COMMAND_OUTCOME, content, display: false });
-  else void pi.sendMessage({ customType: COMMAND_OUTCOME, content, display: false }, { triggerTurn: true, deliverAs: "followUp" });
+  if (react === undefined) sendChatMessage(pi, { customType: COMMAND_OUTCOME, content, display: false });
+  else sendChatMessage(pi, { customType: COMMAND_OUTCOME, content, display: false }, { triggerTurn: true, deliverAs: "followUp" });
 }
 
 /**
@@ -1428,7 +1430,7 @@ export function shownAfterCommand(
  */
 export function toldAfterCommand(pi: ExtensionAPI, command: string, text: string, react: string): void {
   const content = `The person ran ${command}. Not shown to them:\n${text}\n\n${react}`;
-  void pi.sendMessage({ customType: COMMAND_OUTCOME, content, display: false }, { triggerTurn: true, deliverAs: "followUp" });
+  sendChatMessage(pi, { customType: COMMAND_OUTCOME, content, display: false }, { triggerTurn: true, deliverAs: "followUp" });
 }
 
 /**
@@ -1476,7 +1478,7 @@ const ONE_FRAME_MS = 20;
  */
 export async function echoCommand(pi: ExtensionAPI, command: string): Promise<void> {
   try {
-    pi.appendEntry(COMMAND_OUTCOME, { command } satisfies CommandOutcome);
+    appendChatEntry(pi, COMMAND_OUTCOME, { command });
   } catch {
     return;
   }
@@ -2192,12 +2194,9 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
         if (params.job_id !== undefined) return { content: [{ type: "text" as const, text: "Pass job_id or plain_file, not both: plain_file looks ahead at a module, job_id tells one pulse." }], details: { status: "refused" } };
         const given = fromWorkingDir(cwd, params);
         const plainFile = resolve(given.base, given.plain_file!);
-        refuseTestPlainFile(plainFile);
-        return whenBuildable(plainFile, async () => {
-          const loop = workLoopFor(jobs, cwd, ctx);
-          const statuses = await loop.lookAhead(plainFile);
-          return { content: [{ type: "text" as const, text: describeLookAhead(loop, statuses) }], details: { status: "looked ahead" } };
-        });
+        const loop = workLoopFor(jobs, cwd, ctx);
+        const statuses = await lookAhead(loop, plainFile);
+        return { content: [{ type: "text" as const, text: describeLookAhead(loop, statuses) }], details: { status: "looked ahead" } };
       }
       if (params.job_id === undefined) {
         const runs = params.runs !== undefined && Number.isFinite(params.runs) ? Math.max(1, Math.floor(params.runs)) : EARLIER_RUNS;
@@ -2292,7 +2291,7 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
         name = modules.length === 1 ? modules[0]! : ((await ctx.ui.select("Lineage of which module?", modules)) ?? "");
         if (name === "") return;
       }
-      pi.appendEntry(HISTORY_ENTRY, { module: name, text: historyLog(defaultBuildDir(name, cwd)) });
+      appendChatEntry(pi, HISTORY_ENTRY, { module: name, text: historyLog(defaultBuildDir(name, cwd)) });
     },
   });
 
@@ -2553,7 +2552,8 @@ function registerCheckPlain(pi: ExtensionAPI, cwd: string, dialogs?: AskUserIO, 
  * which the person alone does. One at a time; its end comes back to this chat as a background skill's does, its report
  * for the chat's agent to pass on.
  */
-function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRunEnd): void }, view: TurriView | undefined) {
+function registerCapture(pi: ExtensionAPI, session: TurriCore, chat: string, ends: { put(end: SkillRunEnd): void }) {
+  const { cwd, host, view } = session;
   let running: { root: string; controller: AbortController } | undefined;
   pi.on("session_shutdown", (event) => {
     if (event.reason === "quit") running?.controller.abort();
@@ -2584,6 +2584,8 @@ function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRu
       const shown = ctx.hasUI ? view?.captureProgress?.(ctx) : undefined;
       const watch = (next: CaptureStatus) => {
         status = next;
+        // The tracker reuses its status and agent rows; a host can keep this event for replay.
+        if (host.onEvent) emitSessionEvent(host, { type: "captureProgress", chat, status: structuredClone(next) });
         shown?.update(next);
       };
       // The same milestones as the CLI, kept in the chat that started the capture. Tool activity stays in the widget.
@@ -2602,7 +2604,14 @@ function registerCapture(pi: ExtensionAPI, cwd: string, ends: { put(end: SkillRu
         ...(model !== undefined ? { model, harnessModel: `${model}:${pi.getThinkingLevel()}` } : {}),
         ...(codingModel !== undefined && codingModel !== "" ? { codingModel } : {}),
       };
-      void captureConsole(() => runCapture({ root, signal: controller.signal, progress, watch, ...configured }))
+      const capture = captureConsole(() => runCapture({ root, signal: controller.signal, progress, watch, ...configured }));
+      // One outcome of the capture itself, before a terminal asks to reopen or a chat receives its report.
+      if (host.onEvent) void capture.then(
+        ({ result }) => emitSessionEvent(host, { type: "captureEnded", chat, root, state: "completed", result: structuredClone(result) }),
+        (error: unknown) => emitSessionEvent(host, controller.signal.aborted ? { type: "captureEnded", chat, root, state: "stopped" } :
+          { type: "captureEnded", chat, root, state: "failed", error: error instanceof Error ? error.message : String(error) }),
+      );
+      void capture
         .then(async ({ result }) => {
           shown?.close();
           // A chat works on the project of its own folder, and the capture wrote one of its own: turri in a terminal
@@ -2677,7 +2686,7 @@ async function askOnTheSide(pi: ExtensionAPI, ctx: ExtensionContext, cwd: string
     chatModelOf(ctx),
   );
   try {
-    pi.appendEntry(SIDE_ENTRY, { question, answer });
+    appendChatEntry(pi, SIDE_ENTRY, { question, answer });
   } catch {
     // Shown where it was asked all the same.
   }
@@ -2687,7 +2696,7 @@ async function askOnTheSide(pi: ExtensionAPI, ctx: ExtensionContext, cwd: string
 /** A launch ended, told to a chat's agent - to tell the person where it runs, or why it did not come up. */
 function tellLaunch(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch): void {
   const job = "pulse" in launch.cause ? jobs.get(launch.cause.pulse) : undefined;
-  void pi.sendMessage(
+  sendChatMessage(pi,
     { customType: "turri_launch", content: launchedNote(launch, job), display: false, details: { launch: launch.id, status: launch.status } },
     { triggerTurn: true, deliverAs: "followUp" },
   );
@@ -2696,7 +2705,7 @@ function tellLaunch(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch): void {
 /** A newer launch took the place of one a chat asked for, told to its agent: it hears that one's end instead. */
 function tellReplaced(pi: ExtensionAPI, jobs: JobRegistry, launch: Launch, next: Launch): void {
   const job = "pulse" in next.cause ? jobs.get(next.cause.pulse) : undefined;
-  void pi.sendMessage(
+  sendChatMessage(pi,
     { customType: "turri_launch", content: replacedNote(launch, next, job), display: false, details: { launch: launch.id, status: launch.status, replacedBy: next.id } },
     { triggerTurn: true, deliverAs: "followUp" },
   );
@@ -2747,7 +2756,7 @@ function announceJob(pi: ExtensionAPI, job: Job): void {
           : (job.error ?? "no error recorded"),
   };
   try {
-    pi.appendEntry(JOB_ENTRY, announcement);
+    appendChatEntry(pi, JOB_ENTRY, announcement);
   } catch {
     // The agent still gets the report; losing the entry must not lose the result.
   }
@@ -2790,7 +2799,7 @@ export type { Exchange };
  */
 function recordExchange(pi: ExtensionAPI, exchange: Exchange): void {
   try {
-    pi.appendEntry(INTERVIEW_ENTRY, exchange);
+    appendChatEntry(pi, INTERVIEW_ENTRY, exchange);
   } catch {
     // The trace still carries it; a rendering failure must not lose the answer.
   }
@@ -2858,7 +2867,7 @@ export function chatRulesBlock(rules = loadRules(join(PACKAGE_ROOT, "genome", "r
  * /stdlib, and the banner at the top of every chat - what it says, appended once a chat (BannerData); the view draws it
  * (TurriView.chat), and a host reads it.
  */
-function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue) {
+function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue, mode: "chat" | "host") {
   pi.registerCommand("stdlib", {
     description: "List the ***plain standard library: the stacks a spec can import instead of writing its implementation reqs.",
     handler: async (_args, ctx) => {
@@ -2873,23 +2882,24 @@ function registerBranding(pi: ExtensionAPI, skills: SkillCatalogue) {
     bannered = true;
     try {
       const identity = turriIdentity();
-      const versions = bannerWarnings();
+      // The installed CLI and the latest CLI on npm are unrelated to the version a desktop embeds.
+      const versions = mode === "chat" ? bannerWarnings() : undefined;
       // A newer turri npm says is out only now - the banner read what it said last time: said under the banner once it does.
-      void versions.later.then((line) => {
+      void versions?.later.then((line) => {
         if (line === undefined) return;
         try {
-          pi.appendEntry(VERSION_ENTRY, { text: line });
+          appendChatEntry(pi, VERSION_ENTRY, { text: line });
         } catch {
           /* the chat let go meanwhile: the next start's banner says it */
         }
       });
-      pi.appendEntry(BANNER_ENTRY, {
+      appendChatEntry(pi, BANNER_ENTRY, {
         version: identity.version ?? "0.0.0",
         commit: identity.git_commit?.slice(0, 7),
         changed: identity.git_dirty === true,
         pending: skills.pending.length,
         sandbox: sandboxSummary(),
-        versions: versions.lines,
+        versions: versions?.lines ?? [],
         config: configLines(ctx.cwd),
       });
     } catch {

@@ -8,11 +8,11 @@ The core draws nothing, prints nothing and exits nothing. Where the terminal dre
 
 What only a screen needs is the CLI's. `tests/boundary.test.ts` reads every file under `src/` by its syntax - so a comment or a string that names one is not a crossing - and fails on any of these, naming the file and line:
 
-- **pi-tui**, anywhere but `src/text-width.ts` - imported, re-exported (`export ... from`, `export * from`), as a type's `import()`, with a dynamic `import()` or `require`. That file re-exports pi-tui's `visibleWidth` and `truncateToWidth`, and nothing else: the `turri-skill` widget lays its progress line out by them, and turri-app reads that line back by its spacing, so the core measures text exactly as pi's screen does.
-- **pi's terminal**, from `@earendil-works/pi-coding-agent`: its interactive mode, the runtime whose session a screen swaps and its command line - `InteractiveMode`, `AgentSessionRuntime`, `main` - and what it draws with: every name ending in `Component` (`UserMessageComponent`, `ToolExecutionComponent`, ...), `DynamicBorder`, `BorderedLoader`, `CustomEditor`, `keyHint`, `keyText`, `rawKeyHint`, `renderDiff`, `getMarkdownTheme`, `initTheme`, `getSelectListTheme` and `getSettingsListTheme`. Each is a crossing however it is reached: imported or re-exported by name (`as` another name too), as a type (`import("…").InteractiveMode`), taken from a dynamic `import()` or `require` - destructured or read off it - or through pi's whole API under one name - `import * as P`, `const P = await import(…)` or `require(…)`, or a name given one, `const Q = P` - read off it (`P.InteractiveMode`, `P["InteractiveMode"]`, a type `P.InteractiveMode`) or destructured from it (`const { InteractiveMode } = P`). pi re-exported whole would hand all of them on, and is a crossing too - `export * from` pi, `export * as <name> from` pi, `export { P }` of such a name - except `host.ts`'s `export * as pi`, all of pi for a host that runs the chats itself.
+- **pi-tui**, anywhere in the core - including type imports, re-exports, a dynamic `import()` or `require`. The CLI measures text and draws widgets; the core reports progress as data.
+- **pi's terminal**, from `@earendil-works/pi-coding-agent`: its interactive mode and runtime, CLI, components, editor, borders, key hints and themes. Imports and re-exports by name, type imports, namespace members, destructuring and dynamic imports are checked. Re-exporting all of pi also crosses the boundary. A consumer that builds a pi extension imports its pi peer directly.
 - **What only a screen does**: `registerEntryRenderer`, `registerMessageRenderer`, `registerShortcut`, `setFooter`, `setHeader`, `setEditorComponent` and `onTerminalInput`, whatever they are read from and whatever is done with them - called, kept (`const reg = pi.registerEntryRenderer`), taken out by name (`const { registerShortcut } = pi`), read by a string key (`pi["registerShortcut"]`) or called by a bare name; and a ui's `custom`, read off anything that is a ui - `ui`, `x.ui`, `x["ui"]`, a name given one (`const io = ctx.ui`, `const { ui: io } = ctx`), or anything typed or cast as one: `ExtensionUIContext` (`pi.ExtensionUIContext` too), any type's `["ui"]` (`ExtensionContext["ui"]`), `typeof ctx.ui`, or a type the file names for one (`type Screen = ExtensionContext["ui"]`) - or destructured from one (`const { custom } = ctx.ui`). Beyond the test: a name read by a key computed as the code runs (`pi[key]`), and a ui or pi's API a file reaches without naming it - one a call returns, or one typed by an interface of the file's own. Two core files pass one on without doing anything of their own with it, each site let by for its file, the function it is in and the name it is read from, and checked to be still there: `chats.ts` hands the view pi's `registerShortcut`, its handler run in the chat's scope (`target.registerShortcut` in `scopedToChat`), and `chat-ui.ts`, a hidden chat's stand-in for the screen, passes pi's `onTerminalInput` on to the screen the chat is shown on (`screen` and `next` in `createChatUi`). Anywhere else in those files, it is a crossing.
 
-The core may call `ctx.ui`'s abstract methods - `notify`, `select`, `input`, `confirm`, `setStatus`, `setWorkingMessage`, `setWidget` - since a host answers them as well as a screen does; the `turri-skill` widget, which turri-app parses, stays the core's.
+The core may call `ctx.ui`'s abstract methods - `notify`, `select`, `input`, `confirm`, `setStatus`, `setWorkingMessage` - since a host answers them as well as a screen does.
 
 A seam the CLI needs is a hook in `TurriView` or an exported accessor in the core - never a copy of the core's state or logic in the CLI, and never a pi-tui import here.
 
@@ -31,6 +31,7 @@ A seam the CLI needs is a hook in `TurriView` or an exported accessor in the cor
 | `panel(...).visible()` / `.close()` | `link.live.plainPanel.open()` and its toggle | says whether the panel is on the screen, and closes it |
 | `pulseFinished(job)` | for every pulse that ends and is not replaced by another, just before the session tells its chats (`TurriCore.jobFinished`) | remembers a pulse that failed, was stopped or did not pass (`didNotPass`), so the side panel opens on it at the next `ctrl+h` |
 | `captureProgress(ctx)` | as `/capture` starts a capture in a chat with a screen; `update(status)` with each status the capture reports, `close()` as it ends, however it ends | draws the capture's status above the input - its phase, each agent at work and what it did last - from `CaptureStatus`, `COMPACT_PHASES`, `captureStageText` and the spinner |
+| `skillProgress(ctx, progress)` | a foreground skill starts, enters a step or retries it; `null` when it ends | draws or clears the chat's skill widget, choosing its own width, colours and spinner |
 | `openPiSettings()` | when the person picks pi's own settings, the last entry of `/settings`; false or absent, the core says they open only in the terminal's chat | opens pi's own settings menu, patched into `InteractiveMode` |
 
 The hook's parameters:
@@ -62,13 +63,13 @@ What the core keeps in a chat besides its messages - the entries it appends and 
 | `turri_skill_run` | `SKILL_RUN_ENTRY` (`background-skills.ts`) | an entry for each background skill that did its work; a message (`display: false`) for those that did not | `{ text }`; the message's `details`: `{ skills, runs }` |
 | `turri_skill_report` | `SKILL_REPORT_ENTRY` (`background-skills.ts`) | a message (`display: false`): what a background run that did its work has for the chat's agent - a capture's report | `details`: `{ skills }` |
 
-`extension.ts` still re-exports `COMMAND_OUTCOME` and the `Exchange` type, as before the split.
+`ChatEntry` (from `@turri-dev/core`) is the union of these records. Narrow first by `type` (`custom` or `custom_message`), then by `customType` to read the matching `data` or `details`. The terminal entry exports the renderer constants. The session's `entries(chat)` reads the current branch; a host can subscribe at creation with `onEvent`.
 
 ## Unattended runs
 
 The commands that build - `turri regenerate` (`--dry-run` a look ahead) and `turri conform` - run `runHeadless(run, view)` (`src/headless.ts`), the work loop driven as the chat drives it: the project's models, a job that fails run once more and, failing again, diagnosed; the loop run until nothing more can start; the code exported into `--build-dir` as the process exits, however it exits, before the run report's last write. It prints nothing, asks nothing and never exits the process. A run refused before it starts - a test plain file, a config that does not parse, a `--build-dir` the export would wipe something in - throws; one that ran returns how it ended, `completed`, `incomplete`, `failed` or `dry_run`, with the exit code the command ends with.
 
-`HeadlessRun` is the request: the `.plain` file, `buildDir`, `report`, `command` (as the run report gives it), `dryRun`, `startOver` and `ask`, what the run asks of the work loop. `HeadlessView` is what a person would be shown and asked, each at the point it happens - the CLI's console prints it as it did before the split:
+`HeadlessRun` from `/commands` names the `.plain` file, `work` (`preview`, `regenerate`, `fromScratch` or `conform`) and the options for that operation. `preview` only looks ahead. The core selects the loop operation; callers can also give `buildDir`, `report`, `command` (as the report gives it) and `startOver`. `HeadlessView` is what a person would be shown and asked:
 
 | hook | when |
 | --- | --- |
@@ -85,7 +86,7 @@ The commands that build - `turri regenerate` (`--dry-run` a look ahead) and `tur
 | `drained(statuses)` | nothing more can start: how each codebase stands |
 | `ended(end)` | how the run ended: every job, those that failed, the codebases not complete |
 
-`moduleStates`, `buildDirProblem`, `exportCode` and `reportModels` are exported beside it. The flags (`headlessOptions`), the console and `process.exit` are the CLI's.
+`moduleStates` is exported beside it. The flags (`headlessOptions`), the console and `process.exit` are the CLI's.
 
 ## What else the CLI takes from the core
 
@@ -93,9 +94,9 @@ The CLI draws from the core's own state and words, exported - never copied:
 
 - **The session**: `TurriCore` - `terminal`, `welcomeVisible(chat)`, `view` - and each chat's `ChatLink`, whose `live.plainPanel` the chat header reads; a `ChatDriver` with `terminal: true` for the terminal's chats; `chat-ui.ts`, a hidden chat's stand-in for the screen.
 - **The pulses and the panel**: `shownJobs`, `plannedLoop` and `sessionLaunchesOf` (extension.ts); `PANEL_KEY`, `spinner`, `didNotPass`, `finishedMark`, `pulseCost` and `summarizeDiff` (`regenerate/job-panel.ts`); `Rung`, `rungOf`, `focusOf` and `lineDiff` with regen's marks (`regenerate/spec-map.ts`); `DiffWhere`, `locateDiffLines` and `DIFF_HEADER` (`regenerate/diff-where.ts`); `TerminalNotifications`, the terminal session's inbox (`notifications.ts`); `QueueOf` and `unqueue` (`chat-queue.ts`).
-- **Capture's status**: `CaptureStatus`, `CAPTURE_PHASES`, `COMPACT_PHASES` and `captureStageText` (`capture/progress.ts`), and `skillProgressLine` (`skill-progress.ts`).
+- **Capture and skill progress**: `CaptureStatus`, `CAPTURE_PHASES`, `COMPACT_PHASES` and `captureStageText` (`capture/progress.ts`); `SkillProgress` from the session. Text layout belongs to the CLI.
 - **The commands**: `followLaunchedLogs(onLine)` (`regenerate/launch.ts`), what `turri launch` prints of what runs as it logs; `doctor`, `allChecks`, `verdictOf`, `MARK` and each check (`setup.ts`), which `turri doctor` prints; `initConfig` and its presets (`init-config.ts`), which `turri init-config` asks for, its colours an injected `Paint` (`PLAIN_PAINT`, no escape codes, by default); `runSkill` (`genome.ts`), for `turri cultivate`; the capture itself (`src/capture/`), for `turri capture`.
-- **This turri**: `setTurriRoot(root)` and `turriRoot()` (`environment.ts`, `@turri-dev/core/environment` - the module the core reads it from). The turri the person runs is the CLI's package, not the core's, and only the CLI knows where it is: it calls `setTurriRoot(<its own package root>)` as it starts, before it draws the banner, answers `--version`, runs `turri doctor` or starts a headless run - before anything that asks which turri this is. From then on, everything that says so follows `turriRoot()`: `turriIdentity` - the version and the clone's commit in `BANNER_ENTRY`'s data, the ledger's `run.started` and the run report - and `versionLine` with it; `describeVersion` (`turri --version`), `versionFindings` and `turrisOnPath` (`turri-versions.ts`: the banner's warnings, `turri --version` and `turri doctor`, which turri on the PATH is this one); `globalExtensionFile`, the global pi extension file naming this turri; `themeFiles` and `themesInstalledGlobally`, its `.pi/themes`; and `checkTurri`'s fix in `turri doctor`, `npm link` in this turri's clone. Unset, `turriRoot()` is `PACKAGE_ROOT`, the core's own package - the turri a host runs through `@turri-dev/core/host`; a CLI that does not set it describes `@turri-dev/core` instead of itself - the core's version on its banner, in its ledger and its run report, and its own install on the PATH taken for another turri, warned about as one in front of this one. `PACKAGE_ROOT` stays the core's whatever is set: the genome, the standard library, the rules, capture's prompts and the diagnosis's harness folder are read from the core's own package.
+- **This turri**: `setTurriRoot(root)` and `turriRoot()` from `@turri-dev/core/commands`. Set the CLI's package root at startup, before the banner, `--version`, doctor or a headless run. The version and commit, ledger identity, PATH checks and themes then refer to the CLI. Without a CLI root they refer to the core. `PACKAGE_ROOT` always locates the core's own genome, standard library, rules and capture prompts.
 
 ## What stays in turri's CLI
 
@@ -109,13 +110,18 @@ Their tests stay with them.
 
 ## Importing the core
 
-The package exports:
+Node's package export map is the import boundary, including for linked clones. The JavaScript and declarations are ESM. The core and its consumer share `@earendil-works/pi-coding-agent` as a peer at the version in `package.json`: a terminal prototype patched in one must be the same prototype the other runs. When developing with separate `npm link`ed checkouts, make both resolve pi to the same physical installation.
 
-| entry | what | published | under `turri-source` |
-| --- | --- | --- | --- |
-| `@turri-dev/core` | the extension: `createTurriCore`, `processSession`, the default export, and the helpers the CLI and the tests use | `dist/extension.js` | `src/extension.ts` |
-| `@turri-dev/core/host` | [a host's entry](hosting.md) | `dist/host.js` | `src/host.ts` |
-| `@turri-dev/core/<path>` | any other module by its path under `src/`, without its extension: `@turri-dev/core/view`, `@turri-dev/core/headless`, `@turri-dev/core/chat-entries`, `@turri-dev/core/regenerate/job-panel` | `dist/<path>.js`, its types in `dist/<path>.d.ts` | `src/<path>.ts` |
+| import from `@turri-dev/core` | what the consumer asks for |
+| --- | --- |
+| `.` | `createTurri`, its session and event types, chat entries, notices, jobs and launches |
+| `/host` | desktop operations: `doctor`, installed providers, credentials location, sign-in device id and saved chat files |
+| `/plain` | parse, check, highlight, follow links and read the project's standing on disk |
+| `/config` | read and initialise project settings and model choices |
+| `/ledger` | subscribe to facts, read runs and inspect pulses |
+| `/terminal` | the default pi extension, `createTurriCore`, `TurriView`, chat driver, panel data and renderer constants |
+| `/commands` | `runHeadless`, `readDrift`, `launchModule`, capture, cultivate and CLI setup |
+| `/startup` | check Node, set the CLI's identity, resolve its themes and read launch settings before loading pi. Import `/terminal` after the CLI's own terminal setup. |
 
 The package on npm is `dist/` alone: `npm run build` compiles `src/` into it, file for file, as Node runs no `.ts` file inside a `node_modules`. A clone of the core runs unbuilt instead. Linked into a clone of the CLI - `npm link` here, `npm link @turri-dev/core` there - it is found through the link's real path, outside any `node_modules`, so Node's type stripping runs its sources; started with `NODE_OPTIONS=--conditions=turri-source`, every entry resolves to `src/`, and an edit here is in the CLI at its next start, with nothing built. For the CLI's typecheck to read the sources too, its `tsconfig.json` gives `"customConditions": ["turri-source"]`; without it, TypeScript reads `dist/`'s declarations, after a build.
 
@@ -123,4 +129,39 @@ The condition has a name of its own: pi's packages answer `source` with a `src/`
 
 ## turri-app
 
-turri-app keeps using `src/host.ts` - the same file, with the same exports: `createTurri` and the session's types, the project and its settings, a \*\*\*plain file parsed, checked and coloured, the work loop, the ledger, `doctor`, `initConfig`, and pi itself (`pi`). It imports it as `@turri-dev/cli/host` from npm, or from a clone's `src/host.ts` with `TURRI_DEV`; from this package it is `@turri-dev/core/host`, or `TURRI_DEV` naming a clone of the core. It passes no view: its questions go to its own dialogs (`TurriHost.dialogs`), it draws what the core appends to a chat from the data in [the entries](#the-entries), and it reads the `turri-skill` widget's line back by its spacing. Moving its dependency from `@turri-dev/cli` to `@turri-dev/core` is turri-app's own change.
+turri-app still runs the CLI package's older host bridge. The library gives the desktop [one session](hosting.md) for the project's work: `standing()` reads it, `lookAhead()` plans it without starting pulses, `status()` shows the held plan beside live jobs. It supplies its own dialogs and hears foreground skill progress as data, independent of a terminal widget. Its migration and the CLI's are separate consumer changes.
+
+## Consumer coverage
+
+The old desktop bridge exposed 77 runtime names. Of those, 70 have the same name on a public entry. The other seven map to operations rather than imports of the old internals:
+
+| Former import | How the consumer does the work now |
+| --- | --- |
+| `createWorkLoop`, `createJobRegistry` | The session owns both. The Plan button calls `lookAhead` on the open session; `status`, `jobs` and `job` read what that session holds. A separate spec worker uses `/plain`'s `projectStanding` without opening a session. |
+| `functionalityCompletion` | Read `completion` on the matching `ModuleStanding` from `standing([file])` or `projectStanding(dir, [file])`. A parse failure is `completionError` on that module. |
+| `describeTurnIncident`, `onModelEvent` | Subscribe at session creation to `incident` and `agentCost`. Job usage is already on the job. |
+| `sweepOrphanedGroups` | Session startup does the sweep and reports `orphansStopped`. |
+| `pi` | `openChat` supplies the pi session. `/host` provides saved chats, credentials location, device id and the installed model runtime. A consumer implementing a pi extension or the pi terminal imports the shared peer directly. |
+
+For the CLI, startup and version checks use `/startup`. The interactive driver and side panel use `/terminal` with `/ledger` for older pulses. Parse uses `/plain`; doctor and init-config use `/host`, `/commands` and `/config` (`hasBedrockPreset` checks a maker/region before loading the catalogue). Regenerate, conform, drift, lineage, launch, capture and cultivate use `/commands`. pi's own package management, terminal components, flags and presentation remain the CLI's. A desktop `/capture` receives structured progress and the resulting project path through session events; neither consumer has to parse the other's screen.
+
+The packed consumer tests exercise these boundaries, including startup with pi loading blocked. They are core-side contracts. The final integration check is each migrated consumer compiling and running its workflows against the tarball using only public core imports for turri functionality.
+
+### Checked against the consumer sources
+
+The read-only checkout sweep used CLI `7ada234` and desktop `f6a0531` (desktop still pins CLI `0.4.0`, pi `1.4.0`; core shares pi `1.6.0`). The checks used disposable copies with their imports and calls adapted to the packed core.
+
+| Consumer path | Migration detail that is easy to miss |
+| --- | --- |
+| CLI `bin/turri.mjs`, `src/cli.ts`, `src/pi-launch.ts`, `src/pi-themes.ts` | The launcher and the pi chat are separate processes: set the CLI package root in **both**. The banner art and themes are CLI assets; the genome and standard library are core assets. CLI argument parsing, including `chatModels`, stays with the CLI. Its pi package manager commands invoke the shared pi peer. |
+| CLI terminal and unattended commands | Keep the CLI driver, shortcuts, renderers, dialogs, notifications view and side panel; wire the rendering formerly inside the monolithic extension to `TurriView`. Register the view on the process session, including the old global-extension path. The CLI owns console output, signals and exit codes; use `/commands` for the operation itself. |
+| Desktop `engine/engine.mjs`, `chat.mjs`, `describe.mjs`, `describe-worker.mjs` | Adapt both the worker and its main-thread fallback. `projectStanding(dir, files)` takes the file array directly. Use the session's held preview for Plan (no build); do not create a second loop. The current renderer sends named specs or from-scratch options for Regenerate; its unused engine argument for free-form grouping guidance is no longer accepted by turri. |
+| Desktop chat, providers and history | `openChat()` returns a chat with a pi `session` for ordinary messages, models, queued input and extension commands. `entries(id)` supplies turri records only; the window also owns custom button and checkpoint entries. Look up a chat model with `chat.session.modelRuntime.getModel(provider, id)`; before a chat opens use `installedModelRuntime()` from `/host`. The app owns its provider filters, dialogs, browser/PTY tools and per-window presentation. |
+| Desktop project editor | The graph and parser must agree on scenario locations, including a module-specific or inherited `test-dir`. `isStack({ name })` accepts the import name, as the desktop catalogue uses it. A host's banner still carries project config findings but does not compare its core version with CLI releases or look for the CLI on PATH. |
+| Desktop window reopened in the same engine | `session.launches()` gives the launch history and `session.spending()` the dollars spent since the project opened. Neither requires a window to have followed events from startup. Closed chats, earlier sentinel conversations and replaced jobs still count; costs already in a restored chat are excluded. |
+| Desktop settings and notifications | `/config`'s `configuredModel(config, key)` reads the choice written on a model setting, before inheritance, and `configLines(projectDir)` gives current findings without searching past banners. Its `file` identifies the config; the desktop's existing IPC returns just `kind` and `text`. A version such as Bedrock's `:0` round-trips through `/settings`, with or without an extra thinking level. |
+| Desktop development, distribution and About | Account for `engine/turri.mjs` and the worker, `scripts/dev.mjs`, Electron's engine child environment (`electron/main.ts` strips `NODE_OPTIONS`), the version/pin checks and About label, the lockfile, release-note links and Dependabot. The packaged app needs the runtime peer; its third-party notice collector follows dependencies and optional dependencies, not peers. Preserve old release links when reading historical tags. |
+
+The first rehearsal typechecked the retained CLI modules and extracted view code against the packaged declarations, exercised command dispatch, parsing and drift, and rendered the banner and `/pulses` panel in a pseudo-terminal. The desktop engine ran over IPC with its real spec worker and a local model stub: project open, scenario links, settings, provider listing, multiple chats, messages, history and a held preview with zero jobs started.
+
+A second rehearsal ran 82 CLI tests across eight files against the packed core: the terminal chat driver and tab header, interrupts, queued messages, settings, notifications, jobs tree, panel docking and diff rendering. Seven desktop Playwright tests ran in Electron against an adapted engine and its worker: spending after closing a chat, project opening, scenario discovery, a signed-out provider, a versioned Bedrock model in the settings sheet, and projects with and without config findings. The core suite separately exercises sentinel rotation and reading launch history with no launch subscriber; the packed contract reopens a real saved pi conversation. The consumer migrations, their complete suites, the packaged Electron installer and a live provider sign-in are still to be checked in the consumer repositories.

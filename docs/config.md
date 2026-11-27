@@ -179,6 +179,8 @@ harness-model: anthropic/claude-opus-5-5  # a model alone
 
 What a model leaves out it takes from the one it inherits: `judge-model` from `coding-model` - its model, not its thinking, which the judging roles have their own of - and `coding-model` from `harness-model`. So with only a harness model, everything runs on it; `coding-model: {thinking: low}` regenerates on the harness model, thinking less.
 
+A provider's version is part of the model id. In `/settings`, a Bedrock id ending in `-v1:0` selects that version and leaves thinking unset. Append a level after the full id (`-v1:0:high`) to set both. The picker offers the same models and levels to the terminal and a host.
+
 They are defaults. What is asked for wins over them:
 
 | model | wins over the config |

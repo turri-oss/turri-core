@@ -12,6 +12,7 @@ type Handler = (event: unknown, ctx: unknown) => unknown;
 /** A chat's session: what it was asked to do, the tools and handlers turri registered in it, the model and thinking set on it. */
 type Session = {
   isStreaming: boolean;
+  cost: number;
   did: string[];
   tools: Map<string, Tool>;
   sent: string[];
@@ -41,7 +42,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
     DefaultResourceLoader,
     SessionManager: { create: () => ({}), open: () => ({}) },
     createAgentSession: async ({ resourceLoader }: { resourceLoader: DefaultResourceLoader }) => {
-      const state: Session = { isStreaming: false, did: [], tools: new Map(), sent: [], delivered: [], handlers: new Map() };
+      const state: Session = { isStreaming: false, cost: 0, did: [], tools: new Map(), sent: [], delivered: [], handlers: new Map() };
       sessions.push(state);
       const api = new Proxy(
         {},
@@ -79,6 +80,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
           return state.sent;
         },
         sessionManager: { getSessionName: () => undefined },
+        getSessionStats: () => ({ cost: state.cost }),
         extensionRunner: { getUIContext: () => undefined },
         subscribe: () => () => {},
         bindExtensions: async () => {},
@@ -106,7 +108,13 @@ vi.mock("../src/launch-agent.ts", () => ({
   },
 }));
 
-const { createTurri } = await import("../src/host-session.ts");
+// Inject finished test pulses through the real registry without exposing its mutating API to hosts.
+const registries = vi.spyOn(await import("../src/regenerate/jobs.ts"), "createJobRegistry");
+const { createTurri: openSession } = await import("../src/host-session.ts");
+async function createTurri(options?: Parameters<typeof openSession>[0]) {
+  const session = await openSession(options);
+  return { ...session, jobs: registries.mock.results.at(-1)!.value };
+}
 const { SENTINEL } = await import("../src/sentinel.ts");
 
 const settled = () => new Promise((resolve) => setTimeout(resolve, 30));
@@ -327,6 +335,31 @@ describe("the sentinel in a host", () => {
     expect(turri.session(sentinel.id)).not.toBeUndefined();
     expect(turri.session(sentinel.id)!.messages).toBe(sessions[2]!.sent);
   });
+
+  it("keeps spending from a closed chat and a replaced sentinel conversation, with a pulse counted only once", async () => {
+    const { reportModelEvent, reportUsage } = await import("../src/regenerate/activity.ts");
+    const turri = await createTurri(); // no event listener or ledger required to read a snapshot
+    try {
+      const mine = await turri.openChat();
+      await turri.openChat();
+      sessions[0]!.cost = 1;
+      await turri.closeChat(mine.id);
+      reportModelEvent({ kind: "call", role: "planner", usage: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0.25 } });
+      for (const cost of [2, 4]) {
+        const pulse = turri.jobs.start({ kind: "regenerate", summary: "app pulse", module: "app", run: async () => {
+          const usage = { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, cost };
+          reportUsage(usage);
+          reportModelEvent({ kind: "call", role: "coding", usage });
+          return { report: "done", details: { passed: true, landed: true } };
+        } });
+        await turri.jobs.wait(pulse.id);
+        await settled();
+        sessions.at(-1)!.cost = cost;
+      }
+      expect(sessions).toHaveLength(4);
+      expect(turri.spending()).toEqual({ chat: 1, sentinel: 6, regeneration: 6, other: [{ role: "planner", cost: 0.25 }] });
+    } finally { await turri.dispose(); }
+  });
 });
 
 describe("asking to start the sentinel in a host", () => {
@@ -452,6 +485,10 @@ describe("a check a host asks of the sentinel", () => {
     const { turri, heard } = await host();
     await launched();
     expect(launches).toHaveLength(1);
+    const [snapshot] = turri.launches();
+    expect(snapshot).toMatchObject({ codebase: "app", status: "launched" });
+    snapshot!.cause = {};
+    expect(turri.launches()[0]?.cause).toMatchObject({ chat: turri.chats()[0]!.id });
     const first = turri.check({ module: "app", funcIds: ["add-task"] });
     expect(first).toEqual({ check: expect.any(String) });
     await settled();

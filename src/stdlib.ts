@@ -70,7 +70,7 @@ function importsOf(text: string): string[] {
 }
 
 /** A stack to import - not a kind's `common`, not a conformance template, and not a language's. */
-export function isStack(template: StdlibTemplate): boolean {
+export function isStack(template: Pick<StdlibTemplate, "name">): boolean {
   return !template.name.endsWith("/common") && !template.name.includes("/conformance/") && !template.name.startsWith("stdlib/lang/");
 }
 

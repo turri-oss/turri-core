@@ -51,6 +51,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
         sessionFile: undefined,
         messages: [],
         sessionManager: { getSessionName: () => undefined },
+        getSessionStats: () => ({ cost: 0 }),
         extensionRunner: { getUIContext: () => undefined },
         subscribe: () => () => {},
         bindExtensions: async () => {

@@ -77,6 +77,7 @@ vi.mock("../src/run-report.ts", async (importOriginal) => {
 });
 
 const { buildDirProblem, moduleStates, runHeadless } = await import("../src/headless.ts");
+const { runHeadless: runCommand } = await import("../src/api/commands.ts");
 const { pulseName } = await import("../src/regenerate/jobs.ts");
 const { recordHistory } = await import("../src/regenerate/lineage.ts");
 const { chainSpec } = await import("../src/regenerate/loop.ts");
@@ -241,7 +242,7 @@ describe("a headless run", () => {
     writeTestScripts(dir);
     const { view, calls, names } = recordingView();
     // A --build-dir and a --report a dry run leaves alone: the one is not even checked.
-    const result = await runHeadless({ plainFile: app, dryRun: true, buildDir: dir, report: join(dir, "report.json"), ask: (loop) => loop.lookAhead(app) }, view);
+    const result = await runCommand({ plainFile: app, work: "preview", buildDir: dir, report: join(dir, "report.json") }, view);
     expect(result).toEqual({ status: "dry_run", exitCode: 0 });
     expect(names()).toEqual(["planned", "nextPulse"]);
     const [, statuses] = calls[0]! as [string, Array<{ module: string; planned: Array<{ title: string }> }>];
@@ -304,7 +305,7 @@ describe("a headless run", () => {
       drained(statuses);
     };
 
-    const result = await runHeadless({ plainFile: app, report, command: ["regenerate", "app.plain"], ask: (loop) => loop.bringUp(app) }, view);
+    const result = await runCommand({ plainFile: app, report, command: ["regenerate", "app.plain"], work: "regenerate" }, view);
 
     expect(result).toEqual({ status: "completed", exitCode: 0 });
     // The pulse's lines come as it runs - a first may come before the plan is told - and its end, the codebases and the verdict last.

@@ -42,6 +42,7 @@ function fakeSession() {
     sessionFile: undefined,
     messages,
     sessionManager: { getSessionName: () => undefined },
+    getSessionStats: () => ({ cost: 0 }),
     extensionRunner: { getUIContext: () => undefined },
   } as unknown as AgentSession;
   return { session, state, messages, emit: (type: string) => listeners.forEach((listener) => listener({ type })) };

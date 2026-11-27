@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { ChatLink, TurriCore } from "./chats.ts";
+import { appendChatEntry, sendChatMessage, NOTICE_ENTRY, NOTICE_OVER_ENTRY, CONCLUDED_ENTRY } from "./chat-entries.ts";
 import { projectModels, readProjectConfig, roleModel } from "./config.ts";
 import { concludedNote, concludeTool, keepGuidanceTool, notifyTool, resumeTool, sentinelFileTools, whoHoldsTool, type Conclusion, type Notice } from "./sentinel.ts";
 
@@ -10,11 +11,11 @@ import { concludedNote, concludeTool, keepGuidanceTool, notifyTool, resumeTool, 
  */
 
 /** A notice in the transcript: the card. */
-export const NOTICE_ENTRY = "turri_notice";
+export { NOTICE_ENTRY };
 /** A notice's end, under its card: answered, dismissed, superseded by a newer one about its module. */
-export const NOTICE_OVER_ENTRY = "turri_notice_over";
+export { NOTICE_OVER_ENTRY };
 /** The sentinel done with a pulse, in the chat the person is in. */
-export const CONCLUDED_ENTRY = "turri_sentinel_concluded";
+export { CONCLUDED_ENTRY };
 
 const IGNORE = "Ignore - leave it as the build has it";
 const STEER = "Say what to do instead…";
@@ -133,7 +134,7 @@ export function noticeDialogs(
     put(notice) {
       if (session.terminal) return; // The terminal centre received it, including the question whether to start.
       try {
-        pi.appendEntry(NOTICE_ENTRY, notice);
+        appendChatEntry(pi, NOTICE_ENTRY, notice);
       } catch {
         /* the host still hears of it */
       }
@@ -144,13 +145,13 @@ export function noticeDialogs(
     },
     concluded(conclusion) {
       try {
-        if (!session.terminal) pi.appendEntry(CONCLUDED_ENTRY, conclusion);
+        if (!session.terminal) appendChatEntry(pi, CONCLUDED_ENTRY, conclusion);
       } catch {
         /* the agent is still told */
       }
       // A host that shows the person the conclusion itself: the chat knows of it - in order, with no turn of its own.
       const shown = session.terminal || session.host.pulseEndsShown === true;
-      void pi.sendMessage(
+      sendChatMessage(pi,
         {
           customType: "turri_sentinel_concluded",
           content: concludedNote(conclusion, { shown }),
@@ -166,7 +167,7 @@ export function noticeDialogs(
       const at = waiting.indexOf(notice);
       if (at !== -1) waiting.splice(at, 1);
       try {
-        pi.appendEntry(NOTICE_OVER_ENTRY, { state: notice.state, summary: notice.summary });
+        appendChatEntry(pi, NOTICE_OVER_ENTRY, { state: notice.state, summary: notice.summary });
       } catch {
         /* a chat let go says nothing */
       }

@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionEvent } from "../src/session-events.ts";
 
 /** A tool turri registered in a chat, run as pi runs it: id, arguments, the turn's signal, updates, the context. */
 type Tool = { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> };
@@ -39,6 +40,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
         sessionFile: undefined,
         messages: [],
         sessionManager: { getSessionName: () => undefined },
+        getSessionStats: () => ({ cost: 0 }),
         extensionRunner: { getUIContext: () => undefined },
         subscribe: () => () => {},
         bindExtensions: async () => {},
@@ -56,6 +58,38 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
 
 const { createTurri } = await import("../src/host-session.ts");
 const { DECLINED } = await import("../src/ask.ts");
+
+it("reports the startup sweep and agent costs before a chat opens and stops reporting on disposal", async () => {
+  const cwd = process.cwd();
+  const dir = mkdtempSync(join(tmpdir(), "turri-host-events-"));
+  const sweep = vi.spyOn(await import("../src/regenerate/shell.ts"), "sweepOrphanedGroups").mockReturnValue(3);
+  const { reportModelEvent } = await import("../src/regenerate/activity.ts");
+  const events: SessionEvent[] = [];
+  process.chdir(dir);
+  try {
+    const session = await createTurri({ onEvent: (event) => events.push(event) });
+    try {
+      expect(events).toContainEqual({ type: "orphansStopped", count: 3 });
+      expect(sweep).toHaveBeenCalledTimes(1);
+      reportModelEvent({ kind: "provider_stall", role: "planner" });
+      expect(events.at(-1)).toMatchObject({ type: "incident", event: { kind: "provider_stall" } });
+      const call = { kind: "call", role: "planner", usage: { cost: 0.5, input: 5, output: 2, cacheRead: 0, cacheWrite: 0 } } as const;
+      reportModelEvent(call);
+      reportModelEvent(call);
+      expect(events.at(-1)).toEqual({ type: "agentCost", role: "planner", cost: 0.5, total: 1 });
+      expect(session.spending().other).toEqual([{ role: "planner", cost: 1 }]);
+    } finally {
+      await session.dispose();
+    }
+    const count = events.length;
+    reportModelEvent({ kind: "provider_stall" });
+    expect(events).toHaveLength(count);
+  } finally {
+    sweep.mockRestore();
+    process.chdir(cwd);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 type AskUserIO = import("../src/ask.ts").AskUserIO;
 
 /** A host's dialogs that never answer, keeping each question they were given and the signal it came with. */

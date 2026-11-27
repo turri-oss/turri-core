@@ -3,6 +3,7 @@ import type { AskUserIO } from "./ask.ts";
 import type { CaptureStatus } from "./capture/progress.ts";
 import type { ChatLink, TurriCore } from "./chats.ts";
 import type { Job } from "./regenerate/jobs.ts";
+import type { SkillProgress } from "./session-events.ts";
 
 /**
  * What a front-end draws of a turri session that the core does not: the terminal's (turri's CLI) - its entry renderers,
@@ -33,6 +34,8 @@ export interface TurriView {
   pulseFinished?(job: Job): void;
   /** A `/capture` running in a chat with a screen: its status, drawn above the input until it ends. */
   captureProgress?(ctx: ExtensionContext): CaptureProgressView;
+  /** A foreground skill starts or changes step/attempt; null clears the chat's widget on every exit. */
+  skillProgress?(ctx: ExtensionContext, progress: SkillProgress | null): void;
   /** pi's own settings menu, where the screen has one: true once opened. */
   openPiSettings?(): boolean;
 }

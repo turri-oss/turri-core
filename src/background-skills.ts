@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { chatBusy } from "./chat-idle.ts";
 import type { ChatLink } from "./chats.ts";
 import type { ScriptKind } from "./regenerate/test-scripts.ts";
+import { appendChatEntry, sendChatMessage, SKILL_RUN_ENTRY, SKILL_REPORT_ENTRY } from "./chat-entries.ts";
 
 /**
  * A skill that runs in the background (`metadata.background: true`, docs/skills-and-gates.md): in the chat, cultivate
@@ -97,10 +98,10 @@ export function failedTask(skill: string, why: string, output: string | undefine
 }
 
 /** The line drawn for a background run, in the transcript and in no model's context. */
-export const SKILL_RUN_ENTRY = "turri_skill_run";
+export { SKILL_RUN_ENTRY };
 
 /** What a background run that did its work has for the chat's agent, unseen. */
-export const SKILL_REPORT_ENTRY = "turri_skill_report";
+export { SKILL_REPORT_ENTRY };
 
 /** How long an end waits before the chat is looked at again, while the person types or it cannot be told yet. */
 const RECHECK_MS = 2000;
@@ -129,10 +130,10 @@ export function skillRunDelivery(pi: ExtensionAPI, link: ChatLink, context: () =
     const failed = now.filter((end) => !end.ok && end.task !== undefined);
     const reported = now.filter((end) => end.ok && end.task !== undefined);
     try {
-      for (const end of now.filter((end) => end.ok)) pi.appendEntry(SKILL_RUN_ENTRY, { text: end.line });
+      for (const end of now.filter((end) => end.ok)) appendChatEntry(pi, SKILL_RUN_ENTRY, { text: end.line });
       // A follow-up, never a steer: should a turn start in between, this waits for it to end.
       if (failed.length > 0) {
-        void pi.sendMessage(
+        sendChatMessage(pi,
           { customType: SKILL_RUN_ENTRY, content: failed.map((end) => end.task!).join("\n\n---\n\n"), display: false, details: { skills: failed.map((end) => end.skill), runs: failed.map((end) => ({ skill: end.skill, ...runDetails(end.kind, end.plainFile) })) } },
           { triggerTurn: true, deliverAs: "followUp" },
         );
@@ -140,7 +141,7 @@ export function skillRunDelivery(pi: ExtensionAPI, link: ChatLink, context: () =
       // What a run that did its work has for the chat - a capture's report: a message of its own, which a host never
       // shows as a run that did not finish.
       if (reported.length > 0) {
-        void pi.sendMessage({ customType: SKILL_REPORT_ENTRY, content: reported.map((end) => end.task!).join("\n\n---\n\n"), display: false, details: { skills: reported.map((end) => end.skill) } }, { triggerTurn: true, deliverAs: "followUp" });
+        sendChatMessage(pi, { customType: SKILL_REPORT_ENTRY, content: reported.map((end) => end.task!).join("\n\n---\n\n"), display: false, details: { skills: reported.map((end) => end.skill) } }, { triggerTurn: true, deliverAs: "followUp" });
       }
     } catch {
       // Not bound to its session yet: kept, and tried again.

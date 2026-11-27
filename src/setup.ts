@@ -4,7 +4,8 @@ import { existsSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { EXTENSION_PROVIDERS, installedProviders, runtimeWithProviders } from "./installed-providers.ts";
-import { globalExtensionFile, MIN_NODE, nodeVersionOk, turriIdentity, turriRoot } from "./environment.ts";
+import { globalExtensionFile, turriIdentity, turriRoot } from "./environment.ts";
+import { checkNode, type Check, type Level } from "./node-check.ts";
 import { fetchLatest, newerThan, turrisOnPath, versionFindings } from "./turri-versions.ts";
 import { sandboxAvailable, sandboxWithAsync, type Wall } from "./regenerate/os-sandbox.ts";
 import { findTestScripts, onThisMachine } from "./regenerate/test-scripts.ts";
@@ -26,31 +27,9 @@ import { readScript, scriptAgainstMachine, stackOnMachineAsync } from "./stack.t
  * `doctor()` is the checks alone, for the CLI and for a host (src/host.ts): it prints nothing and asks nothing.
  */
 
-export type Level = "ok" | "missing" | "limited" | "info";
-
-export interface Check {
-  level: Level;
-  name: string;
-  detail: string;
-  /** More about it, a line each, shown under the detail. */
-  more?: string[];
-  /** What to run or do about it. */
-  fix?: string;
-}
+export { checkNode, type Check, type Level };
 
 export const MARK: Record<Level, string> = { ok: "✓", missing: "✗", limited: "!", info: "·" };
-
-export function checkNode(): Check {
-  const version = process.versions.node;
-  return nodeVersionOk(version)
-    ? { level: "ok", name: "Node", detail: version }
-    : {
-        level: "missing",
-        name: "Node",
-        detail: `${version} - turri needs ${MIN_NODE.join(".")} or newer`,
-        fix: "install a newer Node (https://nodejs.org, or `brew install node`)",
-      };
-}
 
 /** bash: every agent command and every testing script runs with it, on every platform. */
 export function checkShell(found: boolean = spawnSync("bash", ["--version"], { stdio: "ignore", windowsHide: true }).status === 0, platform: NodeJS.Platform = process.platform): Check {

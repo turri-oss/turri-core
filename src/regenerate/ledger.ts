@@ -230,7 +230,7 @@ export function startLedger(options: { mode: string; project?: string; warn?: (m
   current = run;
   run.unsubscribe = onModelEvent((event) => recordModelEvent(event));
   process.once("exit", endRun);
-  return stopLedger;
+  return () => { if (current === run) stopLedger(); };
 }
 
 /** Stop the ledger: each project this run wrote to is told it ended. */

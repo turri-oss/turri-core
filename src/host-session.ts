@@ -1,13 +1,20 @@
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, type AgentSession, type ExtensionFactory, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { AskUserIO } from "./ask.ts";
 import { lastRun } from "./chat-records.ts";
+import { resolve } from "node:path";
+import { isChatEntry, type ChatEntry } from "./chat-entries.ts";
+import { emitSessionEvent } from "./session-events.ts";
+import { lookAhead, nextPulses } from "./preview.ts";
+import { projectStanding, type ModuleStanding } from "./regenerate/standing.ts";
 import { interruptChat, type ChatInfo, type TurriHost } from "./chats.ts";
 import { reachable, ruleNames, settingCandidates } from "./settings.ts";
 import { settingOf } from "./config-edit.ts";
-import { createTurriCore, sessionLoop, turnOnConformance } from "./extension.ts";
+import { createTurriCore, plannedLoop, sessionLaunchesOf, sessionLoop, turnOnConformance } from "./extension.ts";
+import type { Launch } from "./launch-track.ts";
+import type { SessionSpending } from "./session-spending.ts";
 import { stopLaunched } from "./regenerate/launch.ts";
-import type { JobRegistry } from "./regenerate/jobs.ts";
-import type { WorkLoop } from "./regenerate/loop.ts";
+import type { Job } from "./regenerate/jobs.ts";
+import type { ModuleStatus, PlannedPulse } from "./regenerate/loop.ts";
 import type { Notice, NoticeAnswer } from "./notice.ts";
 import { prepareCheck, type CheckRequest } from "./sentinel-check.ts";
 
@@ -38,10 +45,21 @@ export interface TurriOptions extends Omit<TurriHost, "dialogs"> {
 }
 
 export interface Turri {
-  /** The session's job registry: every pulse any chat starts. */
-  readonly jobs: JobRegistry;
-  /** The session's work loop - once a chat is open: what each codebase has planned, and why. */
-  readonly loop: WorkLoop;
+  /** A snapshot of this session's launches, oldest first, including stopped and replaced ones. */
+  launches(): Launch[];
+  /** Dollars spent since this session opened, including closed chats and earlier sentinel conversations. */
+  spending(): SessionSpending;
+  /** Every job of this session, including retries; undefined for an unknown job id. */
+  jobs(): Job[];
+  job(id: string): Job | undefined;
+  /** What the Pulses view shows now, including plans held by a look ahead. */
+  status(): { modules: (ModuleStatus & { lookedAhead?: boolean })[]; jobs: Job[]; planned: Job[] };
+  /** Read drift and completion, even before the first chat opens. Never plans or starts work. */
+  standing(files?: string[]): ModuleStanding[];
+  /** Plan on the chats' own loop, hold the plan and return its next prompts. Requires an open chat. */
+  lookAhead(plainFile: string): Promise<{ statuses: ModuleStatus[]; next: PlannedPulse[] }>;
+  /** turri's custom entries in the chat's current branch, in transcript order. */
+  entries(chat: string): ChatEntry[];
   /** The chats, in their order. */
   chats(): ChatInfo[];
   /** A chat's pi session: to subscribe to, prompt and abort. */
@@ -112,7 +130,7 @@ export interface Turri {
 /** turri's session in a host, in the process's working folder - the project's. */
 export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
   const { dialogs, uiContext, extensions = [], agentDir = getAgentDir(), sessionDir, restore, ...host } = options;
-  const core = createTurriCore(host, { persist: true, ...(dialogs !== undefined ? { dialogs } : {}) });
+  const core = createTurriCore(host, { mode: "host", persist: true, ...(dialogs !== undefined ? { dialogs } : {}) });
   const cwd = core.cwd;
   core.setDriver({
     async create(chat, sessionFile) {
@@ -121,7 +139,19 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       const sessionManager = sessionFile !== undefined ? SessionManager.open(sessionFile, sessionDir) : SessionManager.create(cwd, sessionDir);
       const { session } = await createAgentSession({ cwd, agentDir, resourceLoader, sessionManager });
       chat.session = session;
-      await session.bindExtensions({ uiContext: uiContext?.(chat.id), mode: "tui" });
+      // Listen before binding: the banner and other session_start entries precede openChat's return.
+      if (host.onEvent) session.subscribe((event) => {
+        // pi announces a custom entry as entry_appended but a delivered custom message as message_end.
+        const entry = event.type === "entry_appended" ? event.entry : event.type === "message_end" && event.message.role === "custom"
+          ? { type: "custom_message" as const, customType: event.message.customType, content: event.message.content, details: event.message.details, display: event.message.display } : undefined;
+        if (entry && isChatEntry(entry)) emitSessionEvent(host, { type: "entry", chat: chat.id, entry });
+      });
+      try {
+        await session.bindExtensions({ uiContext: uiContext?.(chat.id), mode: "tui" });
+      } catch (error) {
+        session.dispose();
+        throw error;
+      }
     },
     async dispose(chat) {
       const session = chat.session;
@@ -145,10 +175,25 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     await stopLaunched();
   };
   return {
-    jobs: core.jobs,
-    get loop() {
-      return sessionLoop(core);
+    launches: () => structuredClone(sessionLaunchesOf(core.jobs)!.track.list()),
+    spending: core.spending,
+    jobs: () => core.jobs.list(),
+    job: (id) => core.jobs.get(id),
+    status() {
+      const loop = plannedLoop(core.jobs);
+      const planned = loop?.planned() ?? [];
+      const held = new Set(planned.filter((job) => job.lookedAhead).map((job) => job.module));
+      return { modules: (loop?.status() ?? []).map((row) => held.has(row.module) ? { ...row, lookedAhead: true } : row), jobs: core.jobs.list().filter((job) => !job.replacedBy), planned };
     },
+    standing: (files) => projectStanding(cwd, { files, loop: plannedLoop(core.jobs) }),
+    async lookAhead(plainFile) {
+      const loop = sessionLoop(core);
+      const statuses = await lookAhead(loop, resolve(cwd, plainFile));
+      const next: PlannedPulse[] = [];
+      for await (const pulse of nextPulses(loop, statuses)) next.push(pulse);
+      return { statuses, next };
+    },
+    entries: (id) => core.session(id)?.sessionManager.getBranch().filter(isChatEntry) ?? [],
     chats: () => core.chats(),
     session: (id) => core.session(id),
     async openChat(asked = {}) {

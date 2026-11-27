@@ -439,6 +439,17 @@ function choiceOf(entry: RoleChoice | undefined): ModelChoice | undefined {
   return { ...(entry.model !== undefined ? { model: entry.model } : {}), ...(entry.thinking !== undefined ? { thinking: entry.thinking } : {}) };
 }
 
+/** What this model setting itself says, by its /settings key. Nothing inherited, and no role's turn limit. */
+export function configuredModel(config: ProjectConfig, key: string): ModelChoice | undefined {
+  if (key === CONFIG_KEYS.harnessModel) return config.harnessModel;
+  if (key === CONFIG_KEYS.codingModel) return config.codingModel;
+  if (key === CONFIG_KEYS.judgeModel) return config.judgeModel;
+  if (!key.startsWith("models.")) return undefined;
+  const role = key.slice("models.".length);
+  const name = role === "default" ? role : AGENT_ROLES.find((candidate) => candidate === role);
+  return name === undefined ? undefined : choiceOf(config.models?.[name]);
+}
+
 /**
  * What the config itself says a role runs on - its own entry, the legacy key that names it (judge-model for the judge
  * and the test review), then `default` (the chat's side: the chat's model instead) - or nothing when it says nothing

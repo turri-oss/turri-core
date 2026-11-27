@@ -1,5 +1,10 @@
 import type { ConfigLine } from "./config.ts";
 import type { sandboxSummary } from "./regenerate/os-sandbox.ts";
+import type { CustomMessageEntry, ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { Notice, Conclusion } from "./notice.ts";
+import type { Job } from "./regenerate/jobs.ts";
+import type { LaunchStatus } from "./launch-track.ts";
+import type { ScriptKind } from "./regenerate/test-scripts.ts";
 
 /**
  * What turri keeps in a chat besides its messages: the custom entries it appends, and the custom messages it sends that
@@ -67,4 +72,76 @@ export interface BannerData {
   versions?: string[];
   /** What turri says of the config files: a key it renamed in one, an old name left, keys it does not read. */
   config?: ConfigLine[];
+}
+
+export const NOTICE_ENTRY = "turri_notice";
+export const NOTICE_OVER_ENTRY = "turri_notice_over";
+export const CONCLUDED_ENTRY = "turri_sentinel_concluded";
+export const SKILL_RUN_ENTRY = "turri_skill_run";
+export const SKILL_REPORT_ENTRY = "turri_skill_report";
+
+interface Entries {
+  [BANNER_ENTRY]: BannerData;
+  [VERSION_ENTRY]: { text: string };
+  [COMMAND_OUTCOME]: CommandOutcome;
+  [SIDE_ENTRY]: { question: string; answer: string };
+  [SKILL_MESSAGE_ENTRY]: { text: string; skill: string };
+  [INTERVIEW_ENTRY]: Exchange;
+  [JOB_ENTRY]: JobAnnouncement;
+  [HISTORY_ENTRY]: { module: string; text: string };
+  [MILESTONE_ENTRY]: { module: string; text: string };
+  [JOBS_LIST_ENTRY]: { text: string };
+  [NOTICE_ENTRY]: Notice;
+  [NOTICE_OVER_ENTRY]: Pick<Notice, "state" | "summary">;
+  [CONCLUDED_ENTRY]: Conclusion;
+  [SKILL_RUN_ENTRY]: { text: string };
+}
+
+type JobDetails = { jobId: string; status: Job["status"] };
+interface Messages {
+  [COMMAND_OUTCOME]: undefined;
+  [JOB_ENTRY]: JobDetails;
+  [CONCLUDED_ENTRY]: { jobId?: string; checkId?: string; verdict: Conclusion["verdict"] };
+  [SKILL_RUN_ENTRY]: { skills: string[]; runs: { skill: string; kind?: ScriptKind; plainFile?: string }[] };
+  [SKILL_REPORT_ENTRY]: { skills: string[] };
+  turri_spec_conflict: { jobId: string };
+  turri_sentinel_pulse: JobDetails;
+  turri_sentinel_check: { checkId: string; module: string; funcIds: string[] };
+  turri_sentinel_resume: undefined;
+  turri_job_landed: JobDetails;
+  turri_notice_answer: undefined;
+  turri_launch: { launch: string; status: LaunchStatus; replacedBy?: string };
+}
+
+type Entry = { [K in keyof Entries]: { type: "custom"; customType: K; data: Entries[K] } }[keyof Entries];
+type Message = { [K in keyof Messages]: Pick<CustomMessageEntry, "type" | "content" | "display"> & { customType: K } & (Messages[K] extends undefined ? { details?: undefined } : { details: Messages[K] }) }[keyof Messages];
+/** A turri entry from pi's live transcript or saved branch. Narrow by type, then customType. */
+export type ChatEntry = Entry | Message;
+
+const entries = { turri_banner: 1, turri_version: 1, turri_command_outcome: 1, turri_btw: 1, turri_skill_message: 1, turri_exchange: 1, turri_job: 1, turri_history: 1, turri_milestone: 1, turri_jobs: 1, turri_notice: 1, turri_notice_over: 1, turri_sentinel_concluded: 1, turri_skill_run: 1 } satisfies Record<keyof Entries, 1>;
+const needsDetails = {
+  turri_command_outcome: false, turri_job: true, turri_sentinel_concluded: true,
+  turri_skill_run: true, turri_skill_report: true, turri_spec_conflict: true,
+  turri_sentinel_pulse: true, turri_sentinel_check: true, turri_sentinel_resume: false,
+  turri_job_landed: true, turri_notice_answer: false, turri_launch: true,
+} satisfies { [K in keyof Messages]: Messages[K] extends undefined ? false : true };
+
+type PiRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
+
+/** Recognise records written by turri in pi's transcript, by their reserved tags and payload envelopes. */
+export function isChatEntry<T extends PiRecord>(entry: T): entry is T & ChatEntry {
+  if (entry.type === "custom") return Object.hasOwn(entries, entry.customType) && typeof entry.data === "object" && entry.data !== null;
+  if (entry.type !== "custom_message" || !Object.hasOwn(needsDetails, entry.customType)) return false;
+  return needsDetails[entry.customType as keyof Messages] ? typeof entry.details === "object" && entry.details !== null : entry.details === undefined;
+}
+
+// Both writers check the same discriminated payloads that readers narrow above.
+export function appendChatEntry<K extends keyof Entries>(pi: ExtensionAPI, kind: K, data: Entries[NoInfer<K>]): void {
+  pi.appendEntry(kind, data);
+}
+
+type WithoutType<T> = T extends unknown ? Omit<T, "type"> : never;
+type Outgoing = WithoutType<Message>;
+export function sendChatMessage(pi: ExtensionAPI, message: Outgoing, options?: Parameters<ExtensionAPI["sendMessage"]>[1]): void {
+  pi.sendMessage<unknown>(message, options);
 }

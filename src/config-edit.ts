@@ -174,7 +174,9 @@ export function parseValue(setting: Setting, typed: string, known?: (model: stri
     case "model": {
       const { model, thinking } = splitModelSpec(text);
       const colon = text.lastIndexOf(":");
-      if (colon !== -1 && thinking === undefined && !text.slice(colon + 1).includes("/")) {
+      // A provider's own id may contain a colon (Bedrock's :0 version, or a catalogued model tag).
+      const suffix = text.slice(colon + 1);
+      if (colon !== -1 && thinking === undefined && !suffix.includes("/") && !/^\d+$/.test(suffix) && !known?.(text)) {
         return { error: `How hard it thinks is one of ${THINKING_LEVELS.join(", ")}: ${text.slice(colon + 1)} is not.` };
       }
       if (model === undefined) return { error: `${setting.key} is a model, provider/id - with :thinking if you like, such as :low.` };

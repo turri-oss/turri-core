@@ -18,7 +18,7 @@ afterEach(() => {
 type ToolResult = { content: Array<{ text: string }> };
 
 /** /settings and the settings tool registered on a stand-in pi, with a chat that answers its dialogs from `answers` in turn. */
-function setUp(answers: string[] = []) {
+function setUp(answers: string[] = [], extraModels: Array<{ provider: string; id: string; name: string }> = []) {
   let command: { handler: (args: string, ctx: never) => Promise<void>; getArgumentCompletions?: (prefix: string) => unknown } | undefined;
   let tool: { execute: (id: string, params: unknown, signal: undefined, onUpdate: undefined, ctx: never) => Promise<ToolResult> } | undefined;
   const pi = {
@@ -42,6 +42,7 @@ function setUp(answers: string[] = []) {
   const models = [
     { provider: "openai", id: "gpt-6-astra", name: "GPT-6 Astra" },
     { provider: "openai", id: "gpt-6-luna", name: "GPT-6 Luna" },
+    ...extraModels,
   ];
   const ctx = {
     hasUI: true,
@@ -103,6 +104,21 @@ describe("/settings", () => {
     await run("coding-model acme/robot");
     expect(said[0]).toContain("acme/robot is not a model turri can reach here");
     expect(() => readFileSync(join(dir, "config.yaml"))).toThrow();
+  });
+
+  it("round-trips a provider model version with and without a thinking level, in the dropdown and the chat command", async () => {
+    const provider = "amazon-bedrock";
+    const id = "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+    const model = `${provider}/${id}`;
+    const { run, complete } = setUp([model, "the role's own level"], [{ provider, id, name: "Sonnet" }]);
+    await run("coding-model");
+    expect(readProjectConfig(dir).codingModel).toEqual({ model });
+    expect(complete(`coding-model ${model}`)).toContainEqual({ value: `coding-model ${model}`, label: model });
+    expect(complete(`coding-model ${model}:h`)).toContainEqual({ value: `coding-model ${model}:high`, label: `${model}:high` });
+    await run(`coding-model ${model}:high`);
+    expect(readProjectConfig(dir).codingModel).toEqual({ model, thinking: "high" });
+    await run(`coding-model ${model}`);
+    expect(readProjectConfig(dir).codingModel).toEqual({ model });
   });
 
   it("lets the coding model chosen this session give way, and changes how many pulses run at once now", async () => {

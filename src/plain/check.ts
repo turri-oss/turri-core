@@ -7,7 +7,7 @@ import { testingGap } from "../regenerate/testing-steps.ts";
 import { missingBaseFolder } from "../regenerate/base-folder.ts";
 import { conformanceTestsOn } from "../conformance-switch.ts";
 import { testedFuncIds } from "../regenerate/records.ts";
-import { projectModules, strayTestPlainFiles, testPlainFileRefusal } from "../test-plain-files.ts";
+import { projectModules, projectTestFiles, testPlainFileRefusal } from "../test-plain-files.ts";
 import { plainFileParser, PLAIN_SOURCE_FILE_EXTENSION, PREVIOUS_SYNTAX_HINT, readPlainSourceMetadata, REQUIRES_DIRECTIVE } from "./parser.ts";
 import {
   ACCEPTANCE_TESTS,
@@ -200,11 +200,10 @@ export function checkPlainFile(file: string, templateDirs: string[] = []): Check
 
 /** The check of a project's test folder: every test plain file not where it belongs. Undefined when there is none. */
 export function checkTestFolder(projectDir: string): CheckResult | undefined {
-  const strays = strayTestPlainFiles(projectDir);
+  const strays = projectTestFiles(projectDir).filter((file) => file.problem !== undefined);
   if (strays.length === 0) return undefined;
-  const testDir = testDirOf(join(projectDir, `x${PLAIN_SOURCE_FILE_EXTENSION}`));
   return {
-    file: `${shown(testDir, projectDir)}${sep}`,
+    file: [...new Set(strays.map(({ testDir }) => `${shown(testDir, projectDir)}${sep}`))].join(", "),
     ok: false,
     errorType: `${strays.length} test plain file${strays.length === 1 ? "" : "s"} outside a module's folder`,
     problems: strays.map((stray) => `${stray.file} - ${stray.problem}`),

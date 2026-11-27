@@ -13,6 +13,8 @@ import type { Launch } from "./launch-track.ts";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { newNotice, noticeTask, SENTINEL, sentinelStartChoice, wentWrong, type ChatRole, type Conclusion, type Notice, type NoticeAnswer, type NoticeInput, type SentinelCheck } from "./notice.ts";
 import type { TurriView } from "./view.ts";
+import type { SessionEvent } from "./session-events.ts";
+import { createSessionSpending, type SessionSpending } from "./session-spending.ts";
 
 /**
  * The chats of a turri session.
@@ -58,6 +60,8 @@ export interface ChatInfo {
 
 /** What turri tells and asks a host that runs its conversation itself. */
 export interface TurriHost {
+  /** Facts as they happen, including startup before the first chat is opened. */
+  onEvent?(event: SessionEvent): void;
   /** A job started, moved to another stage, did something, or ended. */
   onJobChange?(job: Job): void;
   /** What is planned changed with no job - a module being planned, or planned. */
@@ -189,6 +193,8 @@ export interface ChatState {
 }
 
 export interface TurriCore {
+  /** What this run has spent, across every chat and pulse. */
+  spending(): SessionSpending;
   /** Shared by all the terminal's chats. */
   readonly notifications: TerminalNotifications;
   readonly cwd: string;
@@ -269,6 +275,8 @@ export interface TurriCore {
 }
 
 export interface CoreOptions {
+  spending?: ReturnType<typeof createSessionSpending>;
+  onDispose?: () => void;
   cwd: string;
   host: TurriHost;
   jobs: JobRegistry;
@@ -356,6 +364,7 @@ type SentinelWork = { pulse: Job } | { check: SentinelCheck };
 
 export function createChats(options: CoreOptions): TurriCore {
   const { cwd, host, jobs } = options;
+  const spending = options.spending ?? createSessionSpending();
   const chats: ChatState[] = [];
   const listeners = new Set<() => void>();
   let driver: ChatDriver | undefined;
@@ -457,6 +466,7 @@ export function createChats(options: CoreOptions): TurriCore {
     chat.unsubscribe?.();
     const session = chat.session;
     if (session === undefined) return;
+    spending.opened(session, chat.role);
     chat.unsubscribe = session.subscribe((event) => {
       if (event.type === "agent_start") {
         chat.working = true;
@@ -482,6 +492,7 @@ export function createChats(options: CoreOptions): TurriCore {
   };
 
   const core: TurriCore = {
+    spending: () => spending.snapshot(jobs.list()),
     notifications: new TerminalNotifications(),
     cwd,
     host,
@@ -574,6 +585,7 @@ export function createChats(options: CoreOptions): TurriCore {
       try {
         await driver?.dispose(chat);
       } finally {
+        if (chat.session) spending.closed(chat.session);
         if (options.persist === true) {
           forgetChat(cwd, run.run, recorded, { keep: debugMode(cwd) });
           run.chats = run.chats.filter((kept) => kept.id !== id);
@@ -619,14 +631,16 @@ export function createChats(options: CoreOptions): TurriCore {
     },
 
     async dispose(asked = {}) {
+      options.onDispose?.();
       for (const chat of chats.splice(0)) {
         chat.unsubscribe?.();
         chat.ui?.close();
-        if (chat.session === asked.except) continue;
         try {
-          await driver?.dispose(chat);
+          if (chat.session !== asked.except) await driver?.dispose(chat);
         } catch {
           /* let go already */
+        } finally {
+          if (chat.session) spending.closed(chat.session);
         }
       }
       changed();
@@ -651,6 +665,7 @@ export function createChats(options: CoreOptions): TurriCore {
     adopt(session, services) {
       const chat = core.chatOfSession(session) ?? core.shownChat() ?? chats.find((candidate) => candidate.session === undefined) ?? newChat();
       if (chat.session !== session) {
+        if (chat.session) spending.closed(chat.session);
         chat.session = session;
         chat.services = services;
         follow(chat);
@@ -1187,6 +1202,7 @@ export function createChats(options: CoreOptions): TurriCore {
       return;
     }
     const fresh = chat.session!;
+    spending.closed(old.session);
     try {
       if (model !== undefined && fresh.model !== model) await fresh.setModel(model);
       if (thinking !== undefined) fresh.setThinkingLevel(thinking);

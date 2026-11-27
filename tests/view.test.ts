@@ -1,10 +1,11 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AskUser, AskUserIO } from "../src/ask.ts";
 import type { CaptureStatus } from "../src/capture/progress.ts";
-import type { TurriCore } from "../src/chats.ts";
+import type { TurriCore, TurriHost } from "../src/chats.ts";
+import type { SessionEvent, SkillProgress } from "../src/session-events.ts";
 import type { Job } from "../src/regenerate/jobs.ts";
 import type { QuestionView, SidePanelView, TurriView, ViewChat } from "../src/view.ts";
 
@@ -20,19 +21,19 @@ vi.mock("../src/regenerate/diagnose.ts", async (importOriginal) => ({
 }));
 
 /** What /capture runs, scripted: one status watched, then its end. */
-const watched = { phase: "survey", cost: 0 } as unknown as CaptureStatus;
+const watched: CaptureStatus = { root: "codebase", started: 10, stage: "surveying", features: { outlined: 0, done: 0 }, outlining: 0, work: { done: 0, total: 1 }, agents: [], cost: 0 };
 vi.mock("../src/capture/capture.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/capture/capture.ts")>()),
-  runCapture: async (options: { root: string; watch?: (status: CaptureStatus) => void }) => {
+  runCapture: vi.fn(async (options: { root: string; watch?: (status: CaptureStatus) => void }) => {
     options.watch?.(watched);
     return { plainDir: join(options.root, "plain"), reportFile: join(options.root, "plain", "report.md"), summary: "1 module.", modules: ["app"], specs: 1, uncaptured: 0, failing: 0 };
-  },
+  }),
 }));
 
 /** What cultivate runs, scripted: a skill whose interview asks one question, its answer its artifact. */
 vi.mock("../src/genome.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/genome.ts")>()),
-  runSkill: async (options: { askUser: AskUser }) => ({ ok: true, artifacts: {}, output: await options.askUser({ question: "Which stack?", options: ["Flask", "Django"] }) }),
+  runSkill: vi.fn(async (options: { askUser: AskUser }) => ({ ok: true, artifacts: {}, output: await options.askUser({ question: "Which stack?", options: ["Flask", "Django"] }) })),
 }));
 
 const { askUserVia, chatAskUserTool, createTurriCore } = await import("../src/extension.ts");
@@ -86,8 +87,8 @@ function recordingPi() {
 }
 
 /** A session whose chats are opened by a driver of the test's: each built into a pi of its own, kept in `pis`. */
-function withChats(view: TurriView | undefined, terminal = false) {
-  const session = createTurriCore({}, view !== undefined ? { view } : {});
+function withChats(view: TurriView | undefined, terminal = false, host: TurriHost = {}) {
+  const session = createTurriCore(host, view !== undefined ? { view } : {});
   const pis: Array<ReturnType<typeof recordingPi>> = [];
   session.setDriver({
     terminal,
@@ -107,6 +108,21 @@ const contextOf = (hasUI: boolean, ui: Record<string, unknown> = {}) => ({ hasUI
 const settled = () => new Promise((resolve) => setTimeout(resolve, 60));
 
 describe("the view's part of each chat", () => {
+  it("keeps CLI upgrade and PATH checks out of an embedded host, including one with no callbacks", async () => {
+    const versions = vi.spyOn(await import("../src/turri-versions.ts"), "bannerWarnings");
+    try {
+      for (const mode of ["host", "chat"] as const) {
+        const session = createTurriCore({}, { mode });
+        const { pi, start, order } = recordingPi();
+        try {
+          await session.extension(pi);
+          await start(contextOf(false));
+          expect(order).toContain("entry turri_banner");
+          expect(versions).toHaveBeenCalledTimes(mode === "host" ? 0 : 1);
+        } finally { await session.dispose(); }
+      }
+    } finally { versions.mockRestore(); }
+  });
   it("is built into each chat once, in the chat's scope, just before the banner - its session_start before the banner's", async () => {
     const built: ViewChat[] = [];
     const ran: Array<string | undefined> = [];
@@ -297,6 +313,42 @@ describe("the view's side panel", () => {
 });
 
 describe("a capture's progress", () => {
+  it("gives a host snapshots and one outcome in the chat that started it, without a terminal view", async () => {
+    const events: Extract<SessionEvent, { type: "captureProgress" | "captureEnded" }>[] = [];
+    const { session, pis } = withChats(undefined, false, { onEvent(event) {
+      if (event.type === "captureProgress" || event.type === "captureEnded") events.push(event);
+    } });
+    try {
+      await session.open();
+      const second = await session.open({ hidden: true });
+      const run = vi.mocked((await import("../src/capture/capture.ts")).runCapture);
+      run.mockImplementationOnce(async ({ root, watch }) => {
+        const status = structuredClone({ ...watched, root });
+        watch?.(status);
+        status.work.done++;
+        watch?.(status);
+        return { plainDir: join(root, "plain"), reportFile: join(root, "plain", "report.md"), summary: "1 module.", modules: ["app"], specs: 1, uncaptured: 0, failing: 0 };
+      });
+      const command = pis[1]!.commands.get("capture")!;
+      await command.handler("", contextOf(false));
+      await vi.waitFor(() => expect(events).toHaveLength(3));
+      expect(events).toMatchObject([
+        { type: "captureProgress", chat: second.id, status: { work: { done: 0 } } },
+        { type: "captureProgress", chat: second.id, status: { work: { done: 1 } } },
+        { type: "captureEnded", chat: second.id, root: project, state: "completed", result: { plainDir: join(project, "plain") } },
+      ]);
+      run.mockRejectedValueOnce(new Error("writer failed"));
+      await command.handler("", contextOf(false));
+      await vi.waitFor(() => expect(events.at(-1)).toEqual({ type: "captureEnded", chat: second.id, root: project, state: "failed", error: "writer failed" }));
+      run.mockImplementationOnce(({ signal }) => new Promise((_resolve, reject) => signal!.addEventListener("abort", () => reject(new Error("interrupted")), { once: true })));
+      await command.handler("", contextOf(false));
+      for (const handler of pis[1]!.handlers.get("session_shutdown") ?? []) await handler({ reason: "quit" }, contextOf(false));
+      await vi.waitFor(() => expect(events.at(-1)).toEqual({ type: "captureEnded", chat: second.id, root: project, state: "stopped" }));
+    } finally {
+      await session.dispose();
+    }
+  });
+
   it("is drawn by the view only in a chat with a screen: each status, and closed once it ends", async () => {
     const shown: Array<{ ctx: unknown; updates: CaptureStatus[]; closed: number }> = [];
     const view: TurriView = {
@@ -320,6 +372,33 @@ describe("a capture's progress", () => {
     expect(shown[0]!.updates).toEqual([watched]);
     expect(shown[0]!.closed).toBeGreaterThan(0);
   });
+});
+
+it("reports a foreground skill's phases and retry in its own chat and clears its progress on failure", async () => {
+  const dir = join(project, ".turri", "skills", "probe");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "SKILL.md"), "---\nname: probe\ndescription: Check.\nmetadata:\n  phases:\n    stack: chooses\n    product: writes\n---\n\n## Steps\n\n### stack\n\nChoose.\n\n### product\n\nWrite.\n");
+  vi.mocked((await import("../src/genome.ts")).runSkill).mockImplementationOnce(async ({ report }) => {
+    report.step("stack", 1);
+    report.step("stack", 2);
+    throw new Error("interrupted test run");
+  });
+  const events: SessionEvent[] = [];
+  const drawn: Array<SkillProgress | null> = [];
+  const session = createTurriCore({ onEvent: (e) => events.push(e) }, { view: { skillProgress: (_ctx, p) => drawn.push(p) } });
+  const { pi, tools } = recordingPi();
+  await session.extension(pi);
+  try {
+    await expect(tools.get("cultivate")!.execute("id", { skill: "probe" }, undefined, undefined, contextOf(true))).rejects.toThrow("interrupted test run");
+    expect(drawn).toEqual([
+      { skill: "probe", phases: ["stack", "product"], current: -1, attempt: 1 },
+      { skill: "probe", phases: ["stack", "product"], current: 0, attempt: 1, about: "chooses" },
+      { skill: "probe", phases: ["stack", "product"], current: 0, attempt: 2, about: "chooses" }, null,
+    ]);
+    expect(events.filter((e) => e.type === "skillProgress")).toEqual(drawn.map((progress) => ({ type: "skillProgress", chat: session.chats()[0]!.id, progress })));
+  } finally {
+    await session.dispose();
+  }
 });
 
 describe("pi's own settings, last in /settings", () => {

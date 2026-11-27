@@ -38,6 +38,12 @@ export interface CaptureAgentStatus {
 export const CAPTURE_PHASES = ["survey", "outline", "features", "concepts", "readability", "interface", "trial", "scripts"];
 export const COMPACT_PHASES = ["survey", "features", "interface", "trial", "scripts"];
 
+/** The phases to show and the zero-based position in this pipeline (compact and staged count differently). */
+export function capturePhases(status: Pick<CaptureStatus, "pipeline" | "stage">): { phases: readonly string[]; current: number } {
+  const phases = status.pipeline === "compact" ? COMPACT_PHASES : CAPTURE_PHASES;
+  return { phases, current: phases.indexOf(CAPTURE_PHASES[phaseOf(status.stage)]!) };
+}
+
 /** A model's account is one short line of prose in the transcript, even if its reply ran long. */
 export function findingLine(text: string): string {
   const line = stripVTControlCharacters(text).replace(/\s+/g, " ").trim();

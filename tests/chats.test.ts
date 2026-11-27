@@ -15,6 +15,7 @@ function fakeSession() {
     },
     sessionFile: undefined,
     messages: [],
+    getSessionStats: () => ({ cost: 0 }),
     sessionManager: { getSessionName: () => undefined },
     extensionRunner: { getUIContext: () => undefined },
   } as unknown as AgentSession;

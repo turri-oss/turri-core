@@ -13,8 +13,6 @@ import { describe, expect, it } from "vitest";
 
 const PI_TUI = "@earendil-works/pi-tui";
 const PI = "@earendil-works/pi-coding-agent";
-/** The one core file that imports pi-tui: the core measures text as pi's screen does, and draws nothing with it. */
-const MEASURES = "src/text-width.ts";
 /**
  * pi's terminal: its interactive mode, the runtime whose session a screen swaps, its command line - and what it draws
  * with: its components (every name ending in Component), borders, loader, editor, key hints, diffs and themes.
@@ -37,8 +35,6 @@ const TERMINAL_PARTS = new Set([
   "getSettingsListTheme",
 ]);
 const isTerminalPart = (name: string) => TERMINAL_PARTS.has(name) || name.endsWith("Component");
-/** The one place pi is re-exported whole: host.ts's `export * as pi`, all of pi for a host that runs the chats itself. */
-const HOSTS_PI = { file: "src/host.ts", name: "pi" };
 /** What only a screen does: draw an entry or a message, take a key, put in its own footer, header or editor, read the terminal's input. */
 const SCREEN_CALLS = new Set(["registerEntryRenderer", "registerMessageRenderer", "registerShortcut", "setFooter", "setHeader", "setEditorComponent", "onTerminalInput"]);
 
@@ -89,7 +85,7 @@ function crossings(file: string, text: string, passed: (site: string) => void = 
   const at = (node: ts.Node) => `${file}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`;
   const cross = (rule: Rule, node: ts.Node, what: string) => found.push({ rule, message: `${at(node)} ${what}` });
   const fromPiTui = (node: ts.Node, spec: string | undefined) => {
-    if (spec !== undefined && isPiTui(spec) && file !== MEASURES) cross("pi-tui", node, `imports ${spec} - only ${MEASURES} may`);
+    if (spec !== undefined && isPiTui(spec)) cross("pi-tui", node, `imports ${spec} - the terminal's`);
   };
   const part = (node: ts.Node, name: string) => {
     if (isTerminalPart(name)) cross("terminal-part", node, `imports ${name} from ${PI} - the terminal's`);
@@ -200,7 +196,7 @@ function crossings(file: string, text: string, passed: (site: string) => void = 
       }
       // pi re-exported whole, its terminal with it: `export * from pi`, `export * as name from pi`, `export { P }`.
       const whole = (as: string | undefined) => {
-        if (!(file === HOSTS_PI.file && as === HOSTS_PI.name)) cross("terminal-part", node, `re-exports the whole of ${PI}${as !== undefined ? ` as ${as}` : ""} - its terminal with it`);
+        cross("terminal-part", node, `re-exports the whole of ${PI}${as !== undefined ? ` as ${as}` : ""} - its terminal with it`);
       };
       if (spec !== undefined && isPi(spec) && node.exportClause === undefined) whole(undefined);
       if (spec !== undefined && isPi(spec) && node.exportClause !== undefined && ts.isNamespaceExport(node.exportClause)) whole(nameOf(node.exportClause.name));
@@ -279,10 +275,10 @@ describe("the core's boundary with the terminal", () => {
   it("reads every file of the core", () => {
     const files = coreFiles().map((each) => each.file);
     expect(files.length).toBeGreaterThan(100);
-    expect(files).toEqual(expect.arrayContaining(["src/extension.ts", "src/view.ts", MEASURES, "src/regenerate/loop.ts"]));
+    expect(files).toEqual(expect.arrayContaining(["src/extension.ts", "src/view.ts", "src/regenerate/loop.ts"]));
   });
 
-  it("imports pi-tui in text-width.ts alone - the core measures text as pi's screen does, and draws nothing", () => {
+  it("imports no pi-tui, including for text measurement", () => {
     const found = inCore("pi-tui");
     expect(found, found.join("\n")).toEqual([]);
   });
@@ -336,8 +332,8 @@ describe("the core's boundary with the terminal", () => {
       "",
     ].join("\n");
     expect(crossings("src/example.ts", text).map((crossing) => crossing.message)).toEqual([
-      "src/example.ts:1 imports @earendil-works/pi-tui - only src/text-width.ts may",
-      "src/example.ts:2 imports @earendil-works/pi-tui - only src/text-width.ts may",
+      "src/example.ts:1 imports @earendil-works/pi-tui - the terminal's",
+      "src/example.ts:2 imports @earendil-works/pi-tui - the terminal's",
       "src/example.ts:3 imports InteractiveMode from @earendil-works/pi-coding-agent - the terminal's",
       "src/example.ts:3 imports main from @earendil-works/pi-coding-agent - the terminal's",
       "src/example.ts:5 imports getMarkdownTheme from @earendil-works/pi-coding-agent - the terminal's",
@@ -349,9 +345,7 @@ describe("the core's boundary with the terminal", () => {
       "src/example.ts:12 uses ui.custom - the terminal's view does",
       "src/example.ts:13 uses setFooter - the terminal's view does",
     ]);
-    // text-width.ts is where the core measures; a host's namespace of pi is not an import of its terminal.
-    expect(crossings(MEASURES, 'export { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";\n')).toEqual([]);
-    expect(crossings("src/host.ts", 'export * as pi from "@earendil-works/pi-coding-agent";\n')).toEqual([]);
+    expect(crossings("src/text-width.ts", 'export { visibleWidth } from "@earendil-works/pi-tui";\n')).toHaveLength(1);
   });
 
   it("finds pi's drawing parts imported, and a screen call or ui.custom read however it is reached - kept, taken out by name or through another name for the ui", () => {
@@ -432,9 +426,9 @@ describe("the core's boundary with the terminal", () => {
       "src/example.ts:19 imports main from @earendil-works/pi-coding-agent - the terminal's",
       "src/example.ts:23 uses ui.custom - the terminal's view does",
     ]);
-    // host.ts hands a host all of pi as `pi`, and only so: re-exported whole anywhere else, or otherwise there, it is a crossing.
+    // The host and all other entries are bound by the same rule.
     const whole = 'export * as pi from "@earendil-works/pi-coding-agent";\n';
-    expect(crossings("src/host.ts", whole)).toEqual([]);
+    expect(crossings("src/host.ts", whole)).toHaveLength(1);
     expect(crossings("src/notice.ts", whole).map((crossing) => crossing.message)).toEqual([
       "src/notice.ts:1 re-exports the whole of @earendil-works/pi-coding-agent as pi - its terminal with it",
     ]);

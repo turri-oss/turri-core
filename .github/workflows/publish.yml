@@ -56,6 +56,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run api:check
+      - run: npm run test:package
       - run: npm test
 
   # ---------------------------------------------------------------------------
@@ -90,12 +92,11 @@ jobs:
 
       - run: npm ci
 
-      # The package runs dist/, built by prepack, never src/ - prove its two entries,
-      # `.` and `./host`, are packed.
+      # The published package must contain every entry's JavaScript and declarations.
       - name: Check the built entries are in the package
         run: |
           files=$(npm pack --dry-run --json | jq -r '[.[]][0].files[].path')
-          for entry in dist/extension.js dist/host.js; do
+          for entry in $(jq -r '.exports[] | objects | .import, .types | ltrimstr("./")' package.json); do
             grep -qxF "$entry" <<< "$files" \
               || { echo "::error::$entry is missing from the npm package"; exit 1; }
           done
@@ -174,7 +175,7 @@ jobs:
       - name: Check the built entries are in the package
         run: |
           files=$(npm pack --dry-run --json | jq -r '[.[]][0].files[].path')
-          for entry in dist/extension.js dist/host.js; do
+          for entry in $(jq -r '.exports[] | objects | .import, .types | ltrimstr("./")' package.json); do
             grep -qxF "$entry" <<< "$files" \
               || { echo "::error::$entry is missing from the npm package"; exit 1; }
           done

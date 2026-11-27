@@ -15,23 +15,51 @@
   },
   "exports": {
     ".": {
-      "turri-source": "./src/extension.ts",
-      "types": "./dist/extension.d.ts",
-      "import": "./dist/extension.js"
+      "turri-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./host": {
       "turri-source": "./src/host.ts",
       "types": "./dist/host.d.ts",
       "import": "./dist/host.js"
     },
-    "./package.json": "./package.json",
-    "./*": {
-      "turri-source": "./src/*.ts",
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js"
-    }
+    "./plain": {
+      "turri-source": "./src/api/plain.ts",
+      "types": "./dist/api/plain.d.ts",
+      "import": "./dist/api/plain.js"
+    },
+    "./config": {
+      "turri-source": "./src/api/config.ts",
+      "types": "./dist/api/config.d.ts",
+      "import": "./dist/api/config.js"
+    },
+    "./ledger": {
+      "turri-source": "./src/api/ledger.ts",
+      "types": "./dist/api/ledger.d.ts",
+      "import": "./dist/api/ledger.js"
+    },
+    "./terminal": {
+      "turri-source": "./src/api/terminal.ts",
+      "types": "./dist/api/terminal.d.ts",
+      "import": "./dist/api/terminal.js"
+    },
+    "./commands": {
+      "turri-source": "./src/api/commands.ts",
+      "types": "./dist/api/commands.d.ts",
+      "import": "./dist/api/commands.js"
+    },
+    "./startup": {
+      "turri-source": "./src/api/startup.ts",
+      "types": "./dist/api/startup.d.ts",
+      "import": "./dist/api/startup.js"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
+    "api:report": "npm run build && node scripts/api-report.mjs --update",
+    "api:check": "npm run build && node scripts/api-report.mjs",
+    "test:package": "npm run build && node scripts/package-contract.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -40,8 +68,6 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "1.6.0",
-    "@earendil-works/pi-tui": "1.6.0",
     "@langchain/langgraph": "1.4.15",
     "gray-matter": "^4.0.3",
     "js-yaml": "^5.4.2",
@@ -53,7 +79,12 @@
     "typebox": "^1.3.7",
     "unified": "^11.0.5"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "1.6.0"
+  },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@microsoft/api-extractor": "7.60.1",
     "@stryker-mutator/core": "^10.0.0",
     "@stryker-mutator/vitest-runner": "^10.0.0",
     "@types/js-yaml": "^4.0.9",

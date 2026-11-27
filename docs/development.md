@@ -4,12 +4,14 @@ This is turri's core, the package `@turri-dev/core`: turri without its terminal 
 
 ```bash
 npm run typecheck   # types
+npm run api:check   # build and compare each public declaration report in api/
+npm run test:package # exercise the consumer contract
 npm test            # the whole suite, about a minute
 ```
 
 The suite runs the projects' testing scripts on this machine, as turri does. The fixture scripts stage each run in a folder of their own, as test files running side by side would otherwise share one.
 
-`.github/workflows/test.yml` runs both on GitHub for every pull request and every push to `main`, and `.github/workflows/commits.yml` checks that each of a pull request's commits is a Conventional Commit, with no fixup and no merge commit - a pull request is rebased onto `main`, each commit as it is. A pull request from a fork runs them once the maintainer has approved its run - see [contributing](../CONTRIBUTING.md).
+`.github/workflows/test.yml` checks pull requests and pushes to `main`. It runs the packed consumer on the minimum supported Node (22.19), and the source checks and suite on Node 24. `.github/workflows/commits.yml` checks that a pull request's commits are Conventional Commits with no fixup or merge commit. See [contributing](../CONTRIBUTING.md).
 
 ## Mutation testing
 
@@ -19,11 +21,17 @@ The `mutation` workflow (`.github/workflows/mutation.yml`) runs it on GitHub, st
 
 There is no `turri` command here: to try a change in the chat, or with `turri parse`, `turri regenerate --dry-run` and the rest, run turri's CLI on this clone. `npm link` here, `npm link @turri-dev/core` in turri's clone, and start `turri` with `NODE_OPTIONS=--conditions=turri-source`: the CLI then runs the core's sources, unbuilt, and an edit here takes effect at its next start ([importing the core](core.md#importing-the-core)).
 
-The package on npm is built: Node runs no `.ts` file inside a `node_modules`, so `npm run build` (`scripts/build.mjs`, over `tsconfig.build.json`) compiles `src/` into `dist/`, file for file - each file as deep as its source, so it finds `genome/` and `stdlib/` the same way - with its imports' `.ts` rewritten to `.js`, and copies the other files in `src/` beside them. `npm pack` and `npm publish` run it first (`prepack`), and the package holds `dist/`, not `src/`. Its `exports` are `.` (the extension, `dist/extension.js`), `./host` (`dist/host.js`) and every other module by its path, `./*` - `@turri-dev/core/view` is `dist/view.js`, with its types in `dist/view.d.ts`; under the `turri-source` condition each is its file in `src/` instead, which only a clone has. To try the package as its users get it: `npm pack`, then `npm install ./turri-dev-core-<version>.tgz` in turri's clone.
+The package on npm is built: `npm run build` compiles `src/` into `dist/`, file for file, rewriting runtime imports to `.js`, emitting declarations and copying assets. `npm pack` and `npm publish` run it first. Consumers import only the [named entries](core.md#importing-the-core); the manifest selects declarations and ESM from `dist/`, or a linked clone's TypeScript under `turri-source`.
+
+An intentional change to a public signature comes with its `api/*.api.md` diff. Run `npm run api:report` to regenerate the reports and review the affected entries. CI uses `npm run api:check` to compare without approving changes.
+
+The TypeScript consumer uses `strict`, `module: NodeNext` and `skipLibCheck: true`. pi 1.6.0's generated provider declarations import JSON without the import attributes NodeNext checks; `skipLibCheck` skips those dependency diagnostics. The consumer's own calls and the types it reads from the core are still checked.
+
+`npm run test:package` installs the tarball with the locked dependencies in a temporary consumer, typechecks it and opens a chat through the shared pi peer. To check literal imports in a checkout of either consumer, run `node scripts/check-consumer-imports.mjs ../turri/src ../turri-app/engine`. A relative import into the core also crosses the boundary.
 
 ## Publishing
 
-`.github/workflows/publish.yml` publishes `@turri-dev/core`, after the typecheck and the suite pass, and once `dist/extension.js` and `dist/host.js` are seen in the package:
+`.github/workflows/publish.yml` publishes `@turri-dev/core` after its checks pass:
 
 - every push or merge into `main` publishes a prerelease under the `next` dist-tag - the patch after the `latest` on npm, with the commit's sha: `0.1.2-next.<sha>`. `latest` is not touched; `npm install @turri-dev/core@next` gets it.
 - a GitHub Release tagged `vX.Y.Z`, published by hand, publishes `X.Y.Z` as `latest` (or under `next`, if the release is marked a pre-release). The tag is the version: it is set in the runner and never committed, so `package.json`'s version on `main` is stale by design.
@@ -36,11 +44,12 @@ The workflow signs in to npm with npm's trusted publishing (OIDC), not a token: 
 
 | path | what it is |
 |---|---|
-| `src/extension.ts` | the [pi](https://pi.dev) extension: every tool and command the conversation has - and `createTurriCore`, the session it is built into; the package's `.` |
+| `src/index.ts`, `src/api/`, `src/host.ts` | the session entry and the named public entry points |
+| `src/extension.ts` | the [pi](https://pi.dev) extension: every conversation tool and command, and `createTurriCore`; the CLI takes it through `/terminal` |
 | `src/view.ts` | `TurriView`: what a front-end draws of the session that the core does not - the hooks turri's CLI draws its terminal through - see [the core](core.md) |
 | `src/chat-entries.ts` | what the core appends to a chat and the messages it sends that a front-end draws: their types and data, for the CLI's renderers and turri-app |
-| `src/text-width.ts` | `visibleWidth` and `truncateToWidth`, from pi-tui - the one core file that imports it |
-| `tests/boundary.test.ts` | the core's boundary with the terminal: no pi-tui outside `text-width.ts`, none of pi's terminal, no renderer, key or screen of the core's own |
+| `src/session-events.ts` | `SessionEvent` and foreground skill progress as data |
+| `tests/boundary.test.ts` | the core's boundary with the terminal: no pi-tui, none of pi's terminal, no renderer, key or screen of the core's own |
 | `src/headless.ts` | `runHeadless`: an unattended run - `turri regenerate`, `conform` - driven as the chat drives the work loop, everything a person sees and is asked through its `HeadlessView`, printing nothing and never exiting |
 | `src/setup.ts`, `src/doctor-tool.ts`, `src/environment.ts`, `src/stack.ts` | what `turri doctor` and the chat's `doctor` tool check - this machine, and in a project what its modules need of it; `turri doctor` prints them in turri's CLI |
 | `src/init-config.ts` | a project's first `config.turri.yaml`, as `turri init-config` and a host write it |

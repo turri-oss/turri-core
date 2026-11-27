@@ -21,10 +21,9 @@ import {
 } from "./parser.ts";
 import { DEFINITIONS, FUNCTIONAL_REQUIREMENTS, NON_FUNCTIONAL_REQUIREMENTS, TEST_REQUIREMENTS } from "./spec.ts";
 import { isStdlibModule } from "./stdlib.ts";
-import { discoverTestPlainFiles, readTestPlainFileText } from "./project.ts";
+import { readTestPlainFileText } from "./project.ts";
 import { parseTestPlainFileSource, type Scenario } from "./test-plain-file.ts";
-import { testDirOf } from "../config.ts";
-import { strayTestPlainFiles } from "../test-plain-files.ts";
+import { projectTestFiles } from "../test-plain-files.ts";
 
 /**
  * A project's ***plain as a graph, to go from one place in it to another: its modules, each item of their sections,
@@ -35,7 +34,7 @@ export interface PlainGraph {
   modules: PlainModuleNode[];
   items: PlainItemNode[];
   concepts: PlainConceptNode[];
-  /** The test plain files in the project's test folder, each linked to the functional spec it binds to. */
+  /** The test plain files under the project's configured roots, each linked to the functional spec it binds to. */
   testPlainFiles: PlainTestPlainFileNode[];
 }
 
@@ -230,10 +229,8 @@ export function plainGraph(projectDir: string): PlainGraph {
  * that binds to no functional spec has its error.
  */
 function testPlainFileNodes(root: string, dirs: string[], items: PlainItemNode[], lines: Map<string, string[]>): PlainTestPlainFileNode[] {
-  const testDir = testDirOf(join(root, `project${PLAIN_SOURCE_FILE_EXTENSION}`));
-  const strays = new Map((attempt(() => strayTestPlainFiles(root)) ?? []).map((stray) => [resolve(root, stray.file), stray.problem]));
   for (const item of items) if (item.funcId !== undefined) Object.assign(item, { testPlainFile: null, scenarios: { conformance: [], acceptance: [] } });
-  return (attempt(() => discoverTestPlainFiles([testDir], root)) ?? []).map(([path, name]): PlainTestPlainFileNode => {
+  return (attempt(() => projectTestFiles(root)) ?? []).map(({ path, file: name, problem }): PlainTestPlainFileNode => {
     const node: PlainTestPlainFileNode = { file: path, module: null, funcId: null, item: null, conformance: [], acceptance: [] };
     let parsed: ReturnType<typeof parseTestPlainFileSource>;
     try {
@@ -244,8 +241,7 @@ function testPlainFileNodes(root: string, dirs: string[], items: PlainItemNode[]
     const scenarios = (list: Scenario[]) =>
       list.map((scenario) => ({ id: scenario.id, text: scenario.text, line: lineOf({ type: "heading", position: { start: { line: scenario.lineNumber, column: 1 }, end: { line: scenario.lineNumber, column: 1 } } } as AnyNode, path, lines, { needle: `# ${scenario.id}` }) }));
     Object.assign(node, { module: parsed.module, funcId: parsed.funcId, conformance: scenarios(parsed.conformanceTests), acceptance: scenarios(parsed.acceptanceTests) });
-    const stray = strays.get(path);
-    if (stray !== undefined) return { ...node, error: stray };
+    if (problem !== undefined) return { ...node, error: problem };
     const bound = items.find((item) => item.module === parsed.module && item.funcId === parsed.funcId && item.section === FUNCTIONAL_REQUIREMENTS);
     if (bound === undefined) return { ...node, error: `${name} binds to ${parsed.module}:${parsed.funcId}, and there is no such functional spec` };
     bound.testPlainFile = path;
