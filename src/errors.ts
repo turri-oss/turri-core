@@ -27,6 +27,11 @@ export type TurriErrorCode =
 const BRAND = Symbol.for("turri.error");
 
 export class TurriError extends Error {
+  // The brand any copy of turri recognises, on the prototype - kept out of the class's type.
+  static {
+    Object.defineProperty(this.prototype, BRAND, { value: true });
+  }
+
   readonly code: TurriErrorCode;
 
   constructor(code: TurriErrorCode, message: string, options?: { cause?: unknown }) {
@@ -35,9 +40,6 @@ export class TurriError extends Error {
     this.code = code;
   }
 }
-
-// The brand any copy of turri recognises, on the prototype - kept out of the class's type.
-Object.defineProperty(TurriError.prototype, BRAND, { value: true });
 
 /** Whether `error` is a TurriError - from this copy of turri or another - and, given `code`, one with that code. */
 export function isTurriError(error: unknown, code?: TurriErrorCode): error is TurriError {

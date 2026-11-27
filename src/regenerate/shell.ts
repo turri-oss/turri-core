@@ -115,6 +115,25 @@ function writeRecord(): void {
   }
 }
 
+let exitHooked = false;
+
+/**
+ * The groups killed as this process exits - once turri has started one, never as it is imported: a front end that
+ * imports the core and starts nothing keeps its process's own exit and signals as they were. A process ended by a signal
+ * never exits in the sense that runs an exit handler, so where nothing else handles the signal it is made to exit
+ * properly on it, as it would have.
+ */
+function stopGroupsOnExit(): void {
+  if (exitHooked) return;
+  exitHooked = true;
+  process.on("exit", killAllGroups);
+  for (const [signal, code] of [["SIGTERM", 143], ["SIGHUP", 129], ["SIGINT", 130]] as const) {
+    process.once(signal, () => {
+      if (process.listenerCount(signal) === 0) process.exit(code);
+    });
+  }
+}
+
 let watching = false;
 
 /**
@@ -140,6 +159,7 @@ function watch(): void {
 }
 
 function track(group: number): void {
+  stopGroupsOnExit();
   groups.add(group);
   pulse.getStore()?.groups.add(group);
   writeRecord();
@@ -357,12 +377,3 @@ export async function stopGroup(group: number, graceMs = 1000): Promise<void> {
   forget(group);
 }
 
-process.on("exit", killAllGroups);
-
-// A process ended by a signal never exits in the sense that runs the handler above: where nothing else handles the
-// signal, exit properly on it.
-for (const [signal, code] of [["SIGTERM", 143], ["SIGHUP", 129], ["SIGINT", 130]] as const) {
-  process.once(signal, () => {
-    if (process.listenerCount(signal) === 0) process.exit(code);
-  });
-}

@@ -131,7 +131,7 @@ The core may call `ctx.ui`'s abstract methods - `notify`, `select`, `input`, `co
 
 ## Importing the core
 
-Node's package export map is the import boundary, for an installed package and a linked clone alike. The JavaScript and declarations are ESM; `moduleResolution` `node16`, `nodenext` or `bundler` reads them. The core finds its genome, standard library and prompts beside its own files (`import.meta.url`): a bundler keeps the package external rather than bundling it.
+Node's package export map is the import boundary, for an installed package and a linked clone alike. The JavaScript and declarations are ESM; `moduleResolution` `node16`, `nodenext` or `bundler` reads them. The core finds its genome, standard library and prompts beside its own files (`import.meta.url`): a bundler keeps the package external rather than bundling it. Importing an entry changes nothing of the process: turri sets its exit and signal handlers - which stop the process groups it started - only once it starts one, so `sideEffects` is `false`. pi, which every entry but `/plain` loads, sets its own as it is imported.
 
 **pi is a peer.** The core and its front end share `@earendil-works/pi-coding-agent` at the exact version in `package.json`: a chat's `AgentSession` is pi's, a front end's extension is built into pi's sessions, and a prototype patched in one must be the one the other runs. pi's types are in the core's, so a pi upgrade is a breaking release of the core. When developing with `npm link`ed checkouts, make both resolve pi to the same installation.
 

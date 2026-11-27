@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/turri-oss/turri-core.git"

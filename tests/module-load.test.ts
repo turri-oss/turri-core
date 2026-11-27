@@ -60,3 +60,23 @@ describe("the packages an entry loads", () => {
     expect(packages).not.toContain("@earendil-works/pi-coding-agent");
   });
 });
+
+/**
+ * Importing the core changes nothing of the process that imports it: no exit or signal handler of turri's - a SIGINT
+ * listener would end Node's own exit on ctrl+c for an editor's extension host - until turri starts something that needs
+ * one. pi, loaded first, sets its own (signal-exit): those are pi's, as they are for any front end that loads it.
+ */
+describe("an entry, imported", () => {
+  const SIGNALS = ["exit", "SIGINT", "SIGTERM", "SIGHUP"];
+  it.each(["src/api/session.ts", "src/api/plain.ts", "src/api/project.ts", "src/api/models.ts", "src/api/system.ts"])("sets no exit or signal listener of its own: %s", (file) => {
+    const script = `
+      const count = () => ${JSON.stringify(SIGNALS)}.map((name) => process.listenerCount(name));
+      await import("@earendil-works/pi-coding-agent");
+      const before = count();
+      await import("./${file}");
+      console.log(JSON.stringify({ before, after: count() }));`;
+    const said = execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 });
+    const { before, after } = JSON.parse(said.trim().split("\n").at(-1)!) as { before: number[]; after: number[] };
+    expect(after).toEqual(before);
+  });
+});

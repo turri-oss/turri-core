@@ -29,10 +29,12 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - `map` events: the spec map as it changes, for a front end that shows it (`Frontend.shows.map`) - its files looked at each second, its marks laid again as the work moves.
 - `settings.set` writes through `/settings`' own path: a path outside the project and a project-wide setting in a module's file refused, the legacy config copied first, a module's file and what overrides it said, and the harness model the session was opened with giving way to the file's, as the coding model does.
 - `isChatEntry` checks what a record carries against its type, field by field: one another extension wrote under a name of turri's, or written wrong, is not turri's. Each entry's and message's schema matches its type exactly, or the core does not compile.
+- `sideEffects: false`: no entry does anything as it is imported.
 - `/plain` loads no pi: an editor reads, highlights and checks \*\*\*plain with no agent runtime.
 
 ### Fixed
 
 - A pulse that stopped at its tests is said to have stopped there: `stoppedAt` reaches its job, and a job that failed for good keeps its last attempt's details.
 - A front end's question dialog declined while it opened is closed.
+- Importing the core set exit, SIGINT, SIGTERM and SIGHUP handlers on the importing process; they are set once turri first starts a process group.
 - Fresh and resumed captures run on the project's init-config models; init-config sets all three capture models and keeps a `models:` block valid.
