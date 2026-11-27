@@ -265,7 +265,58 @@ export interface SkillRunOptions {
   /** The model it runs on. Default: the project's harness model - or its coding model, for a skill that says so. */
   model?: string;
   signal?: AbortSignal;
+  /** What the run says as it goes - each step tried, what it left, each gate's review and decision - as it says it. */
+  onReport?(report: SkillReport): void;
 }
+
+/** A skill: its name, what it is for, and its steps - each with the review gate after it, if it has one. */
+export interface SkillInfo {
+  name: string;
+  description: string;
+  steps: SkillStep[];
+}
+
+export interface SkillStep {
+  name: string;
+  /** What the step does, in a short line for the person. */
+  about?: string;
+  gate?: SkillGate;
+}
+
+/** The review a step's work passes before the skill goes on. */
+export interface SkillGate {
+  /** The rubric the judges hold the work to: its file, in the skill's folder. */
+  rubric: string;
+  /** Independent judges, each in a session of its own. */
+  judges: number;
+  /** How many of them must pass the work. */
+  quorum: "all" | "majority" | "any";
+  /** What a review the work fails does: the step tried again, the person asked, or the run ended. */
+  onFail: "retry" | "escalate" | "abort";
+  /** How many times the step is tried again before `onFail` gives up on it. */
+  maxRetries: number;
+  /** A reviewer reading along as the step works, its findings settled before the judges are asked. */
+  continuous?: { rubric: string; judges: number };
+}
+
+/** What a skill's run says as it goes, in order. */
+export type SkillReport =
+  /** It starts: the skill, and its steps and gates. */
+  | { kind: "start"; skill: string; steps: SkillStep[] }
+  /** A step tried - again, after its gate sent it back, from attempt 2. */
+  | { kind: "step"; step: string; attempt: number }
+  /** What the step left, by its file in the run's folder. */
+  | { kind: "artifact"; step: string; path: string; body: string }
+  /** One pass of the reviewer reading along: what it read, and how many findings it left to fix. */
+  | { kind: "livePass"; step: string; scope: string; findings: number }
+  /** The reviewer reading along, at the gate: its passes, and the findings still open - any fail the gate at once. */
+  | { kind: "liveReview"; step: string; passes: number; findings: number }
+  /** The gate reviews the step's work with this many judges - none when there is no work to review: it fails. */
+  | { kind: "gate"; step: string; judges: number }
+  /** One judge's verdict - `none` when it gave none, which counts as a fail - and how many violations it found. */
+  | { kind: "judge"; step: string; judge: number; model: string; verdict: "pass" | "fail" | "none"; violations: number }
+  /** The gate's decision, and the critique it sends the step back with. */
+  | { kind: "outcome"; step: string; decision: "advance" | "retry" | "escalate" | "abort"; critique: string };
 
 export interface SkillResult {
   ok: boolean;
@@ -374,7 +425,8 @@ export interface Turri {
   };
 
   readonly skills: {
-    list(): Array<{ name: string; description: string }>;
+    /** turri's own skills and the project's, each with its steps and gates. */
+    list(): SkillInfo[];
     /**
      * Run a skill outside any chat: one by name - turri's own or the project's, as `list` has them - or the skill in a
      * folder with a SKILL.md (`{ dir }`, from the project's folder). One there is none of is `not-found`; a SKILL.md that
@@ -783,7 +835,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       turnOnConformanceTests: (plainFile) => turnOnConformance(core, plainFile),
     },
     skills: {
-      list: () => discoverSkills(PACKAGE_ROOT, cwd).skills.map((skill) => ({ name: skill.name, description: skill.description })),
+      list: () => discoverSkills(PACKAGE_ROOT, cwd).skills.map((skill) => ({ name: skill.name, description: skill.description, steps: stepsOf(skill) })),
       run: (which, asked = {}) => runSkillOutsideChats(core, which, asked, ask, (progress) => emit({ type: "skillProgress", progress })),
     },
     spending: () => core.spending(),
@@ -895,6 +947,30 @@ function eventStream(subscribe: (listener: (event: TurriEvent) => void) => () =>
   };
 }
 
+/** A skill's steps, each with its gate, as a front end shows them. */
+function stepsOf(skill: Skill): SkillStep[] {
+  return skill.steps.map((step): SkillStep => {
+    const gate = step.gate;
+    const review = gate?.review;
+    return {
+      name: step.name,
+      ...(step.about !== undefined ? { about: step.about } : {}),
+      ...(review !== undefined
+        ? {
+            gate: {
+              rubric: review.rubric,
+              judges: review.judges,
+              quorum: review.quorum,
+              onFail: review.onFail,
+              maxRetries: review.maxRetries,
+              ...(gate!.continuous !== undefined ? { continuous: { rubric: gate!.continuous.rubric, judges: gate!.continuous.judges } } : {}),
+            },
+          }
+        : {}),
+    };
+  });
+}
+
 /** The skill `skills.run` is asked for: one of the catalogue's by name, or the one in a folder. */
 function skillAsked(cwd: string, which: string | { dir: string }): Skill {
   if (typeof which === "string") {
@@ -919,7 +995,19 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
   const models = projectModels(readProjectConfig(cwd));
   const model = options.model ?? modelSpec(skill.model === "coding" ? models.coding : models.harness);
   const io = ask !== undefined ? frontendDialogs(ask, undefined) : undefined;
+  // What the run says, to the caller as it says it: a caller's throw is a warning, never the run's end.
+  const tell = (report: SkillReport) => {
+    try {
+      options.onReport?.(report);
+    } catch (error) {
+      process.emitWarning(error instanceof Error ? error : String(error), { code: "TURRI_LISTENER" });
+    }
+  };
+  // A step's artifact comes as it ends, and the judges' verdicts after the gate that asked them: the last step's, the last gate's.
+  let stepping = "";
+  let gating = "";
   progress({ skill: skill.name, phases, current: -1, attempt: 1 });
+  tell({ kind: "start", skill: skill.name, steps: stepsOf(skill) });
   try {
     const result = await runSkill({
       skillDir: skill.dir,
@@ -930,11 +1018,20 @@ async function runSkillOutsideChats(core: TurriCore, which: string | { dir: stri
       ...(model !== undefined ? { model } : {}),
       renderQueue: sessionLoop(core),
       report: {
-        step: (step, attempt) => progress({ skill: skill.name, phases, current: phases.indexOf(step), attempt }),
-        artifact: () => {},
-        gate: () => {},
-        judge: () => {},
-        outcome: () => {},
+        step: (step, attempt) => {
+          stepping = step;
+          progress({ skill: skill.name, phases, current: phases.indexOf(step), attempt });
+          tell({ kind: "step", step, attempt });
+        },
+        artifact: (path, body) => tell({ kind: "artifact", step: stepping, path, body }),
+        livePass: (step, scope, findings) => tell({ kind: "livePass", step, scope, findings }),
+        liveReview: (step, passes, findings) => tell({ kind: "liveReview", step, passes, findings }),
+        gate: (step, judges) => {
+          gating = step;
+          tell({ kind: "gate", step, judges });
+        },
+        judge: (index, model, verdict, violations) => tell({ kind: "judge", step: gating, judge: index, model, verdict: verdict === "pass" || verdict === "fail" ? verdict : "none", violations }),
+        outcome: (step, decision, critique) => tell({ kind: "outcome", step, decision, critique }),
       },
       ...(io !== undefined ? { askUser: (request) => runAsk(request, io) } : {}),
       escalate: async ({ question, critique }) => (ask !== undefined ? (await askYesNo(ask, undefined, `Review gate: ${skill.name} - ${question}`, critique)) === true : false),

@@ -1656,6 +1656,29 @@ export const SKILL_REPORT_ENTRY = "turri_skill_report";
 export const SKILL_RUN_ENTRY = "turri_skill_run";
 
 // @public
+export interface SkillGate {
+    continuous?: {
+        rubric: string;
+        judges: number;
+    };
+    judges: number;
+    maxRetries: number;
+    onFail: "retry" | "escalate" | "abort";
+    quorum: "all" | "majority" | "any";
+    rubric: string;
+}
+
+// @public
+export interface SkillInfo {
+    // (undocumented)
+    description: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    steps: SkillStep[];
+}
+
+// @public
 export interface SkillProgress {
     // (undocumented)
     about?: string;
@@ -1667,6 +1690,64 @@ export interface SkillProgress {
     // (undocumented)
     skill: string;
 }
+
+// @public
+export type SkillReport =
+/** It starts: the skill, and its steps and gates. */
+    {
+    kind: "start";
+    skill: string;
+    steps: SkillStep[];
+}
+/** A step tried - again, after its gate sent it back, from attempt 2. */
+| {
+    kind: "step";
+    step: string;
+    attempt: number;
+}
+/** What the step left, by its file in the run's folder. */
+| {
+    kind: "artifact";
+    step: string;
+    path: string;
+    body: string;
+}
+/** One pass of the reviewer reading along: what it read, and how many findings it left to fix. */
+| {
+    kind: "livePass";
+    step: string;
+    scope: string;
+    findings: number;
+}
+/** The reviewer reading along, at the gate: its passes, and the findings still open - any fail the gate at once. */
+| {
+    kind: "liveReview";
+    step: string;
+    passes: number;
+    findings: number;
+}
+/** The gate reviews the step's work with this many judges - none when there is no work to review: it fails. */
+| {
+    kind: "gate";
+    step: string;
+    judges: number;
+}
+/** One judge's verdict - `none` when it gave none, which counts as a fail - and how many violations it found. */
+| {
+    kind: "judge";
+    step: string;
+    judge: number;
+    model: string;
+    verdict: "pass" | "fail" | "none";
+    violations: number;
+}
+/** The gate's decision, and the critique it sends the step back with. */
+| {
+    kind: "outcome";
+    step: string;
+    decision: "advance" | "retry" | "escalate" | "abort";
+    critique: string;
+};
 
 // @public (undocumented)
 export interface SkillResult {
@@ -1680,9 +1761,19 @@ export interface SkillResult {
 export interface SkillRunOptions {
     context?: string;
     model?: string;
+    onReport?(report: SkillReport): void;
     plainFile?: string;
     // (undocumented)
     signal?: AbortSignal;
+}
+
+// @public (undocumented)
+export interface SkillStep {
+    about?: string;
+    // (undocumented)
+    gate?: SkillGate;
+    // (undocumented)
+    name: string;
 }
 
 // @public
@@ -1819,10 +1910,7 @@ export interface Turri {
     };
     // (undocumented)
     readonly skills: {
-        list(): Array<{
-            name: string;
-            description: string;
-        }>;
+        list(): SkillInfo[];
         run(skill: string | {
             dir: string;
         }, options?: SkillRunOptions): Promise<SkillResult>;
