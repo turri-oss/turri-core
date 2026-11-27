@@ -110,10 +110,65 @@ vi.mock("../src/launch-agent.ts", () => ({
 
 // Inject finished test pulses through the real registry without exposing its mutating API to hosts.
 const registries = vi.spyOn(await import("../src/regenerate/jobs.ts"), "createJobRegistry");
-const { createTurri: openSession } = await import("../src/host-session.ts");
-async function createTurri(options?: Parameters<typeof openSession>[0]) {
-  const session = await openSession(options);
-  return { ...session, jobs: registries.mock.results.at(-1)!.value };
+const { createTurri: openSession } = await import("../src/session.ts");
+type Notice = import("../src/notice.ts").Notice;
+type Conclusion = import("../src/notice.ts").Conclusion;
+
+/** What these tests give a host: the sentinel's own tools and words, and what it hears. */
+interface HostOptions {
+  sentinel?: { tools?: unknown[]; surface?: string };
+  systemPrompt?: (built: string) => string;
+  onNotice?: (notice: Notice) => void;
+  onNoticeOver?: (notice: Notice) => void;
+  onConcluded?: (conclusion: Conclusion & { chat: string }) => void;
+  onChatSession?: (chat: string) => void;
+  /** The host shows each pulse's end and the sentinel's conclusions itself. */
+  pulseEndsShown?: boolean;
+}
+
+/** The sessions a test opened: let go after it, as one session a process is all there can be. */
+const opened: Array<{ dispose(): Promise<void> }> = [];
+afterEach(async () => {
+  for (const session of opened.splice(0)) await session.dispose();
+});
+
+/**
+ * A host's session on turri's own chat sessions: what it hears passed to its callbacks, and - to inject finished test pulses
+ * through the real registry - the session's job registry.
+ */
+async function createTurri(options: HostOptions = {}) {
+  const turri = await openSession({
+    frontend: {
+      ...(options.sentinel !== undefined ? { sentinel: options.sentinel as never } : {}),
+      ...(options.systemPrompt !== undefined ? { systemPrompt: (built: string) => options.systemPrompt!(built) } : {}),
+      // A host that hears notices shows them itself; one that says so shows pulse ends.
+      shows: { notices: options.onNotice !== undefined, pulseEnds: options.pulseEndsShown === true },
+    },
+    onEvent: (event) => {
+      if (event.type === "notice") options.onNotice?.(event.notice);
+      else if (event.type === "noticeOver") options.onNoticeOver?.(event.notice);
+      else if (event.type === "concluded") options.onConcluded?.({ ...event.conclusion, chat: event.chat });
+      else if (event.type === "chatSession") options.onChatSession?.(event.chat);
+    },
+  });
+  opened.push(turri);
+  return {
+    jobs: registries.mock.results.at(-1)!.value as import("../src/regenerate/jobs.ts").JobRegistry,
+    openChat: async () => {
+      const chat = await turri.chats.open();
+      return { ...chat.info(), session: chat.session };
+    },
+    focus: (id: string) => void turri.chats.focus(id),
+    chats: () => turri.chats.list(),
+    closeChat: (id: string) => turri.chats.close(id),
+    session: (id: string) => turri.chats.get(id)?.session,
+    check: (request: Parameters<typeof turri.sentinel.check>[0]) => turri.sentinel.check(request),
+    notices: () => turri.notices.list(),
+    answer: (id: string, answer: Parameters<typeof turri.notices.answer>[1]) => turri.notices.answer(id, answer),
+    launches: () => turri.launches.list(),
+    spending: () => turri.spending(),
+    dispose: () => turri.dispose(),
+  };
 }
 const { SENTINEL } = await import("../src/sentinel.ts");
 

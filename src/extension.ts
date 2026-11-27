@@ -290,12 +290,12 @@ export function chatAskUserTool(dialogs?: AskUserIO, afterAnswer?: (answer: stri
 export type { TurriHost } from "./chats.ts";
 
 /**
- * The conversation's system prompt for a turn: pi's, turri's identity - with the host's surface in place of the
- * terminal's, when it has one - and turri's blocks; then the host's last word on it.
+ * The conversation's system prompt for a turn of `chat`: pi's, turri's identity - with the front end's surface, when it
+ * has one - and turri's blocks; then the front end's last word on it.
  */
-function conversationSystemPrompt(base: string, host: TurriHost, blocks: string[]): string {
+function conversationSystemPrompt(base: string, host: TurriHost, blocks: string[], chat: string): string {
   const prompt = [base, conversationIdentity(host.surface), ...blocks].filter((part) => part !== "").join("\n\n");
-  return host.systemPrompt !== undefined ? host.systemPrompt(prompt) : prompt;
+  return host.systemPrompt !== undefined ? host.systemPrompt(prompt, chat) : prompt;
 }
 
 /** Whether the person has been told which of pi's skills turri left out: once a session, not once a chat. */
@@ -306,7 +306,7 @@ const hosts = new WeakMap<JobRegistry, TurriHost>();
 
 /**
  * A turri session: its job registry and work loop, the ledger, and its chats, each with turri's extension in it
- * (chats.ts). The terminal makes one as it starts (pi-launch.ts), a host with `createTurri` (host.ts); `persist`
+ * (chats.ts). Every front end makes one through `createTurri` (session.ts); `persist`
  * records the open chats for `turri --continue`; `view` is what a front-end draws of it (view.ts) - none for a host.
  */
 export function createTurriCore(
@@ -674,7 +674,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     }
     if (isSentinel) {
       const prompt = [event.systemPrompt, sentinelPrompt(cwd, { extraTools: hostSentinelTools.map((tool) => tool.name), ...(host.sentinel?.surface !== undefined ? { surface: host.sentinel.surface } : {}) }), projectConfigBlock(cwd), rulesBlock()].join("\n\n");
-      return { systemPrompt: host.systemPrompt !== undefined ? host.systemPrompt(prompt) : prompt };
+      return { systemPrompt: host.systemPrompt !== undefined ? host.systemPrompt(prompt, link.id) : prompt };
     }
     return {
       systemPrompt: conversationSystemPrompt(event.systemPrompt, host, [
@@ -687,7 +687,7 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
         projectConfigBlock(cwd),
         machineBlock(cwd, machine.now()),
         rulesBlock(),
-      ]),
+      ], link.id),
     };
   });
 

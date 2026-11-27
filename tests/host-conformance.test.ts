@@ -70,7 +70,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
   };
 });
 
-const { createTurri } = await import("../src/host-session.ts");
+const { createTurri } = await import("../src/session.ts");
 
 let dir: string;
 let cwd: string;
@@ -98,22 +98,22 @@ describe("a host looking ahead", () => {
     const planner = vi.spyOn(await import("../src/regenerate/chunk-plan.ts"), "llmChunkAgents").mockReturnValue({ group: async () => undefined, place: async () => undefined });
     writeTestScripts(dir);
     writeFileSync(join(dir, "config.turri.yaml"), `${readFileSync(join(dir, "config.turri.yaml"), "utf8")}harness-model: p/talk:medium\ncoding-model: p/code:low\n`);
-    const session = await createTurri();
+    const session = await createTurri({ frontend: {} });
     try {
-      expect(session.standing()[0]?.module).toBe("app");
+      expect(session.work.standing()[0]?.module).toBe("app");
       // Before any chat is open, the loop plans on the config's harness model.
-      expect((await session.lookAhead("app.plain")).next[0]?.task).toContain("Say hello.");
+      expect((await session.work.lookAhead("app.plain")).next[0]?.task).toContain("Say hello.");
       expect(planner).toHaveBeenCalledWith(expect.objectContaining({ model: "p/talk:medium" }));
-      await session.openChat();
-      const { next } = await session.lookAhead("app.plain");
+      await session.chats.open();
+      const { next } = await session.work.lookAhead("app.plain");
       expect(next).toHaveLength(1);
       expect(next[0]?.task).toContain("Say hello.");
-      await session.openChat();
-      expect(session.status()).toMatchObject({ jobs: [], modules: [{ module: "app", lookedAhead: true }], planned: [{ module: "app", lookedAhead: true }] });
-      expect(session.jobs()).toEqual([]);
+      await session.chats.open();
+      expect(session.work.status()).toMatchObject({ jobs: [], modules: [{ module: "app", lookedAhead: true }], planned: [{ module: "app", lookedAhead: true }] });
+      expect(session.work.jobs()).toEqual([]);
       expect(existsSync(join(dir, "plain_modules", "app", "code"))).toBe(false);
       writeFileSync(join(dir, "config.turri.yaml"), "models: [\n");
-      await expect(session.lookAhead("app.plain")).rejects.toThrow(/Nothing was started/);
+      await expect(session.work.lookAhead("app.plain")).rejects.toThrow(/Nothing was started/);
     } finally {
       await session.dispose();
       planner.mockRestore();
@@ -123,12 +123,12 @@ describe("a host looking ahead", () => {
 
 describe("a host turning conformance tests on", () => {
   it("writes conformance-tests: true in config.turri.yaml - every chat has conform, on or off, and no tool that turns them on - no model call", async () => {
-    const turri = await createTurri();
-    await turri.openChat();
-    await turri.openChat();
+    const turri = await createTurri({ frontend: {} });
+    await turri.chats.open();
+    await turri.chats.open();
     // Off, as it is unset: conform is there, refused while off; nothing for the chat to turn them on with.
     for (const chat of [0, 1]) expect(offered(chat)).toEqual({ conform: true, evaluate: false, turnOn: false });
-    expect(turri.turnOnConformanceTests()).toBe("config.turri.yaml");
+    expect(turri.settings.turnOnConformanceTests()).toBe("config.turri.yaml");
     expect(readFileSync(join(dir, "config.turri.yaml"), "utf8")).toMatch(/^conformance-tests: true$/m);
     for (const chat of [0, 1]) expect(offered(chat)).toEqual({ conform: true, evaluate: false, turnOn: false });
     await turri.dispose();
@@ -136,9 +136,9 @@ describe("a host turning conformance tests on", () => {
 
   it("writes the module's stack's file when that sets the key - which the project's alone would not change", async () => {
     writeFileSync(join(dir, "config.turri.app.yaml"), "conformance-tests: false\n");
-    const turri = await createTurri();
-    await turri.openChat();
-    expect(turri.turnOnConformanceTests("app.plain")).toBe("config.turri.app.yaml");
+    const turri = await createTurri({ frontend: {} });
+    await turri.chats.open();
+    expect(turri.settings.turnOnConformanceTests("app.plain")).toBe("config.turri.app.yaml");
     expect(readFileSync(join(dir, "config.turri.app.yaml"), "utf8")).toMatch(/^conformance-tests: true$/m);
     expect(readFileSync(join(dir, "config.turri.yaml"), "utf8")).not.toContain("conformance-tests");
     expect(offered(0)).toEqual({ conform: true, evaluate: false, turnOn: false });

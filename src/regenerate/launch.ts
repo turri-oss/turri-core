@@ -377,9 +377,14 @@ export function runningLaunched(moduleName?: string): LaunchedProcess[] {
  * Follow every launched process's output - each new line of its log given to `onLine` with its name, every `pollMs`
  * (500 by default) - until nothing a launch started runs. `turri launch` prints them, each after its name.
  */
-export function followLaunchedLogs(onLine: (name: string, line: string) => void, options: { pollMs?: number } = {}): Promise<void> {
+export function followLaunchedLogs(onLine: (name: string, line: string) => void, options: { pollMs?: number; signal?: AbortSignal } = {}): Promise<void> {
   const offsets = new Map<string, number>();
   return new Promise((done) => {
+    // Stopped from outside: followed no further.
+    options.signal?.addEventListener("abort", () => {
+      clearInterval(timer);
+      done();
+    }, { once: true });
     const tick = () => {
       const running = runningLaunched();
       for (const item of listLaunched()) {
@@ -404,6 +409,10 @@ export function followLaunchedLogs(onLine: (name: string, line: string) => void,
       }
     };
     const timer = setInterval(tick, options.pollMs ?? 500);
+    if (options.signal?.aborted === true) {
+      clearInterval(timer);
+      done();
+    }
   });
 }
 

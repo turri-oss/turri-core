@@ -11,6 +11,8 @@ export type TurriErrorCode =
   | "refused"
   /** No room for another chat. */
   | "chat-limit"
+  /** A chat asked of a session with no front end, which has none. */
+  | "no-chat"
   /** A handle to a chat that has been closed. */
   | "chat-closed"
   /** A chat, a job, a notice or a module that is not there. */

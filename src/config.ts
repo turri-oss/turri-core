@@ -715,7 +715,7 @@ function readLayeredConfig(root: string, module?: string): ProjectConfig {
  * No config file is edited. Set by the session as it opens and cleared as it closes; a key the person sets with
  * /settings drops the session's value for it.
  */
-export type ConfigOverrides = Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "review" | "mutationTesting">>;
+export type ConfigOverrides = Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "review" | "mutationTesting" | "debug">>;
 
 /** The open sessions' overrides, by their project's folder. */
 const sessionOverrides = new Map<string, ConfigOverrides>();

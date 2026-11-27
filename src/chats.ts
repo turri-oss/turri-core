@@ -26,7 +26,7 @@ import { createSessionSpending, type SessionSpending } from "./session-spending.
  * which chat asked for it, and is reported back there when it ends - to the chat shown, when that one is closed.
  *
  * Where the chats live is a driver's: the terminal's (chat-terminal.ts) swaps which one pi's screen shows; a host's
- * (`createTurri`) makes a session for each and shows them in its own windows.
+ * makes a session for each through `createTurri` (session.ts) and shows them in its own way.
  *
  * With the project's sentinel on (sentinel.ts), every finished pulse goes to the sentinel - a chat of the session's own,
  * opened in the background with the first, and again after it is closed - and the chat the person looks at shows only
@@ -75,7 +75,7 @@ export interface TurriHost {
    * The last word on the whole system prompt, as turri has built it for this turn - after its own before_agent_start
    * work: what it returns is what is sent. For a host that needs to change anything else.
    */
-  systemPrompt?(prompt: string): string;
+  systemPrompt?(prompt: string, chat: string): string;
   /**
    * A chat's session replaced by a new one, under the same id: the sentinel's, a fresh conversation for each pulse it
    * checks - told before the pulse is put to it. The host follows this session in place of the one it had.
@@ -262,8 +262,8 @@ export interface TurriCore {
   /** The chat whose work this is, else the one shown: its instance. */
   instanceInScope(): ChatInstance | undefined;
   setDriver(driver: ChatDriver): void;
-  /** Reopen a run's chats - `--continue` - beside the first, which pi reopened itself. */
-  restore(run: RunRecord, options?: { skipFirst?: boolean }): Promise<void>;
+  /** Reopen a run's chats - `--continue` - those not open already, each hidden, in their order. */
+  restore(run: RunRecord): Promise<void>;
 }
 
 export interface CoreOptions {
@@ -830,15 +830,15 @@ export function createChats(options: CoreOptions): TurriCore {
       driver = given;
     },
 
-    async restore(saved, asked = {}) {
+    async restore(saved) {
       adoptRun(cwd, saved.run);
-      // The first of the person's chats is the one pi reopened itself (pi-launch.ts): the sentinel is never it.
-      const first = saved.chats.find((kept) => kept.role === undefined);
-      if (first !== undefined && asked.skipFirst === true) {
-        const chat = chats[0];
-        if (chat !== undefined) chat.recordedTitle ??= first.title;
-      }
-      for (const kept of asked.skipFirst === true ? saved.chats.filter((other) => other !== first) : saved.chats) {
+      for (const kept of saved.chats) {
+        // Open already - reopened by the front end itself, say pi from its own --session: it keeps its recorded title.
+        const already = chats.find((chat) => chat.session?.sessionFile === kept.sessionFile);
+        if (already !== undefined) {
+          already.recordedTitle ??= kept.title;
+          continue;
+        }
         try {
           await core.open({ sessionFile: kept.sessionFile, hidden: true, title: kept.title, ...(kept.role !== undefined ? { role: kept.role } : {}) });
         } catch (error) {

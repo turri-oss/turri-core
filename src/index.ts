@@ -1,5 +1,5 @@
 /** One project's session. Terminal integration and independent project readers have their own entries. */
-export { createTurri, type Turri, type TurriOptions } from "./host-session.ts";
+export { createTurri, type Turri, type TurriOptions, type Frontend, type Chat, type TurriEvent, type TurriEventMap } from "./session.ts";
 export { MAX_CHATS, type ChatInfo, type ChatStatus, type TurriHost } from "./chats.ts";
 export { isChatEntry, type ChatEntry } from "./chat-entries.ts";
 export type { SessionEvent, SkillProgress } from "./session-events.ts";

@@ -56,8 +56,15 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
   };
 });
 
-const { createTurri } = await import("../src/host-session.ts");
+const { createTurri } = await import("../src/session.ts");
 const { DECLINED } = await import("../src/ask.ts");
+
+/** The sessions a test opened: let go after it, as one session a process is all there can be. */
+const opened: Array<{ dispose(): Promise<void> }> = [];
+const keep = <T extends { dispose(): Promise<void> }>(session: T): T => (opened.push(session), session);
+afterEach(async () => {
+  for (const session of opened.splice(0)) await session.dispose();
+});
 
 it("reports the startup sweep and agent costs before a chat opens and stops reporting on disposal", async () => {
   const cwd = process.cwd();
@@ -67,7 +74,7 @@ it("reports the startup sweep and agent costs before a chat opens and stops repo
   const events: SessionEvent[] = [];
   process.chdir(dir);
   try {
-    const session = await createTurri({ onEvent: (event) => events.push(event) });
+    const session = await createTurri({ onEvent: (event) => events.push(event as never) });
     try {
       expect(events).toContainEqual({ type: "orphansStopped", count: 3 });
       expect(sweep).toHaveBeenCalledTimes(1);
@@ -77,7 +84,7 @@ it("reports the startup sweep and agent costs before a chat opens and stops repo
       const call = { kind: "call", role: "planner", usage: { cost: 0.5, input: 5, output: 2, cacheRead: 0, cacheWrite: 0 } } as const;
       reportModelEvent(call);
       reportModelEvent(call);
-      expect(events.at(-1)).toEqual({ type: "agentCost", role: "planner", cost: 0.5, total: 1 });
+      expect(events.at(-1)).toMatchObject({ type: "spending", spending: { other: [{ role: "planner", cost: 1 }] } });
       expect(session.spending().other).toEqual([{ role: "planner", cost: 1 }]);
     } finally {
       await session.dispose();
@@ -115,6 +122,14 @@ function askUser(chat: number, question: string, turn = new AbortController()): 
   return tool.execute("call", { question, options: ["Yes", "No"] }, turn.signal, undefined, { hasUI: false, signal: turn.signal }).then((result) => result.content[0]!.text);
 }
 
+/** A front end asking through those dialogs. */
+const asking = (dialogs: AskUserIO) => ({
+  frontend: {
+    ask: (question: import("../src/session.ts").Question, { signal }: { signal: AbortSignal }) =>
+      question.kind === "select" ? dialogs.select(question.title, question.options, question.context, question.at, { signal }) : dialogs.input(question.title, question.context, { signal }),
+  },
+});
+
 /** Once the host's dialogs have shown `count` questions. */
 async function shownCount(shown: unknown[], count: number): Promise<void> {
   while (shown.length < count) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -128,31 +143,23 @@ describe("a host interrupting a chat", () => {
   });
   afterEach(() => process.chdir(cwd));
 
-  it("stops the turn of that chat alone, and ends the session once it is doing nothing", async () => {
-    const turri = await createTurri();
-    const first = await turri.openChat();
-    await turri.openChat();
+  it("stops the turn of that chat alone, says when it was doing nothing, and never ends the session", async () => {
+    const turri = keep(await createTurri({ frontend: {} }));
+    const first = await turri.chats.open();
+    await turri.chats.open();
     const [one, two] = sessions;
     one!.isStreaming = true;
     two!.isStreaming = true;
 
-    expect(await turri.interrupt(first.id)).toBe("stopped");
+    expect(await first.stop()).toBe("stopped");
     expect(one!.did).toEqual(["abort"]);
     expect(two!.did).toEqual([]);
 
-    // Pressed twice to be sure: nothing ended.
-    expect(await turri.interrupt(first.id)).toBe("ignored");
-    expect(turri.chats()).toHaveLength(2);
-
-    vi.useFakeTimers({ now: Date.now() + 1000, toFake: ["Date"] });
-    try {
-      expect(await turri.interrupt(first.id)).toBe("ended");
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(turri.chats()).toEqual([]);
-    expect(two!.did).toContain("dispose");
-    expect(await turri.interrupt(first.id)).toBe("missing");
+    one!.isStreaming = false;
+    expect(await first.stop()).toBe("idle");
+    expect(turri.chats.list()).toHaveLength(2);
+    expect(two!.did).not.toContain("dispose");
+    await turri.dispose();
   });
 });
 
@@ -166,13 +173,13 @@ describe("a host declining a chat's question", () => {
 
   it("answers the question DECLINED and lets the turn go on", async () => {
     const { dialogs, shown } = silentDialogs();
-    const turri = await createTurri({ dialogs: () => dialogs });
-    const chat = await turri.openChat();
+    const turri = keep(await createTurri(asking(dialogs)));
+    const chat = await turri.chats.open();
     sessions[0]!.isStreaming = true;
 
     const answer = askUser(0, "Ship it?");
     await shownCount(shown, 1);
-    expect(await turri.decline(chat.id)).toBe("declined");
+    expect(await chat.decline()).toBe("declined");
     expect(await answer).toContain(DECLINED);
     expect(sessions[0]!.did).toEqual([]);
     expect(sessions[0]!.isStreaming).toBe(true);
@@ -180,15 +187,15 @@ describe("a host declining a chat's question", () => {
 
   it("declines each question it is called at, five in a row, the turn still running", async () => {
     const { dialogs, shown } = silentDialogs();
-    const turri = await createTurri({ dialogs: () => dialogs });
-    const chat = await turri.openChat();
+    const turri = keep(await createTurri(asking(dialogs)));
+    const chat = await turri.chats.open();
     sessions[0]!.isStreaming = true;
 
     const questions = ["Which stack?", "Which database?", "Which host?", "Which auth?", "Which CI?"];
     for (const [at, question] of questions.entries()) {
       const answer = askUser(0, question);
       await shownCount(shown, at + 1);
-      expect(await turri.decline(chat.id)).toBe("declined");
+      expect(await chat.decline()).toBe("declined");
       expect(await answer).toContain(DECLINED);
     }
     expect(shown.map((dialog) => dialog.title)).toEqual(questions);
@@ -198,42 +205,43 @@ describe("a host declining a chat's question", () => {
 
   it("declines nothing in a chat asking nothing, nor in another chat", async () => {
     const { dialogs, shown } = silentDialogs();
-    const turri = await createTurri({ dialogs: () => dialogs });
-    const first = await turri.openChat();
-    const second = await turri.openChat();
-    expect(await turri.decline(first.id)).toBe("none");
+    const turri = keep(await createTurri(asking(dialogs)));
+    const first = await turri.chats.open();
+    const second = await turri.chats.open();
+    expect(await first.decline()).toBe("none");
 
     const answer = askUser(1, "Ship it?");
     await shownCount(shown, 1);
-    expect(await turri.decline(first.id)).toBe("none");
+    expect(await first.decline()).toBe("none");
     expect(shown[0]!.signal?.aborted).toBe(false);
-    expect(await turri.decline(second.id)).toBe("declined");
+    expect(await second.decline()).toBe("declined");
     expect(await answer).toContain(DECLINED);
-    expect(await turri.decline(second.id)).toBe("none");
+    expect(await second.decline()).toBe("none");
   });
 
-  it("says a chat that is not open is missing", async () => {
-    const turri = await createTurri();
-    expect(await turri.decline("nochat")).toBe("missing");
+  it("has no handle for a chat that is not open", async () => {
+    const turri = keep(await createTurri({ frontend: {} }));
+    expect(turri.chats.get("nochat")).toBeUndefined();
+    await turri.dispose();
   });
 
   it("aborts the signal of the host's dialog when its question is declined", async () => {
     const { dialogs, shown } = silentDialogs();
-    const turri = await createTurri({ dialogs: () => dialogs });
-    const chat = await turri.openChat();
+    const turri = keep(await createTurri(asking(dialogs)));
+    const chat = await turri.chats.open();
 
     const answer = askUser(0, "Ship it?");
     await shownCount(shown, 1);
     expect(shown[0]!.signal?.aborted).toBe(false);
-    await turri.decline(chat.id);
+    await chat.decline();
     expect(shown[0]!.signal?.aborted).toBe(true);
     await answer;
   });
 
   it("aborts the signal of the host's dialog when the turn that asked is stopped", async () => {
     const { dialogs, shown } = silentDialogs();
-    const turri = await createTurri({ dialogs: () => dialogs });
-    const chat = await turri.openChat();
+    const turri = keep(await createTurri(asking(dialogs)));
+    const chat = await turri.chats.open();
 
     const turn = new AbortController();
     const answer = askUser(0, "Ship it?", turn);
@@ -241,6 +249,6 @@ describe("a host declining a chat's question", () => {
     turn.abort();
     expect(shown[0]!.signal?.aborted).toBe(true);
     expect(await answer).toContain(DECLINED);
-    expect(await turri.decline(chat.id)).toBe("none");
+    expect(await chat.decline()).toBe("none");
   });
 });

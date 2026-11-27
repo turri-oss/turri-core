@@ -71,7 +71,7 @@ vi.mock("@earendil-works/pi-coding-agent", async (actual) => {
   };
 });
 
-const { createTurri } = await import("../src/host-session.ts");
+const { createTurri } = await import("../src/session.ts");
 
 let dir: string;
 let cwd: string;
@@ -88,9 +88,9 @@ afterEach(() => {
 
 describe("a setting's values, for a host's settings list", () => {
   it("are every model of every provider signed in - whole, past what the terminal's completions show, and without unset", async () => {
-    const turri = await createTurri();
-    await turri.openChat();
-    const choices = turri.settingChoices("harness-model");
+    const turri = await createTurri({ frontend: {} });
+    await turri.chats.open();
+    const choices = turri.settings.choices("harness-model");
     expect(choices).toHaveLength(60);
     expect(choices).toContain("anthropic/claude-00");
     expect(choices).toContain("openai/gpt-29");
@@ -100,24 +100,24 @@ describe("a setting's values, for a host's settings list", () => {
     const completed = commands[0]!.getArgumentCompletions("harness-model ")!;
     expect(completed).toHaveLength(40);
     expect(completed.map((item) => item.label)).toEqual(choices.slice(0, 40));
-    expect(turri.settingChoices("harness-model", "openai/")).toEqual(choices.filter((choice) => choice.startsWith("openai/")));
+    expect(turri.settings.choices("harness-model", "openai/")).toEqual(choices.filter((choice) => choice.startsWith("openai/")));
     await turri.dispose();
   });
 
   it("are a model's thinking levels after its colon, as the completions give them", async () => {
-    const turri = await createTurri();
-    await turri.openChat();
-    expect(turri.settingChoices("harness-model", "anthropic/claude-07:")).toEqual(THINKING_LEVELS.map((level) => `anthropic/claude-07:${level}`));
-    expect(turri.settingChoices("harness-model", "anthropic/claude-07:h")).toEqual(THINKING_LEVELS.filter((level) => level.startsWith("h")).map((level) => `anthropic/claude-07:${level}`));
+    const turri = await createTurri({ frontend: {} });
+    await turri.chats.open();
+    expect(turri.settings.choices("harness-model", "anthropic/claude-07:")).toEqual(THINKING_LEVELS.map((level) => `anthropic/claude-07:${level}`));
+    expect(turri.settings.choices("harness-model", "anthropic/claude-07:h")).toEqual(THINKING_LEVELS.filter((level) => level.startsWith("h")).map((level) => `anthropic/claude-07:${level}`));
     await turri.dispose();
   });
 
   it("are a setting's own options otherwise - and none for a key there is no setting of", async () => {
-    const turri = await createTurri();
-    await turri.openChat();
-    expect(turri.settingChoices("review")).toEqual(["true", "false"]);
-    expect(turri.settingChoices("testing-scripts-run-on")).toEqual(["in-place", "copy"]);
-    expect(turri.settingChoices("no-such-setting")).toEqual([]);
+    const turri = await createTurri({ frontend: {} });
+    await turri.chats.open();
+    expect(turri.settings.choices("review")).toEqual(["true", "false"]);
+    expect(turri.settings.choices("testing-scripts-run-on")).toEqual(["in-place", "copy"]);
+    expect(turri.settings.choices("no-such-setting")).toEqual([]);
     await turri.dispose();
   });
 });
