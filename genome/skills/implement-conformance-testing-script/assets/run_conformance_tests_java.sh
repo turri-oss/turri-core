@@ -48,19 +48,24 @@ CONFORMANCE_TESTS_SOURCE="$(cd "$2" 2>/dev/null && pwd)" || {
 
 find "$CONFORMANCE_TESTS_SOURCE" -type f
 
-# Working folders live in the system temp directory. $1 and $2 may be absolute
-# paths, so only their basenames are used to build the working folder names.
-JAVA_BUILD_SUBFOLDER="/tmp/java_$(basename "$1")"
-CONFORMANCE_TESTS_FOLDER="/tmp/java_conformance_$(basename "$2")"
+# Working folders of this run's own in the system temp directory - never fixed names, which two runs at once (two
+# projects, two pulses) would share. $1 and $2 may be absolute paths, so only their basenames are in the names.
+JAVA_BUILD_SUBFOLDER="$(mktemp -d "/tmp/java_$(basename "$1").XXXXXX")" || {
+  printf "Error: could not create a working folder in /tmp.\n"
+  exit 2
+}
+CONFORMANCE_TESTS_FOLDER="$(mktemp -d "/tmp/java_conformance_$(basename "$2").XXXXXX")" || {
+  rm -rf "$JAVA_BUILD_SUBFOLDER"
+  printf "Error: could not create a working folder in /tmp.\n"
+  exit 2
+}
 
-trap 'rm -rf "$JAVA_BUILD_SUBFOLDER" "$CONFORMANCE_TESTS_FOLDER"' EXIT
+# Removed as the script exits, whatever a toolchain left in them read-only.
+trap 'chmod -R u+w "$JAVA_BUILD_SUBFOLDER" "$CONFORMANCE_TESTS_FOLDER" 2>/dev/null; rm -rf "$JAVA_BUILD_SUBFOLDER" "$CONFORMANCE_TESTS_FOLDER"' EXIT
 
 if [ "${VERBOSE:-}" -eq 1 ] 2>/dev/null; then
   printf "Preparing Java build subfolder: $JAVA_BUILD_SUBFOLDER\n"
 fi
-
-rm -rf "$JAVA_BUILD_SUBFOLDER"
-mkdir -p "$JAVA_BUILD_SUBFOLDER"
 
 # Conformance tests live in the conformance tests folder and nowhere else. One in the
 # build folder is in the wrong place: nothing would run it as part of the suite. Refuse.
@@ -98,9 +103,6 @@ fi
 cd "$current_dir" 2>/dev/null
 printf "Moved to $current_dir...\n"
 printf "Preparing Java conformance tests subfolder: $CONFORMANCE_TESTS_FOLDER\n"
-
-rm -rf "$CONFORMANCE_TESTS_FOLDER"
-mkdir -p "$CONFORMANCE_TESTS_FOLDER"
 
 cp -R "$CONFORMANCE_TESTS_SOURCE"/* "$CONFORMANCE_TESTS_FOLDER"
 printf "Copied from $CONFORMANCE_TESTS_SOURCE to $CONFORMANCE_TESTS_FOLDER...\n"

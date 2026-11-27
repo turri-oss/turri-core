@@ -27,20 +27,16 @@ if [ -z "$1" ]; then
   exit 1
 fi
 
-# Working folder lives in the system temp directory. $1 may be an absolute
-# path, so only its basename is used to build the working folder name.
-WORKING_FOLDER="/tmp/java_$(basename "$1")"
+# A working folder of this run's own in the system temp directory - never a fixed name, which two runs at once (two
+# projects, two pulses) would share. $1 may be an absolute path, so only its basename is in the name.
+WORKING_FOLDER="$(mktemp -d "/tmp/java_$(basename "$1").XXXXXX")" || {
+  echo "Error: could not create a working folder in /tmp."
+  exit 2
+}
+echo "Working folder: $WORKING_FOLDER"
 
-trap 'rm -rf "$WORKING_FOLDER"' EXIT
-
-# Check if the java subfolder exists
-if [ -d "$WORKING_FOLDER" ]; then
-  # delete everything in the subfolder
-  rm -rf "$WORKING_FOLDER"/*
-else
-  echo "Subfolder '$WORKING_FOLDER' does not exist. Creating it now..."
-  mkdir -p "$WORKING_FOLDER"
-fi
+# Removed as the script exits, whatever a toolchain left in it read-only.
+trap 'chmod -R u+w "$WORKING_FOLDER" 2>/dev/null; rm -rf "$WORKING_FOLDER"' EXIT
 
 
 # copy all folders and files from the build folder to the subfolder

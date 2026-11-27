@@ -35,7 +35,7 @@ echo "Build folder (read only): $SOURCE"
 echo "===== [3/8] Working folder ====="
 # A folder of its own each run: runs side by side never share one.
 WORKING_FOLDER="$(mktemp -d "/tmp/python_$(basename "$SOURCE").XXXXXX")" || { echo "Error: could not create a working folder in /tmp."; exit 2; }
-trap 'rm -rf "$WORKING_FOLDER"' EXIT
+trap 'chmod -R u+w "$WORKING_FOLDER" 2>/dev/null; rm -rf "$WORKING_FOLDER"' EXIT
 echo "Working folder: $WORKING_FOLDER"
 
 echo "===== [4/8] Copy the build ====="

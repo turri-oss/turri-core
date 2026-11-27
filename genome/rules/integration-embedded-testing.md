@@ -10,12 +10,12 @@ When an embedded integration ships its two `test_scripts/` (unit, conformance), 
 
 A module's code and unit tests live in `plain_modules/<module>/code`; its conformance tests live in one folder, `plain_modules/<module>/tests` — the module's whole conformance suite. turri runs both scripts on the person's machine, once per check: `bash run_unittests_<lang>.sh <build_folder>` decides whether the unit tests pass, and `bash run_conformance_tests_<lang>.sh <build_folder> <conformance_tests_folder>` (absolute paths) runs the whole conformance suite at once and decides whether the conformance tests pass. There is no prepare-environment script, so each script is self-contained.
 
-Embedded integrations need a runnable host project, so both scripts stage the generated code **inside the host codebase itself**. The conformance script additionally builds / installs the host and then runs the conformance suite from a scratch folder in the system temp directory (`/tmp/<lang>_conformance/`), because the conformance suite lives in a separate project.
+Embedded integrations need a runnable host project, so both scripts stage the generated code **inside the host codebase itself**. The conformance script additionally builds / installs the host and then runs the conformance suite from a scratch folder of its own in the system temp directory (`mktemp -d "/tmp/<lang>_conformance.XXXXXX"` - never a fixed name, which two runs at once would share), because the conformance suite lives in a separate project.
 
 | Script | Where it operates | What it does to the host source tree |
 |--------|-------------------|---------------------------------------|
 | `run_unittests_<lang>` | Inside the host codebase | Copies `$1` into the module's package path under the host's source tree, then runs the module's unit tests + lint inside the host |
-| `run_conformance_tests_<lang>` | Inside the host codebase, then `/tmp/<lang>_conformance/` (system temp) | Same copy as above, then cleans and builds / installs the host project; copies `$2` (the conformance-tests folder) into the scratch directory, builds the conformance project, and runs the whole suite there against the host build it just installed |
+| `run_conformance_tests_<lang>` | Inside the host codebase, then a scratch folder of its own (`mktemp -d "/tmp/<lang>_conformance.XXXXXX"`) | Same copy as above, then cleans and builds / installs the host project; copies `$2` (the conformance-tests folder) into the scratch directory, builds the conformance project, and runs the whole suite there against the host build it just installed |
 
 This deliberately writes into the host's `src/main/...` and `src/test/...` (or the language equivalent). Two consequences flow from that:
 
@@ -136,7 +136,7 @@ Both scripts are invoked by turri with positional arguments, on the person's mac
 4. **Respect `VERBOSE=1`.** Gate chatty diagnostic prints behind `if [ "${VERBOSE:-}" = "1" ]` (and the PowerShell equivalent). Errors and key step markers print unconditionally
 5. **Resolve paths relative to the script, not `$PWD`.** Use `"$(cd "$(dirname "$0")/<relative-path-to-anchor>" && pwd)"`. Hard-coded `../../` chains break the moment turri's `cwd` changes
 6. **Create destination directories before copying.** `mkdir -p` before any `cp -R` / `rsync` / `robocopy` — most copy commands do not create intermediate directories and fail silently in some shells
-7. **Scope destructive operations narrowly.** Any `rm -rf` (or `Remove-Item -Recurse -Force`) targets only the module's own package path inside the working folder — never the host's `src/`, `target/`, `node_modules/`, `build/`, or `dist/` at the project root. The conformance script cleans the host's build-output directory (e.g. `./target`) only as part of its own build / install step, and removes its system-temp scratch folder on exit
+7. **Scope destructive operations narrowly.** Any `rm -rf` (or `Remove-Item -Recurse -Force`) targets only the module's own package path inside the working folder — never the host's `src/`, `target/`, `node_modules/`, `build/`, or `dist/` at the project root. The conformance script cleans the host's build-output directory (e.g. `./target`) only as part of its own build / install step, and removes its system-temp scratch folder on exit - read-only files too (`chmod -R u+w` before `rm -rf`: Go's module cache is read-only)
 8. **Print where you are before you `cd`.** `echo "Moving to: $DIR"` saves an hour of debugging when paths are wrong. PowerShell: `Write-Host "Moving to: $DIR"`
 
 ## 1. `run_unittests_<lang>` — copy into the host, then run unit tests there

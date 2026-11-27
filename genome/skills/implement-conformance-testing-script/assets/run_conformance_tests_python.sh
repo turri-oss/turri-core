@@ -50,18 +50,19 @@ if [ -n "$MISPLACED" ]; then
   exit 1
 fi
 
-# Working folder lives in the system temp directory. $1 may be an absolute
-# path, so only its basename is used to build the working folder name.
-PYTHON_BUILD_SUBFOLDER="/tmp/python_$(basename "$1")"
+# A working folder of this run's own in the system temp directory - never a fixed name, which two runs at once (two
+# projects, two pulses) would share. $1 may be an absolute path, so only its basename is in the name.
+PYTHON_BUILD_SUBFOLDER="$(mktemp -d "/tmp/python_$(basename "$1").XXXXXX")" || {
+  printf "Error: could not create a working folder in /tmp.\n"
+  exit $UNRECOVERABLE_ERROR_EXIT_CODE
+}
 
-trap 'rm -rf "$PYTHON_BUILD_SUBFOLDER"' EXIT
+# Removed as the script exits, whatever a toolchain left in it read-only.
+trap 'chmod -R u+w "$PYTHON_BUILD_SUBFOLDER" 2>/dev/null; rm -rf "$PYTHON_BUILD_SUBFOLDER"' EXIT
 
 if [ "${VERBOSE:-}" -eq 1 ] 2>/dev/null; then
   printf "Preparing Python build subfolder: $PYTHON_BUILD_SUBFOLDER\n"
 fi
-
-rm -rf "$PYTHON_BUILD_SUBFOLDER"
-mkdir -p "$PYTHON_BUILD_SUBFOLDER"
 
 cp -R "$1"/* "$PYTHON_BUILD_SUBFOLDER"
 

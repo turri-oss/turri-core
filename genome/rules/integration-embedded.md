@@ -120,14 +120,14 @@ The coding agent reads the directives from the ***plain and the shapes from the 
 
 Embedded integrations are tested **inside the host codebase itself**. A module's code and unit tests live in `plain_modules/<module>/code`; its conformance tests live in one folder, `plain_modules/<module>/tests` — the module's whole conformance suite. turri runs two self-contained scripts on the person's machine, once per check: `run_unittests_<lang>.sh <build_folder>` decides the unit tests, and `run_conformance_tests_<lang>.sh <build_folder> <conformance_tests_folder>` (absolute paths) runs the whole conformance suite at once and its exit code decides the conformance tests. There is no prepare-environment script.
 
-Both scripts copy the coding agent's output (`$1`, i.e. `plain_modules/<module>/code/`) into the host's source tree at the module's package path, then compile / test the host project in place. The conformance script also uses a scratch folder in the system temp directory (`/tmp/<lang>_conformance/`), because the conformance suite is a separate project that consumes the host build as a dependency.
+Both scripts copy the coding agent's output (`$1`, i.e. `plain_modules/<module>/code/`) into the host's source tree at the module's package path, then compile / test the host project in place. The conformance script also uses a scratch folder of its own in the system temp directory (`mktemp -d "/tmp/<lang>_conformance.XXXXXX"` - never a fixed name, which two runs at once would share), because the conformance suite is a separate project that consumes the host build as a dependency.
 
 This matters because the integration's generated code references host symbols by their full import path (e.g. `from host_project.integrations.base import IntegrationContract`). Those imports only resolve cleanly when the test process is rooted in the host's package layout — anything else creates path edge cases that bite later in conformance failures.
 
 See [`integration-embedded-testing.md`](integration-embedded-testing.md) for the full per-script contract (arg validation, exit codes, idempotency, output parsing, pass criteria, cross-cutting rules). The summary that belongs in *this* file:
 
 - **`run_unittests_<lang>`** copies `$1` into the host's source tree at the module's package path, then runs the module's unit tests + lint scoped to the module's package
-- **`run_conformance_tests_<lang>`** makes the same copy of `$1` into the host, cleans the host's build-output directory, and runs the host's install / build (e.g. `mvn clean install -DskipTests`) so the conformance project resolves this build from the local dependency cache; then it copies `$2` (the conformance-tests folder) into `/tmp/<lang>_conformance/` (system temp), `cd`s in, builds the conformance project, and runs the whole suite
+- **`run_conformance_tests_<lang>`** makes the same copy of `$1` into the host, cleans the host's build-output directory, and runs the host's install / build (e.g. `mvn clean install -DskipTests`) so the conformance project resolves this build from the local dependency cache; then it copies `$2` (the conformance-tests folder) into its scratch folder (`mktemp -d "/tmp/<lang>_conformance.XXXXXX"`), `cd`s in, builds the conformance project, and runs the whole suite
 
 ### Invariants the scripts must enforce
 
@@ -149,7 +149,7 @@ Before declaring an embedded integration done, in addition to the shared checkli
 - [ ] The stack decisions are transcribed verbatim from the host (no independent stack choices)
 - [ ] Host-package version pins are copied into `***implementation reqs***`
 - [ ] `run_unittests` copies `$1` into the host's source tree at the module's package path and invokes the host's test runner scoped to the module's package
-- [ ] `run_conformance_tests` makes the same copy of `$1` into the host, cleans the host's build-output directory, runs the host's install / build so the conformance suite resolves the integration from the local dependency cache, then copies `$2` into `/tmp/<lang>_conformance/` (system temp), `cd`s in, builds the conformance project, and runs the whole suite
+- [ ] `run_conformance_tests` makes the same copy of `$1` into the host, cleans the host's build-output directory, runs the host's install / build so the conformance suite resolves the integration from the local dependency cache, then copies `$2` into a scratch folder of its own (`mktemp -d "/tmp/<lang>_conformance.XXXXXX"`), `cd`s in, builds the conformance project, and runs the whole suite
 - [ ] There is no `prepare_environment_<lang>` script; each test script is self-contained
 - [ ] Host codebase root is read from a named env var (default value documented in each script's usage) — never hardcoded; the env var name is captured in the integration's configuration concept
 - [ ] `***implementation reqs***` declares **everything about `:UnitTests:`** — integration source path, `:UnitTests:` source path, `:UnitTests:` package, framework + conventions, lint / static-analysis gate — per [`integration-embedded-testing.md`](integration-embedded-testing.md)
