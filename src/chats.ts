@@ -393,6 +393,19 @@ export function createChats(options: CoreOptions): TurriCore {
   /** Chats are opened one at a time: each one's extension is built while it is the one attaching. */
   let opening: Promise<unknown> = Promise.resolve();
   let notices: Array<[string, "info" | "warning" | "error"]> = [];
+  /** Said in the chat shown, as pi says what an extension says - kept for the next chat shown while none can say it. */
+  const say = (message: string, level: "info" | "warning" | "error"): void => {
+    const ui: ExtensionUIContext | undefined = core.shownChat()?.session?.extensionRunner.getUIContext();
+    if (ui === undefined) {
+      notices = [...notices, [message, level] as [string, typeof level]].slice(-10);
+      return;
+    }
+    try {
+      ui.notify(message, level);
+    } catch {
+      /* a chat let go says nothing */
+    }
+  };
   /** What the sentinel put to the person, and turri itself, this session: open until answered or superseded. */
   const open: Notice[] = [];
   /** The work the sentinel's conversation is on, from its brief until its agent is done - `concluded` once it said so. */
@@ -620,7 +633,8 @@ export function createChats(options: CoreOptions): TurriCore {
     showing(chat) {
       shownId = chat.id;
       chat.unread = false;
-      for (const [message, level] of notices.splice(0)) core.notify(message, level);
+      // What was said while no chat could show it: shown now - every front end heard it as it was said.
+      for (const [message, level] of notices.splice(0)) say(message, level);
       changed();
     },
 
@@ -635,16 +649,7 @@ export function createChats(options: CoreOptions): TurriCore {
       const chat = core.shownChat();
       // Heard by every front end as it is said, and said in the chat shown as pi says what an extension says.
       emitSessionEvent(host, { type: "notification", ...(chat !== undefined ? { chat: chat.id } : {}), text: message, level });
-      const ui: ExtensionUIContext | undefined = chat?.session?.extensionRunner.getUIContext();
-      if (ui === undefined) {
-        notices = [...notices, [message, level] as [string, typeof level]].slice(-10);
-        return;
-      }
-      try {
-        ui.notify(message, level);
-      } catch {
-        /* a chat let go says nothing */
-      }
+      say(message, level);
     },
 
     async dispose(asked = {}) {

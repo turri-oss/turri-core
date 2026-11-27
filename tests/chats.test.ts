@@ -156,6 +156,27 @@ describe("the chats of a session", () => {
     expect(status()).toBe("idle");
   });
 
+  it("tells every front end what it says once, and the first chat shown what was said before any could show it", async () => {
+    const events: Array<{ type: string; text?: string }> = [];
+    const shown: string[] = [];
+    let core: TurriCore;
+    core = createChats({ cwd: process.cwd(), host: { onEvent: (event) => events.push(event as never) }, jobs: createJobRegistry(), extension: () => {} });
+    core.setDriver({
+      async create(chat) {
+        const made = fakeSession();
+        (made.session as unknown as { extensionRunner: unknown }).extensionRunner = { getUIContext: () => ({ notify: (message: string) => shown.push(message) }) };
+        chat.session = made.session;
+      },
+      async dispose() {},
+    });
+    core.notify("said before any chat", "warning");
+    await core.open();
+    expect(shown).toEqual(["said before any chat"]);
+    core.notify("said in the chat", "info");
+    expect(shown).toEqual(["said before any chat", "said in the chat"]);
+    expect(events.filter((event) => event.type === "notification").map((event) => event.text)).toEqual(["said before any chat", "said in the chat"]);
+  });
+
   it("has one chat and nowhere to open another without a driver", async () => {
     const core = createChats({ cwd: process.cwd(), host: {}, jobs: createJobRegistry(), extension: () => {} });
     expect(core.canOpen).toBe(false);
