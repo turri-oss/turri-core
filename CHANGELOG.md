@@ -28,6 +28,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 - `launchOutput` events: each launch's agent's words as they stream. `launches.launch` takes `onOutput`, `signal`, `guidance`, `inModule` and `again`, and `launchModule` `onOutput`.
 - `map` events: the spec map as it changes, for a front end that shows it (`Frontend.shows.map`) - its files looked at each second, its marks laid again as the work moves.
 - `settings.set` writes through `/settings`' own path: a path outside the project and a project-wide setting in a module's file refused, the legacy config copied first, a module's file and what overrides it said, and the harness model the session was opened with giving way to the file's, as the coding model does.
+- `isChatEntry` checks what a record carries against its type, field by field: one another extension wrote under a name of turri's, or written wrong, is not turri's. Each entry's and message's schema matches its type exactly, or the core does not compile.
 - `/plain` loads no pi: an editor reads, highlights and checks \*\*\*plain with no agent runtime.
 
 ### Fixed

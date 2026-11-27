@@ -1,3 +1,5 @@
+import { Type, type Static, type TSchema } from "typebox";
+import { Value } from "typebox/value";
 import type { ConfigLine } from "./config.ts";
 import type { SandboxSummary } from "./regenerate/os-sandbox.ts";
 import type { CustomMessageEntry, ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -142,26 +144,111 @@ export type ChatEntry = { [K in keyof ChatEntryMap]: ChatEntryOf<K> }[keyof Chat
 /** Every customType turri uses, entries and messages. */
 export type ChatEntryType = ChatEntry["customType"];
 
-const entries = { turri_banner: 1, turri_version: 1, turri_command_outcome: 1, turri_btw: 1, turri_skill_message: 1, turri_exchange: 1, turri_job: 1, turri_history: 1, turri_milestone: 1, turri_jobs: 1, turri_notice: 1, turri_notice_over: 1, turri_sentinel_concluded: 1, turri_skill_run: 1 } satisfies Record<keyof ChatEntryMap, 1>;
-const needsDetails = {
-  turri_command_outcome: false, turri_job: true, turri_sentinel_concluded: true,
-  turri_skill_run: true, turri_skill_report: true, turri_spec_conflict: true,
-  turri_sentinel_pulse: true, turri_sentinel_check: true, turri_sentinel_resume: false,
-  turri_job_landed: true, turri_notice_answer: false, turri_launch: true,
-} satisfies { [K in keyof ChatMessageMap]: ChatMessageMap[K] extends undefined ? false : true };
+// What each entry's data and each message's details must be, checked as a record is read: one saved by another
+// extension, or written wrong, is not turri's. Each schema is its type's, exactly (`Same` below): changing one alone
+// does not compile.
+const Str = Type.String();
+const Opt = <T extends TSchema>(schema: T) => Type.Optional(schema);
+const Text = Type.Object({ text: Str });
+const ModuleText = Type.Object({ module: Str, text: Str });
+const NoticeStates = Type.Enum(["open", "accepted", "steered", "dismissed", "ignored", "superseded"]);
+const Verdict = Type.Enum(["holds", "wrong", "unchecked"]);
+const JobRefSchema = Type.Object({ jobId: Str, status: Type.Enum(["queued", "running", "succeeded", "failed", "stopped"]) });
+
+const ENTRY_SCHEMAS = {
+  [BANNER_ENTRY]: Type.Object({
+    name: Opt(Str),
+    version: Str,
+    commit: Opt(Str),
+    changed: Opt(Type.Boolean()),
+    pending: Type.Number(),
+    sandbox: Opt(Type.Object({ level: Type.Enum(["ok", "limited"]), text: Str })),
+    versions: Opt(Type.Array(Str)),
+    config: Opt(Type.Array(Type.Object({ kind: Type.Enum(["broken", "renamed", "old-beside-new", "unknown"]), file: Str, text: Str }))),
+  }),
+  [VERSION_ENTRY]: Text,
+  [COMMAND_OUTCOME]: Type.Object({ command: Str, text: Opt(Str), level: Opt(Type.Enum(["info", "warning", "error"])), echoed: Opt(Type.Boolean()) }),
+  [SIDE_ENTRY]: Type.Object({ question: Str, answer: Str }),
+  [SKILL_MESSAGE_ENTRY]: Type.Object({ text: Str, skill: Str }),
+  [INTERVIEW_ENTRY]: Type.Object({ skill: Str, said: Opt(Str), question: Str, answer: Str }),
+  [JOB_ENTRY]: Type.Object({ id: Str, summary: Str, status: Type.Enum(["succeeded", "failed", "stopped"]), incomplete: Opt(Type.Boolean()), duration: Str, spent: Opt(Str), text: Str }),
+  [HISTORY_ENTRY]: ModuleText,
+  [MILESTONE_ENTRY]: ModuleText,
+  [JOBS_LIST_ENTRY]: Text,
+  [NOTICE_ENTRY]: Type.Object({
+    kind: Opt(Type.Enum(["sentinel-start", "fixed"])),
+    severity: Type.Enum(["error", "warning", "info"]),
+    summary: Str,
+    evidence: Type.Array(Str),
+    actions: Type.Array(Type.Object({ label: Str, task: Str })),
+    module: Opt(Str),
+    job: Opt(Str),
+    pulse: Opt(Type.Number()),
+    check: Opt(Str),
+    ignorable: Opt(Type.Boolean()),
+    id: Str,
+    chat: Str,
+    state: NoticeStates,
+    at: Str,
+  }),
+  [NOTICE_OVER_ENTRY]: Type.Object({ state: NoticeStates, summary: Str }),
+  [CONCLUDED_ENTRY]: Type.Object({ job: Opt(Str), check: Opt(Str), verdict: Verdict, summary: Str, module: Opt(Str), pulse: Opt(Type.Number()) }),
+  [SKILL_RUN_ENTRY]: Text,
+};
+
+/** A message's details: a schema, or none for one that carries none. */
+const MESSAGE_SCHEMAS = {
+  [COMMAND_OUTCOME]: undefined,
+  [JOB_ENTRY]: JobRefSchema,
+  [CONCLUDED_ENTRY]: Type.Object({ jobId: Opt(Str), checkId: Opt(Str), verdict: Verdict }),
+  [SKILL_RUN_ENTRY]: Type.Object({ skills: Type.Array(Str), runs: Type.Array(Type.Object({ skill: Str, kind: Opt(Type.Enum(["unit", "conformance"])), plainFile: Opt(Str) })) }),
+  [SKILL_REPORT_ENTRY]: Type.Object({ skills: Type.Array(Str) }),
+  [SPEC_CONFLICT_MESSAGE]: Type.Object({ jobId: Str }),
+  [SENTINEL_PULSE_MESSAGE]: JobRefSchema,
+  [SENTINEL_CHECK_MESSAGE]: Type.Object({ checkId: Str, module: Str, funcIds: Type.Array(Str) }),
+  [SENTINEL_RESUME_MESSAGE]: undefined,
+  [JOB_LANDED_MESSAGE]: JobRefSchema,
+  [NOTICE_ANSWER_MESSAGE]: undefined,
+  [LAUNCH_MESSAGE]: Type.Object({ launch: Str, status: Type.Enum(["waiting", "running", "launched", "failed", "stopped", "superseded"]), replacedBy: Opt(Str) }),
+};
+
+/**
+ * Whether two types are the same: each assignable to the other, with the same keys - an optional one too - all the way
+ * down, through arrays and the members of unions.
+ */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? SameKeys<A, B> : false) : false;
+type SameKeys<A, B> = [A] extends [readonly (infer X)[]]
+  ? [B] extends [readonly (infer Y)[]] ? Same<X, Y> : false
+  : [A] extends [object]
+    ? [keyof A] extends [keyof B] ? ([keyof B] extends [keyof A] ? (false extends { [K in keyof A & keyof B]-?: Same<NonNullable<A[K]>, NonNullable<B[K]>> }[keyof A & keyof B] ? false : true) : false) : false
+    : true;
+type StaticOf<T> = T extends TSchema ? Static<T> : undefined;
+// Each schema is its type's: a field added, removed or retyped in one alone fails here.
+const entriesMatch: { [K in keyof ChatEntryMap]: Same<StaticOf<(typeof ENTRY_SCHEMAS)[K]>, ChatEntryMap[K]> } = {
+  turri_banner: true, turri_version: true, turri_command_outcome: true, turri_btw: true, turri_skill_message: true, turri_exchange: true, turri_job: true,
+  turri_history: true, turri_milestone: true, turri_jobs: true, turri_notice: true, turri_notice_over: true, turri_sentinel_concluded: true, turri_skill_run: true,
+};
+const messagesMatch: { [K in keyof ChatMessageMap]: Same<StaticOf<(typeof MESSAGE_SCHEMAS)[K]>, ChatMessageMap[K]> } = {
+  turri_command_outcome: true, turri_job: true, turri_sentinel_concluded: true, turri_skill_run: true, turri_skill_report: true, turri_spec_conflict: true,
+  turri_sentinel_pulse: true, turri_sentinel_check: true, turri_sentinel_resume: true, turri_job_landed: true, turri_notice_answer: true, turri_launch: true,
+};
+void entriesMatch;
+void messagesMatch;
 
 /** A record of pi's transcript: an entry of its session, or a custom message as pi delivers it. */
 export type TranscriptRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
 
 /**
- * Whether a record of pi's transcript is one turri wrote, by its reserved type and the envelope of its payload. Narrows
- * to ChatEntry; safe as an array filter. Data saved by an earlier turri may lack a field added since: the fields a later
- * turri added are optional in their types.
+ * Whether a record of pi's transcript is one turri wrote: its type is turri's, and what it carries is what that type
+ * carries - every field its type has, of its type. Narrows to ChatEntry; safe as an array filter. A record another
+ * extension wrote under a name of turri's, or one written wrong, is not. Data saved by an earlier turri may lack a field
+ * added since: the fields a later turri added are optional in their types.
  */
 export function isChatEntry<T extends TranscriptRecord>(entry: T): entry is T & ChatEntry {
-  if (entry.type === "custom") return Object.hasOwn(entries, entry.customType) && typeof entry.data === "object" && entry.data !== null;
-  if (entry.type !== "custom_message" || !Object.hasOwn(needsDetails, entry.customType)) return false;
-  return needsDetails[entry.customType as keyof ChatMessageMap] ? typeof entry.details === "object" && entry.details !== null : entry.details === undefined;
+  if (entry.type === "custom") return Object.hasOwn(ENTRY_SCHEMAS, entry.customType) && Value.Check(ENTRY_SCHEMAS[entry.customType as keyof ChatEntryMap], entry.data);
+  if (entry.type !== "custom_message" || !Object.hasOwn(MESSAGE_SCHEMAS, entry.customType)) return false;
+  const schema = MESSAGE_SCHEMAS[entry.customType as keyof ChatMessageMap];
+  return schema === undefined ? entry.details === undefined : Value.Check(schema, entry.details);
 }
 
 /** Whether a record of pi's transcript - or a ChatEntry already - is turri's of this `customType`. Narrows to it. */

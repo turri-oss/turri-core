@@ -92,7 +92,7 @@ Whatever the front end, the same rules hold: turri appends its entries to a chat
 
 ## The transcript's entries
 
-What the core keeps in a chat besides its messages - the entries it appends and the custom messages it sends - is typed in `src/chat-entries.ts` and exported: `ChatEntryMap` (each entry's `data` by its `customType`), `ChatMessageMap` (each message's `details`), a constant for each type, and `ChatEntry`, their union. `isChatEntry(record)` tells turri's records in a pi transcript, safe as an array filter; `isChatEntryOf(record, customType)` narrows to one. A field a later turri added is optional, as a chat saved earlier lacks it.
+What the core keeps in a chat besides its messages - the entries it appends and the custom messages it sends - is typed in `src/chat-entries.ts` and exported: `ChatEntryMap` (each entry's `data` by its `customType`), `ChatMessageMap` (each message's `details`), a constant for each type, and `ChatEntry`, their union. `isChatEntry(record)` tells turri's records in a pi transcript, safe as an array filter: its type is turri's and what it carries is that type's, field by field - a field it does not know is let through, one missing or of another type is not; `isChatEntryOf(record, customType)` narrows to one. A field a later turri added is optional, as a chat saved earlier lacks it.
 
 | type | constant | appended or sent | data |
 | --- | --- | --- | --- |
