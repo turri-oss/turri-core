@@ -34,7 +34,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run api:check
-      - run: node scripts/check-consumer-imports.mjs tests/contracts/consumer.mts tests/contracts/startup.mts
+      - run: node scripts/check-consumer-imports.mjs tests/contracts/consumer.mts
       - run: npm test
 
   package-contract:

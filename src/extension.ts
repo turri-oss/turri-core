@@ -458,19 +458,6 @@ export function createTurriCore(
   return core;
 }
 
-/** The session pi builds turri's extension into when it is given turri's file rather than a session's factory. */
-const SESSION = Symbol.for("turri.session");
-
-/** The session of this process: pi-launch.ts's, or one made as pi first builds the extension (`pi -e src/extension.ts`). */
-export function processSession(make: () => TurriCore = () => createTurriCore()): TurriCore {
-  const global = globalThis as Record<symbol, TurriCore | undefined>;
-  return (global[SESSION] ??= make());
-}
-
-// Loaded as nothing while the person's pi extensions are loaded only for their providers (installed-providers.ts): an older
-// turri installed into every pi is among them, and would start a session of its own.
-const extension: ExtensionFactory = (pi) => (process.env[LOADING_PROVIDERS] === "1" ? undefined : processSession().extension(pi));
-export default extension;
 
 /**
  * The session's work loop, for a host to read: made with the first chat's context - the models it plans with - when no

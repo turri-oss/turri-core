@@ -273,7 +273,7 @@ describe("concepts in a piece of text", () => {
 
 describe("where a module's test plain files are", () => {
   it("is the project's tests folder unless test-dir names another, its stack's over the project's", async () => {
-    const { DEFAULT_TEST_DIR, testDirOf } = await import("../src/api/config.ts");
+    const { DEFAULT_TEST_DIR, testDirOf } = await import("../src/api/project.ts");
     expect(DEFAULT_TEST_DIR).toBe("tests");
     writeFileSync(join(project, "config.turri.yaml"), "");
     expect(testDirOf(join(project, "app.plain"))).toBe(join(project, "tests"));

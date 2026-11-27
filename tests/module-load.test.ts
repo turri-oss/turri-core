@@ -7,7 +7,12 @@ import { describe, expect, it } from "vitest";
  */
 const FIRST = [
   "src/extension.ts",
-  "src/host.ts",
+  "src/session.ts",
+  "src/api/session.ts",
+  "src/api/plain.ts",
+  "src/api/project.ts",
+  "src/api/models.ts",
+  "src/api/system.ts",
   "src/chats.ts",
   "src/sentinel.ts",
   "src/sentinel-chat.ts",

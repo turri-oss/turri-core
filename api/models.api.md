@@ -4,11 +4,13 @@
 
 ```ts
 
+import { ModelRuntime } from '@earendil-works/pi-coding-agent';
+
 // @public
-const AGENT_ROLES: readonly ["chat", "sentinel", "planner", "capture-exploration", "capture-analysis", "capture", "diagnosis", "launch", "coding", "conformance", "explorer", "reviewer", "test-reviewer", "judge", "arbiter", "debugger"];
+export const AGENT_ROLES: readonly ["chat", "sentinel", "planner", "capture-exploration", "capture-analysis", "capture", "diagnosis", "launch", "coding", "conformance", "explorer", "reviewer", "test-reviewer", "judge", "arbiter", "debugger"];
 
 // @public (undocumented)
-type AgentRole = (typeof AGENT_ROLES)[number];
+export type AgentRole = (typeof AGENT_ROLES)[number];
 
 // @public
 export const BEDROCK_DEFAULT: Required<BedrockChoice>;
@@ -38,6 +40,9 @@ export function bedrockDefaultModels(catalogue: ModelCatalogue, choice: BedrockC
 
 // @public
 export type BedrockMaker = string;
+
+// @public
+export function bedrockMakerOf(answer: string, catalogue?: ModelCatalogue): BedrockMaker | undefined;
 
 // @public
 export function bedrockMakers(catalogue: ModelCatalogue): BedrockOffer[];
@@ -94,6 +99,9 @@ export function bedrockRegionFor(projectDir: string, options?: {
 }): BedrockRegion;
 
 // @public
+export function bedrockRegionOf(maker: BedrockMaker, answer: string, catalogue?: ModelCatalogue): string | undefined;
+
+// @public
 export type BedrockRegionSource =
 /** AWS_REGION or AWS_DEFAULT_REGION, set by the person. */
 "set"
@@ -103,9 +111,6 @@ export type BedrockRegionSource =
 | "profile"
 /** Nothing names one: pi's default, us-east-1. */
 | "default";
-
-// @public
-export function booleanOption(value: string): boolean | undefined;
 
 // @public
 export interface CatalogueModel {
@@ -125,55 +130,11 @@ export interface CatalogueModel {
 }
 
 // @public
-export const CONFIG_FILE = "config.turri.yaml";
-
-// @public
-export function configForSpec(plainFile: string): ProjectConfig;
-
-// @public (undocumented)
-export interface ConfigLine {
-    file: string;
-    // (undocumented)
-    kind: ConfigLineKind;
-    text: string;
-}
-
-// @public
-export type ConfigLineKind = "broken" | "renamed" | "old-beside-new" | "unknown";
-
-// @public
-export function configLines(root: string): ConfigLine[];
-
-// @public
-export function configSettings(): Setting[];
-
-// @public
-export interface ConfiguredModel {
-    model?: string;
-    // (undocumented)
-    thinking?: ThinkingLevel;
-}
-
-// @public
-export function configuredModel(config: ProjectConfig, key: string): ConfiguredModel | undefined;
-
-// @public
-export function currentValue(text: string, key: string): unknown;
-
-// @public
-export function debugMode(project: string): boolean;
-
-// @public
-export const DEFAULT_TEST_DIR = "tests";
-
-// @public
-export function defaultParallelJobs(cores?: number): number;
-
-// @public
-export type Effect = "now" | "next-message" | "next-pulse" | "next-plan" | "next-test-run" | "next-landing" | "next-regenerate" | "next-start";
-
-// @public
-export const EFFECT_TEXT: Record<Effect, string>;
+export const EXTENSION_PROVIDERS: Record<string, {
+    label: string;
+    install: string;
+    signIn: string;
+}>;
 
 // @public
 export function hasBedrockPreset(choice: BedrockChoice): choice is {
@@ -182,23 +143,10 @@ export function hasBedrockPreset(choice: BedrockChoice): choice is {
 };
 
 // @public
-export function hasProjectConfig(root: string): boolean;
+export function installedModelRuntime(cwd?: string): Promise<ModelRuntime>;
 
 // @public
-export function initConfig(dir: string, options?: InitConfigOptions): Promise<{
-    written: boolean;
-    message: string;
-}>;
-
-// @public (undocumented)
-export interface InitConfigOptions {
-    bedrock?: BedrockChoice;
-    catalogue?: ModelCatalogue;
-    force?: boolean;
-    models?: ModelChoice;
-    paint?: Paint;
-    vendor?: Vendor;
-}
+export function loginDeviceId(cwd: string, agentDir?: string): string;
 
 // @public
 export function makerLabel(maker: string): string;
@@ -209,9 +157,11 @@ export interface ModelCatalogue {
 }
 
 // @public
-export type ModelChoice = Omit<ModelSet, "strong"> & {
-    strong?: string;
-};
+export interface ModelChoice {
+    model?: string;
+    // (undocumented)
+    thinking?: ThinkingLevel;
+}
 
 // @public
 export interface ModelSet {
@@ -224,37 +174,16 @@ export interface ModelSet {
 }
 
 // @public
-export function modelSpec(choice: ConfiguredModel | undefined): string | undefined;
-
-// @public
-export function moduleConfigsOf(root: string): string[];
-
-// @public (undocumented)
-export const MODULES_DIR = "plain_modules";
-
-// @public
-export function overriddenBy(dir: string, text: string, setting: Setting, module?: string): string[];
-
-// @public
-export function overrideConfig(overrides: RunOverrides): void;
-
-// @public
-interface Paint {
-    // (undocumented)
-    accent: (text: string) => string;
-    // (undocumented)
-    bold: (text: string) => string;
-    // (undocumented)
-    muted: (text: string) => string;
-    // (undocumented)
-    success: (text: string) => string;
-}
+export function modelSpec(choice: ModelChoice | undefined): string | undefined;
 
 // @public
 export function piModelCatalogue(): Promise<ModelCatalogue>;
 
 // @public
-type PresetMaker = "anthropic" | "openai";
+export type PresetMaker = "anthropic" | "openai";
+
+// @public
+export const priced: (model: CatalogueModel) => string;
 
 // @public (undocumented)
 export interface ProjectConfig {
@@ -265,13 +194,13 @@ export interface ProjectConfig {
     allowToStopJobs?: boolean;
     baseFolder?: string;
     cacheKeep?: number;
-    codingModel?: ConfiguredModel;
+    codingModel?: ModelChoice;
     compactAt?: number;
     conformanceTests?: boolean;
     conformanceTestsScript?: string;
     debug?: boolean;
-    harnessModel?: ConfiguredModel;
-    judgeModel?: ConfiguredModel;
+    harnessModel?: ModelChoice;
+    judgeModel?: ModelChoice;
     launchAfterPulse?: boolean;
     ledgerKeep?: number;
     maxLinesPerPulse?: number;
@@ -292,71 +221,38 @@ export interface ProjectConfig {
 }
 
 // @public
-export function projectDirOf(plainFile: string): string;
-
-// @public
 export function projectModels(config: Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "models">): {
-    harness?: ConfiguredModel;
-    coding?: ConfiguredModel;
-    judge?: ConfiguredModel;
+    harness?: ModelChoice;
+    coding?: ModelChoice;
+    judge?: ModelChoice;
 };
 
 // @public
-export function readConfigText(dir: string): string;
-
-// @public
-export function readProjectConfig(root: string, module?: string): ProjectConfig;
-
-// @public
-interface RoleChoice extends ConfiguredModel {
+export interface RoleChoice extends ModelChoice {
     // (undocumented)
     turnLimit?: number;
 }
 
 // @public
-type RunOverrides = Partial<Pick<ProjectConfig, "harnessModel" | "codingModel" | "judgeModel" | "review" | "mutationTesting">>;
+export type SentinelSetting = boolean | "ask";
 
 // @public
-type SentinelSetting = boolean | "ask";
+export function splitModelSpec(spec: string | undefined): ModelChoice;
 
 // @public (undocumented)
-export interface Setting {
-    about: string;
-    // (undocumented)
-    effect: Effect;
-    key: string;
-    // (undocumented)
-    kind: SettingKind;
-    min?: number;
-    options?: string[];
-    personOnly?: boolean;
-    projectOnly?: boolean;
-    unset: string;
-}
+export const THINKING_LEVELS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 // @public (undocumented)
-export type SettingKind = "boolean" | "choice" | "number" | "model" | "list" | "path";
-
-// @public
-export function skillModel(root: string, role?: "harness" | "coding"): string | undefined;
-
-// @public
-export function splitModelSpec(spec: string | undefined): ConfiguredModel;
-
-// @public
-export function testDirOf(plainFile: string): string;
-
-// @public (undocumented)
-const THINKING_LEVELS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-// @public (undocumented)
-type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 // @public
 export type Vendor = "anthropic" | "openai" | "google" | "amazon-bedrock" | "claude-code" | "other";
 
-// @public (undocumented)
-interface VendorPreset {
+// @public
+export function vendorOf(answer: string): Vendor | undefined;
+
+// @public
+export interface VendorPreset {
     coding: string;
     harness: string;
     keys: Array<{

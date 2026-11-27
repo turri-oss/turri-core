@@ -18,7 +18,7 @@ import { haltLaunched, stopJob } from "./loop-tools.ts";
 import { lookAhead, nextPulses } from "./preview.ts";
 import { describeTurnIncident, type ModelEvent } from "./regenerate/activity.ts";
 import type { Job } from "./regenerate/jobs.ts";
-import { followLaunchedLogs, runningLaunched, stopLaunched } from "./regenerate/launch.ts";
+import { followLaunchedLogs, runningLaunched, stopLaunched, type LaunchedProcess } from "./regenerate/launch.ts";
 import { onLedgerEvent } from "./regenerate/ledger.ts";
 import { earlierPulses, ledgerProjects, type RunView } from "./regenerate/ledger-view.ts";
 import type { ModuleStatus, PlannedPulse } from "./regenerate/loop.ts";
@@ -289,7 +289,7 @@ export interface Turri {
     /** This session's launches, oldest first. */
     list(): Launch[];
     /** What launches started and is running now, on this machine. */
-    running(): ReturnType<typeof runningLaunched>;
+    running(): LaunchedProcess[];
     /** Launch a module's code; resolves when the launch ends. */
     launch(plainFile?: string, options?: { chat?: string }): Promise<Launch>;
     /** Follow what launches started as it logs, a line at a time, until nothing runs or `signal` is aborted. */

@@ -319,7 +319,13 @@ export function underAny(path: string, roots: string[]): boolean {
 }
 
 /** Where the agents' commands run, in one line for the person: which walls are up, or that only the shared ones are. */
-export function sandboxSummary(wall: Wall = sandboxAvailable()): { level: "ok" | "limited"; text: string } {
+/** Where the agents' commands run, as the banner says it: the walls up, and why there is no OS sandbox when there is none. */
+export interface SandboxSummary {
+  level: "ok" | "limited";
+  text: string;
+}
+
+export function sandboxSummary(wall: Wall = sandboxAvailable()): SandboxSummary {
   if (wall.kind === "none") return { level: "limited", text: `agents' commands run on this machine behind the command check and the audit - no OS sandbox: ${wall.why} (turri doctor)` };
   return { level: "ok", text: `agents' commands run on this machine behind the command check, ${wall.kind === "seatbelt" ? "Seatbelt" : "bubblewrap"} and the audit` };
 }

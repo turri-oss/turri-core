@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyBedrockRegion, bedrockRegionFor, describeBedrockRegion, profileRegion, regionInGeography, TURRI_AWS_REGION } from "../src/bedrock-region.ts";
-import * as host from "../src/api/config.ts";
+import * as host from "../src/api/models.ts";
 import { checkBedrockRegion } from "../src/setup.ts";
 
 let dir: string;

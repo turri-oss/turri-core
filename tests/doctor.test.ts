@@ -13,7 +13,7 @@ vi.mock("../src/model-check.ts", async (original) => ({
   },
 }));
 
-const { doctor } = await import("../src/host.ts");
+const { doctor } = await import("../src/api/system.ts");
 
 /** doctor as a host runs it: the checks returned, for its own UI - never printed, never asked. */
 

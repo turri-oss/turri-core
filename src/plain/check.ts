@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { configModuleFor, testDirOf } from "../config.ts";
 import { projectDirOf, resolveTemplateDirs } from "../regenerate/paths.ts";
-import { isImportModule } from "../regenerate/requires.ts";
+import { isImportModule } from "../regenerate/requires-chain.ts";
 import { testingGap } from "../regenerate/testing-steps.ts";
 import { missingBaseFolder } from "../regenerate/base-folder.ts";
 import { conformanceTestsOn } from "../conformance-switch.ts";

@@ -108,7 +108,8 @@ describe("turri for a host that runs it itself", () => {
   });
 
   it("writes a project's first config.turri.yaml with the models of the vendor the host chose", async () => {
-    const { initConfig, VENDORS } = await import("../src/api/config.ts");
+    const { initConfig } = await import("../src/api/project.ts");
+    const { VENDORS } = await import("../src/api/models.ts");
     const dir = mkdtempSync(join(tmpdir(), "turri-host-"));
     const result = await initConfig(dir, { vendor: "anthropic" });
     const written = readFileSync(join(dir, "config.turri.yaml"), "utf8");
@@ -117,16 +118,19 @@ describe("turri for a host that runs it itself", () => {
     expect(written).toContain(`coding-model: ${VENDORS.anthropic.coding}`);
   });
 
-  it("gives a host the ledger, to hear live and to read back earlier sessions' pulses", async () => {
-    const host = await import("../src/api/ledger.ts");
-    for (const name of ["onLedgerEvent", "readLedger", "ledgerDir", "runViews", "pulseView", "describePulseView", "describeRuns", "ledgerProjects", "earlierPulses", "asJob"] as const) {
+  it("gives a front end the ledger to read back earlier sessions' pulses - a session's events tell it live", async () => {
+    const host = await import("../src/api/project.ts");
+    for (const name of ["readLedger", "ledgerDir", "runViews", "pulseView", "describePulseView", "describeRuns", "ledgerProjects", "earlierPulses", "asJob"] as const) {
       expect(typeof host[name], name).toBe("function");
     }
   });
 
-  it("publishes the host entry compiled as @turri-dev/core/host, and runs a linked clone's source under turri-source", () => {
-    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { exports: Record<string, { import?: string; types?: string }> };
-    expect(manifest.exports["./host"]).toEqual({ "turri-source": "./src/host.ts", types: "./dist/host.d.ts", import: "./dist/host.js" });
+  it("publishes five entries by domain, each compiled, ESM alone, and a linked clone's source under turri-source", () => {
+    const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { exports: Record<string, unknown> };
+    expect(Object.keys(manifest.exports)).toEqual([".", "./plain", "./project", "./models", "./system", "./package.json"]);
+    for (const [entry, name] of [[".", "session"], ["./plain", "plain"], ["./project", "project"], ["./models", "models"], ["./system", "system"]] as const) {
+      expect(manifest.exports[entry]).toEqual({ "turri-source": `./src/api/${name}.ts`, types: `./dist/api/${name}.d.ts`, import: `./dist/api/${name}.js` });
+    }
   });
 });
 
@@ -325,7 +329,7 @@ describe("the conform tool while conformance tests are off", () => {
 
 describe("config settings for a host", () => {
   it("lists every setting /settings changes, rules-off offering turri's own rules, and reads what the file has", async () => {
-    const host = await import("../src/api/config.ts");
+    const host = await import("../src/api/project.ts");
     const keys = host.configSettings().map((setting) => setting.key);
     expect(keys).toEqual(expect.arrayContaining(["harness-model", "review", "mutation-testing", "launch-after-pulse", "parallel-jobs", "models.coding"]));
     const review = host.configSettings().find((setting) => setting.key === "review")!;

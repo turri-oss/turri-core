@@ -41,8 +41,15 @@ export interface Token {
   scopes: string[];
 }
 
-/** Where the lines so far leave off: the blocks open at the end of the last one. */
-export type HighlightState = ReadonlyArray<Extract<Rule, { kind: "block" }>>;
+/** Where the lines so far leave off - the blocks open at the end of the last one - to give back with the next line. Opaque. */
+export interface HighlightState {
+  readonly __highlightState: true;
+}
+
+/** What a HighlightState is inside: the blocks open, innermost last. */
+type OpenBlocks = ReadonlyArray<Extract<Rule, { kind: "block" }>>;
+const blocksOf = (state: HighlightState | undefined): OpenBlocks => (state as unknown as OpenBlocks | undefined) ?? [];
+const stateOf = (blocks: OpenBlocks): HighlightState => blocks as unknown as HighlightState;
 
 const compile = (source: string): RegExp => new RegExp(source, "dg");
 
@@ -133,10 +140,10 @@ function piecesOf(match: RegExpExecArray, scopes: string[], name: string | undef
  * One line of ***plain, highlighted: its tokens, and the state the next line starts from - the blocks
  * still open at its end.
  */
-export function highlightLine(line: string, state: HighlightState = []): { tokens: Token[]; state: HighlightState } {
+export function highlightLine(line: string, state?: HighlightState): { tokens: Token[]; state: HighlightState } {
   const rules = plainGrammar();
-  if (rules === null) return { tokens: line === "" ? [] : [{ text: line, scopes: [] }], state };
-  const stack = [...state];
+  if (rules === null) return { tokens: line === "" ? [] : [{ text: line, scopes: [] }], state: stateOf(blocksOf(state)) };
+  const stack = [...blocksOf(state)];
   const tokens: Token[] = [];
   const scopesNow = () => stack.map((block) => block.name).filter((name): name is string => name !== undefined);
   const push = (text: string, scopes: string[]) => {
@@ -184,12 +191,12 @@ export function highlightLine(line: string, state: HighlightState = []): { token
     } else at = next;
     if (at >= line.length) break;
   }
-  return { tokens, state: stack };
+  return { tokens, state: stateOf(stack) };
 }
 
 /** Lines of ***plain, highlighted one after another - a block opened on one carried to the next. */
 export function highlightLines(lines: string[]): Token[][] {
-  let state: HighlightState = [];
+  let state: HighlightState | undefined;
   return lines.map((line) => {
     const result = highlightLine(line, state);
     state = result.state;

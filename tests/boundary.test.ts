@@ -419,14 +419,14 @@ describe("the core's boundary with the terminal", () => {
       "src/example.ts:19 imports main from @earendil-works/pi-coding-agent - the terminal's",
       "src/example.ts:23 uses ui.custom - the terminal's view does",
     ]);
-    // The host and all other entries are bound by the same rule.
+    // The public entries and every other file are bound by the same rule.
     const whole = 'export * as pi from "@earendil-works/pi-coding-agent";\n';
-    expect(crossings("src/host.ts", whole)).toHaveLength(1);
+    expect(crossings("src/api/session.ts", whole)).toHaveLength(1);
     expect(crossings("src/notice.ts", whole).map((crossing) => crossing.message)).toEqual([
       "src/notice.ts:1 re-exports the whole of @earendil-works/pi-coding-agent as pi - its terminal with it",
     ]);
-    expect(crossings("src/host.ts", 'export * from "@earendil-works/pi-coding-agent";\n').map((crossing) => crossing.message)).toEqual([
-      "src/host.ts:1 re-exports the whole of @earendil-works/pi-coding-agent - its terminal with it",
+    expect(crossings("src/api/session.ts", 'export * from "@earendil-works/pi-coding-agent";\n').map((crossing) => crossing.message)).toEqual([
+      "src/api/session.ts:1 re-exports the whole of @earendil-works/pi-coding-agent - its terminal with it",
     ]);
   });
 

@@ -1,5 +1,5 @@
 import type { ConfigLine } from "./config.ts";
-import type { sandboxSummary } from "./regenerate/os-sandbox.ts";
+import type { SandboxSummary } from "./regenerate/os-sandbox.ts";
 import type { CustomMessageEntry, ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
 import type { Notice, Conclusion } from "./notice.ts";
 import type { Job } from "./regenerate/jobs.ts";
@@ -69,7 +69,7 @@ export interface BannerData {
   changed?: boolean;
   /** How many skills failed to load. */
   pending: number;
-  sandbox?: ReturnType<typeof sandboxSummary>;
+  sandbox?: SandboxSummary;
   /** An earlier turri's: a newer turri out, or one hidden behind it on the PATH, a line each. */
   versions?: string[];
   /** What turri says of the config files: a key it renamed in one, an old name left, keys it does not read. */
@@ -115,7 +115,8 @@ export interface ChatEntryMap {
   [SKILL_RUN_ENTRY]: { text: string };
 }
 
-type JobRef = { jobId: string; status: Job["status"] };
+/** A pulse a message is about. */
+export type JobRef = { jobId: string; status: Job["status"] };
 /** Each custom message turri sends a chat, by its `customType`: its `details` - undefined for one that carries none. */
 export interface ChatMessageMap {
   [COMMAND_OUTCOME]: undefined;
@@ -136,10 +137,8 @@ export interface ChatMessageMap {
 export type ChatEntryOf<K extends keyof ChatEntryMap> = { type: "custom"; customType: K; data: ChatEntryMap[K] };
 /** A custom message turri sent, by its type. */
 export type ChatMessageOf<K extends keyof ChatMessageMap> = Pick<CustomMessageEntry, "type" | "content" | "display"> & { customType: K } & (ChatMessageMap[K] extends undefined ? { details?: undefined } : { details: ChatMessageMap[K] });
-type Entry = { [K in keyof ChatEntryMap]: ChatEntryOf<K> }[keyof ChatEntryMap];
-type Message = { [K in keyof ChatMessageMap]: ChatMessageOf<K> }[keyof ChatMessageMap];
 /** A turri entry or message from pi's live transcript or a saved branch. Narrow by `type`, then `customType`. */
-export type ChatEntry = Entry | Message;
+export type ChatEntry = { [K in keyof ChatEntryMap]: ChatEntryOf<K> }[keyof ChatEntryMap] | { [K in keyof ChatMessageMap]: ChatMessageOf<K> }[keyof ChatMessageMap];
 /** Every customType turri uses, entries and messages. */
 export type ChatEntryType = ChatEntry["customType"];
 
@@ -151,22 +150,23 @@ const needsDetails = {
   turri_job_landed: true, turri_notice_answer: false, turri_launch: true,
 } satisfies { [K in keyof ChatMessageMap]: ChatMessageMap[K] extends undefined ? false : true };
 
-type PiRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
+/** A record of pi's transcript: an entry of its session, or a custom message as pi delivers it. */
+export type TranscriptRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
 
 /**
  * Whether a record of pi's transcript is one turri wrote, by its reserved type and the envelope of its payload. Narrows
  * to ChatEntry; safe as an array filter. Data saved by an earlier turri may lack a field added since: the fields a later
  * turri added are optional in their types.
  */
-export function isChatEntry<T extends PiRecord>(entry: T): entry is T & ChatEntry {
+export function isChatEntry<T extends TranscriptRecord>(entry: T): entry is T & ChatEntry {
   if (entry.type === "custom") return Object.hasOwn(entries, entry.customType) && typeof entry.data === "object" && entry.data !== null;
   if (entry.type !== "custom_message" || !Object.hasOwn(needsDetails, entry.customType)) return false;
   return needsDetails[entry.customType as keyof ChatMessageMap] ? typeof entry.details === "object" && entry.details !== null : entry.details === undefined;
 }
 
-/** Whether a record of pi's transcript is turri's of this `customType`. Narrows to it. */
-export function isChatEntryOf<T extends PiRecord, K extends ChatEntryType>(entry: T, customType: K): entry is T & Extract<ChatEntry, { customType: K }> {
-  return (entry as { customType?: string }).customType === customType && isChatEntry(entry);
+/** Whether a record of pi's transcript - or a ChatEntry already - is turri's of this `customType`. Narrows to it. */
+export function isChatEntryOf<T extends TranscriptRecord | ChatEntry, K extends ChatEntryType>(entry: T, customType: K): entry is T & Extract<ChatEntry, { customType: K }> {
+  return (entry as { customType?: string }).customType === customType && isChatEntry(entry as TranscriptRecord);
 }
 
 // Both writers check the same discriminated payloads that readers narrow above.
@@ -175,7 +175,7 @@ export function appendChatEntry<K extends keyof ChatEntryMap>(pi: ExtensionAPI, 
 }
 
 type WithoutType<T> = T extends unknown ? Omit<T, "type"> : never;
-type Outgoing = WithoutType<Message>;
+type Outgoing = WithoutType<{ [K in keyof ChatMessageMap]: ChatMessageOf<K> }[keyof ChatMessageMap]>;
 export function sendChatMessage(pi: ExtensionAPI, message: Outgoing, options?: Parameters<ExtensionAPI["sendMessage"]>[1]): void {
   pi.sendMessage<unknown>(message, options);
 }

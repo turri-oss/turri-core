@@ -4,7 +4,10 @@
 
 ```ts
 
-import { ModelRuntime } from '@earendil-works/pi-coding-agent';
+// @public
+export function asksModels(options: DoctorOptions): options is DoctorOptions & {
+    dir: string;
+};
 
 // @public (undocumented)
 export interface Check {
@@ -19,7 +22,18 @@ export interface Check {
 }
 
 // @public
-export function credentialsFile(agentDir?: string): string;
+export function checkNode(): Check;
+
+// @public
+export function coreVersion(): {
+    version: string | null;
+    commit: string | null;
+    changed: boolean | null;
+    pi: string | null;
+};
+
+// @public
+export function describeChecks(checks: Check[]): string;
 
 // @public
 export function doctor(options?: DoctorOptions): Promise<Check[]>;
@@ -31,21 +45,8 @@ export interface DoctorOptions {
     models?: boolean;
 }
 
-// @public
-export const EXTENSION_PROVIDERS: Record<string, {
-    label: string;
-    install: string;
-    signIn: string;
-}>;
-
-// @public
-export function installedModelRuntime(cwd?: string): Promise<ModelRuntime>;
-
 // @public (undocumented)
 export type Level = "ok" | "missing" | "limited" | "info";
-
-// @public (undocumented)
-export function loginDeviceId(cwd: string, agentDir?: string): string;
 
 // @public
 export function machineChange(command: string): string | undefined;
@@ -54,7 +55,17 @@ export function machineChange(command: string): string | undefined;
 export function machineChangeReason(why: string): string;
 
 // @public
-export function savedChatFiles(cwd: string, sessionDir?: string): Promise<string[]>;
+export const MIN_NODE: readonly [22, 19];
+
+// @public (undocumented)
+export function nodeVersionOk(version?: string): boolean;
+
+// @public
+export function verdictOf(checks: Check[]): {
+    ready: boolean;
+    limited: boolean;
+    text: string;
+};
 
 // (No @packageDocumentation comment for this package)
 

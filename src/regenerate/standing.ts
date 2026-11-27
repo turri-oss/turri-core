@@ -1,7 +1,7 @@
 import { basename, resolve } from "node:path";
 import { PLAIN_SOURCE_FILE_EXTENSION, withParseCache } from "../plain/parser.ts";
 import { createJobRegistry } from "./jobs.ts";
-import { createWorkLoop, functionalityCompletion, type DriftReport, type WorkLoop } from "./loop.ts";
+import { createWorkLoop, functionalityCompletion, type DriftReport, type ModuleCompletion, type WorkLoop } from "./loop.ts";
 import { projectPlainFiles } from "./requires.ts";
 
 /**
@@ -17,7 +17,7 @@ export interface ModuleStanding {
   drift?: DriftReport[];
   driftError?: string;
   /** `functionalityCompletion(plainFile)`: its chain's functional specs completed, one entry per chain - undefined with `completionError`. */
-  completion?: ReturnType<typeof functionalityCompletion>;
+  completion?: Array<{ codebase: string; modules: ModuleCompletion[] }>;
   completionError?: string;
 }
 

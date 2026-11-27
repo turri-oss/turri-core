@@ -9,10 +9,20 @@ import type { CustomMessageEntry } from '@earendil-works/pi-coding-agent';
 import { ExtensionFactory } from '@earendil-works/pi-coding-agent';
 import { ExtensionUIContext } from '@earendil-works/pi-coding-agent';
 import type { SessionEntry } from '@earendil-works/pi-coding-agent';
-import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
+import { ToolDefinition } from '@earendil-works/pi-coding-agent';
 
 // @public
-interface AgentTally {
+export interface AgentRef {
+    // (undocumented)
+    label?: string;
+    // (undocumented)
+    model?: string;
+    // (undocumented)
+    role?: string;
+}
+
+// @public
+export interface AgentTally {
     // (undocumented)
     compactions: number;
     // (undocumented)
@@ -26,31 +36,25 @@ interface AgentTally {
 }
 
 // @public
-export interface AskUserIO {
-    // (undocumented)
-    input(title: string, context?: string, asked?: DialogAsked): Promise<string | undefined>;
-    select(title: string, options: string[], context?: string, at?: number, asked?: DialogAsked): Promise<string | undefined>;
-}
+export const BANNER_ENTRY = "turri_banner";
 
 // @public
-const BANNER_ENTRY = "turri_banner";
-
-// @public
-interface BannerData {
+export interface BannerData {
     // (undocumented)
     changed?: boolean;
     commit?: string;
     config?: ConfigLine[];
+    name?: string;
     pending: number;
     // (undocumented)
-    sandbox?: ReturnType<typeof sandboxSummary>;
+    sandbox?: SandboxSummary;
     // (undocumented)
     version: string;
     versions?: string[];
 }
 
 // @public
-interface BuildingSpec {
+export interface BuildingSpec {
     label: string;
     since?: number;
     spec: {
@@ -60,13 +64,27 @@ interface BuildingSpec {
     text: string;
 }
 
+// @public
+export const CAPTURE_PHASES: string[];
+
 // @public (undocumented)
-interface CaptureAgentStatus {
+export interface CaptureAgentStatus {
     did?: string;
     label: string;
     now?: string;
     since: number;
 }
+
+// @public
+export type CaptureEnd = {
+    state: "completed";
+    result: CaptureResult;
+} | {
+    state: "failed";
+    error: string;
+} | {
+    state: "stopped";
+};
 
 // @public
 export function capturePhases(status: Pick<CaptureStatus, "pipeline" | "stage">): {
@@ -91,7 +109,14 @@ export interface CaptureResult {
 }
 
 // @public
-type CaptureStage = "mapping" | "surveying" | "checking" | "extracting" | "outlining" | "dividing" | "compact-writing" | "capturing" | "filling" | "gathering" | "reconciling" | "reading" | "verifying" | "trying" | "writing" | "scripts";
+export type CaptureStage = "mapping" | "surveying" | "checking" | "extracting" | "outlining" | "dividing" | "compact-writing" | "capturing" | "filling" | "gathering" | "reconciling" | "reading" | "verifying" | "trying" | "writing" | "scripts";
+
+// @public
+export function captureStageText(status: CaptureStatus, work: {
+    total: number;
+    done: number;
+    running: number;
+} | undefined): string;
 
 // @public (undocumented)
 export interface CaptureStatus {
@@ -118,113 +143,26 @@ export interface CaptureStatus {
 }
 
 // @public
-export type ChatEntry = Entry | Message;
-
-// @public (undocumented)
-export interface ChatInfo {
+export interface Chat {
+    decline(): Promise<"declined" | "none">;
+    entries(): ChatEntry[];
     // (undocumented)
-    id: string;
-    role?: ChatRole;
-    shown: boolean;
-    status: ChatStatus;
+    readonly id: string;
     // (undocumented)
-    title: string;
-}
-
-// @public (undocumented)
-type ChatRole = typeof SENTINEL;
-
-// @public (undocumented)
-export type ChatStatus = "idle" | "working" | "question" | "unread";
-
-// @public
-export interface CheckRequest {
-    funcIds: string[];
-    module: string;
+    info(): ChatInfo;
+    readonly session: AgentSession;
+    stop(): Promise<"stopped" | "idle">;
 }
 
 // @public
-const COMMAND_OUTCOME = "turri_command_outcome";
-
-// @public (undocumented)
-interface CommandOutcome {
-    // (undocumented)
-    command: string;
-    // (undocumented)
-    echoed?: boolean;
-    // (undocumented)
-    level?: "info" | "warning" | "error";
-    text?: string;
-}
-
-// @public (undocumented)
-const CONCLUDED_ENTRY = "turri_sentinel_concluded";
+export type ChatEntry = {
+    [K in keyof ChatEntryMap]: ChatEntryOf<K>;
+}[keyof ChatEntryMap] | {
+    [K in keyof ChatMessageMap]: ChatMessageOf<K>;
+}[keyof ChatMessageMap];
 
 // @public
-export interface Conclusion {
-    check?: string;
-    job?: string;
-    // (undocumented)
-    module?: string;
-    // (undocumented)
-    pulse?: number;
-    // (undocumented)
-    summary: string;
-    // (undocumented)
-    verdict: "holds" | "wrong" | "unchecked";
-}
-
-// @public (undocumented)
-interface ConfigLine {
-    file: string;
-    // (undocumented)
-    kind: ConfigLineKind;
-    text: string;
-}
-
-// @public
-type ConfigLineKind = "broken" | "renamed" | "old-beside-new" | "unknown";
-
-// @public
-export function createTurri(options?: TurriOptions): Promise<Turri>;
-
-// @public
-interface DialogAsked {
-    signal: AbortSignal;
-}
-
-// @public
-type DiffWhere = Record<number, {
-    file: string;
-    line: number;
-    section?: string;
-    written?: string;
-}>;
-
-// @public
-export interface DriftReport {
-    baseFolder?: string;
-    code: JobCases | null | undefined;
-    conformance: JobCases | null | undefined;
-    conformanceOff?: true;
-    conformanceOnly?: string[];
-    // (undocumented)
-    module: string;
-    // (undocumented)
-    plainFile: string;
-    renames?: string[];
-    // (undocumented)
-    running?: {
-        jobId: string;
-        title: string;
-    };
-    // (undocumented)
-    startOver?: ModuleStatus["startOver"];
-    why?: string;
-}
-
-// @public (undocumented)
-interface Entries {
+export interface ChatEntryMap {
     // (undocumented)
     [BANNER_ENTRY]: BannerData;
     // (undocumented)
@@ -273,17 +211,211 @@ interface Entries {
     };
 }
 
-// @public (undocumented)
-type Entry = {
-    [K in keyof Entries]: {
-        type: "custom";
-        customType: K;
-        data: Entries[K];
-    };
-}[keyof Entries];
+// @public
+export type ChatEntryOf<K extends keyof ChatEntryMap> = {
+    type: "custom";
+    customType: K;
+    data: ChatEntryMap[K];
+};
+
+// @public
+export type ChatEntryType = ChatEntry["customType"];
 
 // @public (undocumented)
-interface Exchange {
+export interface ChatInfo {
+    // (undocumented)
+    id: string;
+    role?: ChatRole;
+    shown: boolean;
+    status: ChatStatus;
+    // (undocumented)
+    title: string;
+}
+
+// @public
+export interface ChatMessageMap {
+    // (undocumented)
+    [COMMAND_OUTCOME]: undefined;
+    // (undocumented)
+    [JOB_ENTRY]: JobRef;
+    // (undocumented)
+    [JOB_LANDED_MESSAGE]: JobRef;
+    // (undocumented)
+    [LAUNCH_MESSAGE]: {
+        launch: string;
+        status: LaunchStatus;
+        replacedBy?: string;
+    };
+    // (undocumented)
+    [NOTICE_ANSWER_MESSAGE]: undefined;
+    // (undocumented)
+    [SENTINEL_CHECK_MESSAGE]: {
+        checkId: string;
+        module: string;
+        funcIds: string[];
+    };
+    // (undocumented)
+    [CONCLUDED_ENTRY]: {
+        jobId?: string;
+        checkId?: string;
+        verdict: Conclusion["verdict"];
+    };
+    // (undocumented)
+    [SENTINEL_PULSE_MESSAGE]: JobRef;
+    // (undocumented)
+    [SENTINEL_RESUME_MESSAGE]: undefined;
+    // (undocumented)
+    [SKILL_REPORT_ENTRY]: {
+        skills: string[];
+    };
+    // (undocumented)
+    [SKILL_RUN_ENTRY]: {
+        skills: string[];
+        runs: {
+            skill: string;
+            kind?: ScriptKind;
+            plainFile?: string;
+        }[];
+    };
+    // (undocumented)
+    [SPEC_CONFLICT_MESSAGE]: {
+        jobId: string;
+    };
+}
+
+// @public
+export type ChatMessageOf<K extends keyof ChatMessageMap> = Pick<CustomMessageEntry, "type" | "content" | "display"> & {
+    customType: K;
+} & (ChatMessageMap[K] extends undefined ? {
+    details?: undefined;
+} : {
+    details: ChatMessageMap[K];
+});
+
+// @public
+export interface ChatRecord {
+    // (undocumented)
+    id: string;
+    role?: "sentinel";
+    sessionFile: string;
+    // (undocumented)
+    title: string;
+}
+
+// @public (undocumented)
+export type ChatRole = typeof SENTINEL;
+
+// @public (undocumented)
+export type ChatStatus = "idle" | "working" | "question" | "unread";
+
+// @public
+export interface CheckRequest {
+    funcIds: string[];
+    module: string;
+}
+
+// @public
+export interface ClientInfo {
+    // (undocumented)
+    changed?: boolean;
+    commit?: string;
+    name: string;
+    // (undocumented)
+    version: string;
+}
+
+// @public
+export const COMMAND_OUTCOME = "turri_command_outcome";
+
+// @public (undocumented)
+export interface CommandOutcome {
+    // (undocumented)
+    command: string;
+    // (undocumented)
+    echoed?: boolean;
+    // (undocumented)
+    level?: "info" | "warning" | "error";
+    text?: string;
+}
+
+// @public (undocumented)
+export const COMPACT_PHASES: string[];
+
+// @public (undocumented)
+export const CONCLUDED_ENTRY = "turri_sentinel_concluded";
+
+// @public
+export interface Conclusion {
+    check?: string;
+    job?: string;
+    // (undocumented)
+    module?: string;
+    // (undocumented)
+    pulse?: number;
+    // (undocumented)
+    summary: string;
+    // (undocumented)
+    verdict: "holds" | "wrong" | "unchecked";
+}
+
+// @public (undocumented)
+export interface ConfigLine {
+    file: string;
+    // (undocumented)
+    kind: ConfigLineKind;
+    text: string;
+}
+
+// @public
+export type ConfigLineKind = "broken" | "renamed" | "old-beside-new" | "unknown";
+
+// @public
+export function countOf(page: MapPage): {
+    built: number;
+    total: number;
+};
+
+// @public
+export function createTurri(options?: TurriOptions): Promise<Turri>;
+
+// @public
+export function describeAgents(tallies: AgentTally[]): string[];
+
+// @public
+export function didNotPass(job: Job): boolean;
+
+// @public
+export type DiffWhere = Record<number, {
+    file: string;
+    line: number;
+    section?: string;
+    written?: string;
+}>;
+
+// @public
+export interface DriftReport {
+    baseFolder?: string;
+    code: JobCases | null | undefined;
+    conformance: JobCases | null | undefined;
+    conformanceOff?: true;
+    conformanceOnly?: string[];
+    // (undocumented)
+    module: string;
+    // (undocumented)
+    plainFile: string;
+    renames?: string[];
+    // (undocumented)
+    running?: {
+        jobId: string;
+        title: string;
+    };
+    // (undocumented)
+    startOver?: ModuleStatus["startOver"];
+    why?: string;
+}
+
+// @public (undocumented)
+export interface Exchange {
     // (undocumented)
     answer: string;
     // (undocumented)
@@ -294,7 +426,7 @@ interface Exchange {
 }
 
 // @public
-interface ExportedCode {
+export interface ExportedCode {
     buildDir: string;
     commit: string;
     dir: string;
@@ -308,20 +440,95 @@ interface ExportedCode {
     when: string;
 }
 
+// @public (undocumented)
+export type ExportResult = {
+    exported: true;
+    dir: string;
+    module: string;
+    commit: string;
+    files: number;
+} | {
+    exported: false;
+    dir: string;
+    why: string;
+};
+
 // @public
-function functionalityCompletion(plainFile: string): Array<{
-    codebase: string;
-    modules: ModuleCompletion[];
+export interface ExternalSessions {
+    // (undocumented)
+    create(request: SessionRequest): Promise<AgentSession>;
+    // (undocumented)
+    kind: "external";
+    release?(chat: string, session: AgentSession): Promise<void>;
+    show?(chat: string): Promise<void>;
+}
+
+// @public
+export function focusOf(pages: MarkedPage[]): MarkedPage | undefined;
+
+// @public (undocumented)
+export function formatDuration(job: Job): string;
+
+// @public
+export interface Frontend {
+    ask?(question: Question, context: {
+        chat: string;
+        signal: AbortSignal;
+    }): Promise<string | undefined>;
+    extensions?: ExtensionFactory[];
+    openPiSettings?(): boolean;
+    openProject?(dir: string, context: {
+        summary: string;
+        reportFile: string;
+    }): Promise<boolean>;
+    reveal?(target: RevealTarget, context: {
+        chat: string;
+    }): boolean;
+    sentinel?: {
+        tools?: ToolDefinition[];
+        surface?: string;
+    };
+    sessions?: ManagedSessions | ExternalSessions;
+    shows?: {
+        pulseEnds?: boolean;
+        notices?: boolean;
+    };
+    surface?: string;
+    systemPrompt?(prompt: string, context: {
+        chat: string;
+    }): string;
+}
+
+// @public
+export type HaltTarget = {
+    pulse: string;
+    reason?: string;
+} | {
+    launched: string;
+};
+
+// @public
+export function hasScenarioViews(scenarios: MapScenarios): boolean;
+
+// @public (undocumented)
+export const HISTORY_ENTRY = "turri_history";
+
+// @public (undocumented)
+export const INTERVIEW_ENTRY = "turri_exchange";
+
+// @public
+export function isChatEntry<T extends TranscriptRecord>(entry: T): entry is T & ChatEntry;
+
+// @public
+export function isChatEntryOf<T extends TranscriptRecord | ChatEntry, K extends ChatEntryType>(entry: T, customType: K): entry is T & Extract<ChatEntry, {
+    customType: K;
 }>;
 
-// @public (undocumented)
-const HISTORY_ENTRY = "turri_history";
-
-// @public (undocumented)
-const INTERVIEW_ENTRY = "turri_exchange";
+// @public
+export function isTurriError(error: unknown, code?: TurriErrorCode): error is TurriError;
 
 // @public
-export function isChatEntry<T extends PiRecord>(entry: T): entry is T & ChatEntry;
+export type ItemState = "built" | "new" | "changed" | "removed" | "test";
 
 // @public (undocumented)
 export interface Job {
@@ -333,7 +540,7 @@ export interface Job {
     chat?: string;
     configModule?: string;
     // (undocumented)
-    details?: unknown;
+    details?: JobDetails;
     diagnosis?: string;
     diff?: string;
     diffWhere?: DiffWhere;
@@ -385,10 +592,13 @@ export interface Job {
 }
 
 // @public (undocumented)
-const JOB_ENTRY = "turri_job";
+export const JOB_ENTRY = "turri_job";
+
+// @public
+export const JOB_LANDED_MESSAGE = "turri_job_landed";
 
 // @public (undocumented)
-interface JobAnnouncement {
+export interface JobAnnouncement {
     // (undocumented)
     duration: string;
     // (undocumented)
@@ -404,7 +614,7 @@ interface JobAnnouncement {
 }
 
 // @public
-interface JobCases {
+export interface JobCases {
     // (undocumented)
     add: TouchedSpec[];
     // (undocumented)
@@ -420,17 +630,29 @@ interface JobCases {
     scenarios?: ScenarioCases[];
 }
 
-// @public (undocumented)
-type JobDetails = {
+// @public
+export interface JobDetails {
+    commit?: string;
+    landed?: boolean;
+    notBuilt?: string;
+    passed?: boolean;
+    skipped?: boolean;
+    specGaps?: SpecGap[];
+    stoppedAt?: "unit tests" | "conformance" | "regression";
+    story?: string;
+}
+
+// @public
+export type JobRef = {
     jobId: string;
     status: Job["status"];
 };
 
 // @public (undocumented)
-const JOBS_LIST_ENTRY = "turri_jobs";
+export const JOBS_LIST_ENTRY = "turri_jobs";
 
 // @public
-type JobStatus = "queued" | "running" | "succeeded" | "failed" | "stopped";
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "stopped";
 
 // @public (undocumented)
 export interface Launch {
@@ -468,12 +690,40 @@ export interface Launch {
 }
 
 // @public
-type LaunchCause = {
+export const LAUNCH_MESSAGE = "turri_launch";
+
+// @public
+export type LaunchCause = {
     pulse: string;
     title: string;
 } | {
     chat?: string;
 };
+
+// @public (undocumented)
+export interface LaunchedProcess {
+    // (undocumented)
+    command: string;
+    // (undocumented)
+    commit?: string;
+    dir: string;
+    exited?: {
+        code: number | null;
+        signal: string | null;
+    };
+    launch?: string;
+    log: string;
+    // (undocumented)
+    moduleName: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    pid: number;
+    // (undocumented)
+    startedAt: number;
+    // (undocumented)
+    url?: string;
+}
 
 // @public
 export type LaunchStatus = "waiting" | "running" | "launched" | "failed" | "stopped" | "superseded";
@@ -498,75 +748,417 @@ export interface LaunchStopped {
 export function launchText(launch: Pick<Launch, "codebase" | "summary" | "stopped">): string;
 
 // @public
-export const MAX_CHATS = 9;
+export type LedgerEntry = LedgerEvent & {
+    v: 1;
+    ts: string;
+    seq: number;
+    run: string;
+    job?: string;
+    module?: string;
+    agent?: AgentRef;
+    chat?: string;
+};
 
-// @public (undocumented)
-type Message = {
-    [K in keyof Messages]: Pick<CustomMessageEntry, "type" | "content" | "display"> & {
-        customType: K;
-    } & (Messages[K] extends undefined ? {
-        details?: undefined;
-    } : {
-        details: Messages[K];
-    });
-}[keyof Messages];
+// @public
+export type LedgerEntryOf<K extends LedgerEntry["kind"]> = Extract<LedgerEntry, {
+    kind: K;
+}>;
 
-// @public (undocumented)
-interface Messages {
-    // (undocumented)
-    [COMMAND_OUTCOME]: undefined;
-    // (undocumented)
-    [JOB_ENTRY]: JobDetails;
-    // (undocumented)
-    turri_job_landed: JobDetails;
-    // (undocumented)
-    turri_launch: {
-        launch: string;
-        status: LaunchStatus;
-        replacedBy?: string;
-    };
-    // (undocumented)
-    turri_notice_answer: undefined;
-    // (undocumented)
-    turri_sentinel_check: {
-        checkId: string;
+// @public
+export type LedgerEvent = {
+    kind: "run.started";
+    mode: string;
+    client?: string;
+    version: string | null;
+    commit: string | null;
+    dirty: boolean | null;
+    pid: number;
+    platform: string;
+    node: string;
+} | {
+    kind: "run.ended";
+    ms: number;
+} | {
+    kind: "chat.opened";
+    reopened: boolean;
+    role?: string;
+} | {
+    kind: "notice.put";
+    notice: string;
+    severity: string;
+    module?: string;
+} | {
+    kind: "notice.over";
+    notice: string;
+    state: string;
+} | {
+    kind: "sentinel.asked";
+    check: string;
+    module: string;
+    funcIds: string[];
+} | {
+    kind: "sentinel.checking";
+    module?: string;
+    check?: string;
+} | {
+    kind: "sentinel.paused";
+    module: string;
+    launch: string;
+} | {
+    kind: "sentinel.resumed";
+    module: string;
+    launch: string;
+} | {
+    kind: "sentinel.refused";
+    module?: string;
+    check?: string;
+    why: string;
+} | {
+    kind: "launch.started";
+    launch: string;
+    commit: string;
+    pulse?: string;
+} | {
+    kind: "launch.finished";
+    launch: string;
+    commit: string;
+    status: string;
+    ms: number;
+} | {
+    kind: "launch.left-behind";
+    stopped: Array<{
+        name: string;
+        pid: number;
         module: string;
-        funcIds: string[];
+        url?: string;
+    }>;
+} | {
+    kind: "launch.freed";
+    launch: string;
+    held: string;
+    stopped: Array<{
+        name: string;
+        pid: number;
+        module: string;
+        url?: string;
+        launch?: string;
+    }>;
+} | {
+    kind: "launch.replaced";
+    launch: string;
+    by: string;
+    byModule: string;
+} | {
+    kind: "sentinel.concluded";
+    verdict: string;
+    module?: string;
+    check?: string;
+} | {
+    kind: "chat.closed";
+} | {
+    kind: "job.queued";
+    jobKind: string;
+    summary: string;
+    pulse?: number;
+    title?: string;
+    model?: string;
+    configModule?: string;
+    cases?: PulseCases;
+    waitingOn: string[];
+    follows?: string;
+} | {
+    kind: "job.started";
+    waitedMs: number;
+    logFile?: string;
+} | {
+    kind: "job.diff";
+    diff: string;
+    where?: DiffWhere;
+} | {
+    kind: "job.stage";
+    label: string;
+} | {
+    kind: "job.retried";
+    attempt: number;
+    of: number;
+    failure: string;
+} | {
+    kind: "job.finished";
+    status: string;
+    landed?: boolean;
+    passed?: boolean;
+    ms: number;
+    usage: UsageReport;
+    failedForGood?: boolean;
+    stoppedBy?: "person" | "turri";
+    error?: string;
+    logFile?: string;
+} | {
+    kind: "loop.halted";
+    why: string;
+    track: "code" | "conformance";
+} | {
+    kind: "loop.stopped";
+    why: string;
+} | {
+    kind: "loop.renamed";
+    what: "func-id" | "scenario-id";
+    from: string;
+    to: string;
+    spec: string;
+} | {
+    kind: "planner.failed";
+    step: "group" | "place" | "title";
+    error: string;
+} | {
+    kind: "planner.fellBack";
+    step: "group" | "place" | "title";
+    why: string;
+} | {
+    kind: "model.call";
+    ms?: number;
+    usage?: UsageReport;
+} | {
+    kind: "model.turn";
+} | {
+    kind: "model.compaction";
+} | {
+    kind: "provider.retry";
+    error: string;
+    attempt: number;
+    of: number;
+    waitMs: number;
+} | {
+    kind: "provider.stall";
+    waitMs: number;
+} | {
+    kind: "provider.error";
+    error: string;
+    transient: boolean;
+} | {
+    kind: "turn.stopped";
+    reason: string;
+} | {
+    kind: "tool.call";
+    tool: string;
+    ms: number;
+    ok: boolean;
+    resultChars: number;
+} | {
+    kind: "script.run";
+    script: string;
+    exit: number;
+    ms: number;
+    timedOut: boolean;
+    inPlace: boolean;
+    mutated?: boolean;
+    signature?: string;
+} | {
+    kind: "gate.round";
+    gate: "unit tests" | "conformance" | "regression";
+    round: number;
+    of: number;
+    signature?: string;
+} | {
+    kind: "review.verdict";
+    reviewer: "unit";
+    review: number;
+    pass: boolean;
+    problems: number;
+} | {
+    kind: "arbiter.ruling";
+    upheld: number;
+    dismissed: number;
+} | {
+    kind: "judge.verdict";
+    culprit: string;
+    round: number;
+    reason: string;
+} | {
+    kind: "guard.refused";
+    rule: "repeat" | "budget" | "restricted";
+    tool: string;
+    times: number;
+} | {
+    kind: "command.refused";
+    rule: string;
+} | {
+    kind: "audit.putBack";
+    putBack: number;
+    left: number;
+    lost: number;
+    conversation: number;
+} | {
+    kind: "healer.started";
+    healer: string;
+} | {
+    kind: "healer.ended";
+    healer: string;
+    ms: number;
+    found?: string;
+} | {
+    kind: "healer.failed";
+    healer: string;
+    ms: number;
+    error: string;
+} | {
+    kind: "history.committed";
+    subject: string;
+    commit?: string;
+} | {
+    kind: "history.failed";
+    subject: string;
+    said: string;
+    landing: boolean;
+} | {
+    kind: "history.reset";
+    undone: number;
+    paths: string[];
+} | {
+    kind: "history.rolledBack";
+    why: string;
+} | {
+    kind: "environment.error";
+    missing: string;
+    source: string;
+    sandbox: boolean;
+};
+
+// @public
+export function lineDiff(was: string, now: string): Array<{
+    was?: string;
+    now?: string;
+}>;
+
+// @public
+export interface ManagedSessions {
+    // (undocumented)
+    kind: "managed";
+    ui?(chat: string): ExtensionUIContext | undefined;
+}
+
+// @public
+export interface MapCodebase {
+    // (undocumented)
+    buildDir: string;
+    conformance: boolean;
+    conformanceNote?: string;
+    // (undocumented)
+    module: string;
+    // (undocumented)
+    plainFile: string;
+    planning?: Track;
+    pulses: MapPulse[];
+    stuck?: {
+        why: string;
+        pulse?: {
+            number: number;
+            before: string;
+            after: string;
+        };
+        cause?: string;
     };
-    // (undocumented)
-    [CONCLUDED_ENTRY]: {
-        jobId?: string;
-        checkId?: string;
-        verdict: Conclusion["verdict"];
-    };
-    // (undocumented)
-    turri_sentinel_pulse: JobDetails;
-    // (undocumented)
-    turri_sentinel_resume: undefined;
-    // (undocumented)
-    [SKILL_REPORT_ENTRY]: {
-        skills: string[];
-    };
-    // (undocumented)
-    [SKILL_RUN_ENTRY]: {
-        skills: string[];
-        runs: {
-            skill: string;
-            kind?: ScriptKind;
-            plainFile?: string;
-        }[];
-    };
-    // (undocumented)
-    turri_spec_conflict: {
-        jobId: string;
-    };
+    waitsFor?: string;
+    why?: string;
 }
 
 // @public (undocumented)
-const MILESTONE_ENTRY = "turri_milestone";
+export interface MapItem {
+    file?: string;
+    funcId?: string;
+    key: string;
+    line?: string;
+    renamedFrom?: string;
+    scenarios: MapScenarios;
+    // (undocumented)
+    section: string;
+    // (undocumented)
+    state: ItemState;
+    tests?: "now" | "older" | "removed";
+    text: string;
+    was?: string;
+    // (undocumented)
+    wasLine?: string;
+}
+
+// @public (undocumented)
+export interface MapPage {
+    buildDir: string;
+    conformance?: boolean;
+    error?: string;
+    imports: string[];
+    // (undocumented)
+    items: MapItem[];
+    // (undocumented)
+    module: string;
+    // (undocumented)
+    plainFile: string;
+    requires?: string;
+    testingMissing?: string;
+}
 
 // @public
-interface ModelEvent {
+export interface MapPulse {
+    // (undocumented)
+    after: string;
+    before: string;
+    number: number;
+    rowId: string;
+    // (undocumented)
+    running: boolean;
+    specs?: string[];
+    // (undocumented)
+    title: string;
+    // (undocumented)
+    track: Track;
+}
+
+// @public
+export interface MapScenarios {
+    // (undocumented)
+    acceptance: Array<{
+        id: string;
+        text: string;
+    }>;
+    // (undocumented)
+    conformance: Array<{
+        id: string;
+        text: string;
+    }>;
+}
+
+// @public
+export type Mark = "built" | "regenerating" | "planned" | "waiting" | "planning" | "stuck" | "removing" | "none";
+
+// @public (undocumented)
+export interface MarkedItem extends MapItem {
+    // (undocumented)
+    mark: Mark;
+    pulse?: MapPulse;
+    rolledBack?: number;
+    testing?: boolean;
+    testsPulse?: MapPulse;
+    unused?: boolean;
+}
+
+// @public (undocumented)
+export interface MarkedPage extends MapPage {
+    codebase?: MapCodebase;
+    // (undocumented)
+    items: MarkedItem[];
+    status: string;
+    stuck: boolean;
+    tracked: boolean;
+}
+
+// @public
+export const MAX_CHATS = 9;
+
+// @public (undocumented)
+export const MILESTONE_ENTRY = "turri_milestone";
+
+// @public
+export interface ModelEvent {
     // (undocumented)
     attempt?: number;
     error?: string;
@@ -589,7 +1181,7 @@ interface ModelEvent {
 }
 
 // @public
-interface ModuleCompletion {
+export interface ModuleCompletion {
     completed: number;
     conformanceTested: number;
     incomplete: string[];
@@ -602,7 +1194,10 @@ interface ModuleCompletion {
 
 // @public
 export interface ModuleStanding {
-    completion?: ReturnType<typeof functionalityCompletion>;
+    completion?: Array<{
+        codebase: string;
+        modules: ModuleCompletion[];
+    }>;
     // (undocumented)
     completionError?: string;
     drift?: DriftReport[];
@@ -611,6 +1206,16 @@ export interface ModuleStanding {
     // (undocumented)
     module: string;
     plainFile: string;
+}
+
+// @public
+export interface ModuleState {
+    // (undocumented)
+    module: string;
+    // (undocumented)
+    state: "complete" | "incomplete" | "halted" | "start_over_needed" | "running";
+    // (undocumented)
+    why?: string;
 }
 
 // @public
@@ -659,11 +1264,14 @@ export interface Notice extends NoticeInput {
     state: NoticeState;
 }
 
-// @public (undocumented)
-const NOTICE_ENTRY = "turri_notice";
+// @public
+export const NOTICE_ANSWER_MESSAGE = "turri_notice_answer";
 
 // @public (undocumented)
-const NOTICE_OVER_ENTRY = "turri_notice_over";
+export const NOTICE_ENTRY = "turri_notice";
+
+// @public (undocumented)
+export const NOTICE_OVER_ENTRY = "turri_notice_over";
 
 // @public
 export interface NoticeAction {
@@ -685,7 +1293,7 @@ export type NoticeAnswer = {
 };
 
 // @public (undocumented)
-interface NoticeInput {
+export interface NoticeInput {
     // (undocumented)
     actions: NoticeAction[];
     check?: string;
@@ -706,9 +1314,6 @@ export type NoticeSeverity = "error" | "warning" | "info";
 
 // @public (undocumented)
 export type NoticeState = "open" | "accepted" | "steered" | "dismissed" | "ignored" | "superseded";
-
-// @public (undocumented)
-type PiRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
 
 // @public
 export interface PlannedPulse {
@@ -741,6 +1346,12 @@ export interface PulseCases {
     patch: PulseSpec[];
 }
 
+// @public (undocumented)
+export function pulseCost(job: Job): string;
+
+// @public
+export function pulseName(job: Job): string;
+
 // @public
 export interface PulseSpec {
     // (undocumented)
@@ -750,13 +1361,118 @@ export interface PulseSpec {
 }
 
 // @public
-function sandboxSummary(wall?: Wall): {
-    level: "ok" | "limited";
-    text: string;
+export interface PulseView {
+    diff?: LedgerEntryOf<"job.diff">;
+    // (undocumented)
+    environment?: LedgerEntryOf<"environment.error">;
+    // (undocumented)
+    finished?: LedgerEntryOf<"job.finished">;
+    // (undocumented)
+    healers: Array<LedgerEntryOf<"healer.ended"> | LedgerEntryOf<"healer.failed">>;
+    // (undocumented)
+    history: Array<LedgerEntryOf<"history.committed"> | LedgerEntryOf<"history.failed"> | LedgerEntryOf<"history.reset"> | LedgerEntryOf<"history.rolledBack">>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    judge: Map<string, number>;
+    // (undocumented)
+    provider: {
+        retries: number;
+        stalls: number;
+        errors: string[];
+    };
+    // (undocumented)
+    queued?: LedgerEntryOf<"job.queued"> & {
+        module?: string;
+    };
+    // (undocumented)
+    refused: Map<string, number>;
+    // (undocumented)
+    retried: Array<LedgerEntryOf<"job.retried">>;
+    // (undocumented)
+    reviews: Array<LedgerEntryOf<"review.verdict">>;
+    // (undocumented)
+    rounds: Map<string, {
+        round: number;
+        of: number;
+    }>;
+    // (undocumented)
+    run: string;
+    runMode?: string;
+    // (undocumented)
+    scripts: Array<LedgerEntryOf<"script.run">>;
+    // (undocumented)
+    stages: string[];
+    // (undocumented)
+    started?: LedgerEntryOf<"job.started">;
+    // (undocumented)
+    steered: number;
+    // (undocumented)
+    stopped: string[];
+    // (undocumented)
+    usage?: UsageReport;
+}
+
+// @public
+export type Question = {
+    kind: "select";
+    title: string;
+    options: string[]; /** What to read to answer it. */
+    context?: string; /** The option to start on. */
+    at?: number;
+} | {
+    kind: "input";
+    title: string;
+    context?: string;
 };
 
 // @public
-interface ScenarioCases extends TouchedSpec {
+export type RevealTarget = {
+    kind: "pulses" | "map";
+} | {
+    kind: "pulse";
+    id: string;
+};
+
+// @public
+export type Rung = "toRegenerate" | "working" | "regenerated" | "validating" | "conform" | "needsYou" | "takenOut" | "none";
+
+// @public (undocumented)
+export function rungOf(item: MarkedItem): Rung;
+
+// @public (undocumented)
+export interface RunRecord {
+    // (undocumented)
+    chats: ChatRecord[];
+    pid: number;
+    // (undocumented)
+    run: string;
+    // (undocumented)
+    started: string;
+}
+
+// @public
+export interface RunView {
+    // (undocumented)
+    ended?: LedgerEntryOf<"run.ended">;
+    // (undocumented)
+    pulses: PulseView[];
+    // (undocumented)
+    run: string;
+    // (undocumented)
+    started?: LedgerEntryOf<"run.started">;
+}
+
+// @public
+export interface SandboxSummary {
+    // (undocumented)
+    level: "ok" | "limited";
+    // (undocumented)
+    text: string;
+}
+
+// @public
+export interface ScenarioCases extends TouchedSpec {
     // (undocumented)
     added: ScenarioRef[];
     // (undocumented)
@@ -772,7 +1488,7 @@ interface ScenarioCases extends TouchedSpec {
 }
 
 // @public
-interface ScenarioRef {
+export interface ScenarioRef {
     // (undocumented)
     id: string;
     // (undocumented)
@@ -782,10 +1498,19 @@ interface ScenarioRef {
 }
 
 // @public
-type ScriptKind = "unit" | "conformance";
+export type ScriptKind = "unit" | "conformance";
 
 // @public
 export const SENTINEL = "sentinel";
+
+// @public
+export const SENTINEL_CHECK_MESSAGE = "turri_sentinel_check";
+
+// @public
+export const SENTINEL_PULSE_MESSAGE = "turri_sentinel_pulse";
+
+// @public
+export const SENTINEL_RESUME_MESSAGE = "turri_sentinel_resume";
 
 // @public
 export const SENTINEL_START: {
@@ -806,44 +1531,28 @@ export interface SentinelCheck {
     plainFile: string;
 }
 
+// @public
+export interface SessionOverrides {
+    // (undocumented)
+    codingModel?: string;
+    debug?: boolean;
+    // (undocumented)
+    harnessModel?: string;
+    // (undocumented)
+    judgeModel?: string;
+    // (undocumented)
+    mutationTesting?: boolean;
+    // (undocumented)
+    review?: boolean;
+}
+
 // @public (undocumented)
-export type SessionEvent = {
-    type: "orphansStopped";
-    count: number;
-} | {
-    type: "incident";
-    event: ModelEvent;
-    text: string;
-} | {
-    type: "agentCost";
-    role?: string;
-    cost: number;
-    total: number;
-} | {
-    type: "skillProgress";
+export interface SessionRequest {
+    // (undocumented)
     chat: string;
-    progress: SkillProgress | null;
-} | {
-    type: "captureProgress";
-    chat: string;
-    status: CaptureStatus;
-} | ({
-    type: "captureEnded";
-    chat: string;
-    root: string;
-} & ({
-    state: "completed";
-    result: CaptureResult;
-} | {
-    state: "failed";
-    error: string;
-} | {
-    state: "stopped";
-})) | {
-    type: "entry";
-    chat: string;
-    entry: ChatEntry;
-};
+    persisted: boolean;
+    sessionFile?: string;
+}
 
 // @public
 export interface SessionSpending {
@@ -860,16 +1569,16 @@ export interface SessionSpending {
 }
 
 // @public
-const SIDE_ENTRY = "turri_btw";
+export const SIDE_ENTRY = "turri_btw";
 
 // @public
-const SKILL_MESSAGE_ENTRY = "turri_skill_message";
+export const SKILL_MESSAGE_ENTRY = "turri_skill_message";
 
 // @public (undocumented)
-const SKILL_REPORT_ENTRY = "turri_skill_report";
+export const SKILL_REPORT_ENTRY = "turri_skill_report";
 
 // @public (undocumented)
-const SKILL_RUN_ENTRY = "turri_skill_run";
+export const SKILL_RUN_ENTRY = "turri_skill_run";
 
 // @public
 export interface SkillProgress {
@@ -884,8 +1593,28 @@ export interface SkillProgress {
     skill: string;
 }
 
+// @public (undocumented)
+export interface SkillResult {
+    artifacts: Record<string, string>;
+    // (undocumented)
+    ok: boolean;
+    output: string;
+}
+
+// @public (undocumented)
+export interface SkillRunOptions {
+    context?: string;
+    model?: string;
+    plainFile?: string;
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
 // @public
-interface SpecConflict {
+export const SPEC_CONFLICT_MESSAGE = "turri_spec_conflict";
+
+// @public
+export interface SpecConflict {
     moduleName: string;
     // (undocumented)
     plainFile: string;
@@ -899,7 +1628,15 @@ interface SpecConflict {
 }
 
 // @public
-interface TouchedSpec {
+export interface SpecGap {
+    // (undocumented)
+    assumption: string;
+    // (undocumented)
+    question: string;
+}
+
+// @public
+export interface TouchedSpec {
     // (undocumented)
     funcId: string;
     // (undocumented)
@@ -909,7 +1646,7 @@ interface TouchedSpec {
 }
 
 // @public
-type Track = "code" | "conformance";
+export type Track = "code" | "conformance";
 
 // @public
 export interface TranscriptEntry {
@@ -924,84 +1661,251 @@ export interface TranscriptEntry {
     text: string;
 }
 
+// @public
+export type TranscriptRecord = SessionEntry | Pick<CustomMessageEntry, "type" | "customType" | "content" | "details" | "display">;
+
 // @public (undocumented)
 export interface Turri {
-    answer(id: string, answer: NoticeAnswer): Promise<"done" | "dismissed" | "ignored" | "refused" | "missing" | "over">;
-    chats(): ChatInfo[];
-    check(request: CheckRequest): {
-        check: string;
-    } | {
-        refused: string;
-    };
-    closeChat(id: string): Promise<void>;
-    decline(id: string): Promise<"declined" | "none" | "missing">;
-    dispose(): Promise<void>;
-    entries(chat: string): ChatEntry[];
-    focus(id: string): void;
-    interrupt(id: string): Promise<"stopped" | "ignored" | "ended" | "missing">;
     // (undocumented)
-    job(id: string): Job | undefined;
-    jobs(): Job[];
-    launches(): Launch[];
-    lookAhead(plainFile: string): Promise<{
-        statuses: ModuleStatus[];
-        next: PlannedPulse[];
-    }>;
-    notices(): Notice[];
-    onChats(listener: (chats: ChatInfo[]) => void): () => void;
-    openChat(options?: {
-        sessionFile?: string;
-    }): Promise<ChatInfo & {
-        session: AgentSession;
-    }>;
-    session(id: string): AgentSession | undefined;
-    settingChoices(key: string, typed?: string): string[];
+    [Symbol.asyncDispose](): Promise<void>;
+    // (undocumented)
+    readonly chats: {
+        list(): ChatInfo[];
+        get(id: string): Chat | undefined;
+        focused(): string | undefined;
+        focus(id: string): Promise<void>;
+        open(options?: {
+            sessionFile?: string;
+            title?: string;
+            focus?: boolean;
+        }): Promise<Chat>;
+        adopt(session: AgentSession): Chat;
+        restore(run?: RunRecord | "last"): Promise<Chat[]>;
+        close(id: string): Promise<void>;
+    };
+    readonly cwd: string;
+    dispose(): Promise<void>;
+    events(options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<TurriEvent>;
+    readonly extension: ExtensionFactory;
+    // (undocumented)
+    readonly launches: {
+        list(): Launch[];
+        running(): LaunchedProcess[];
+        launch(plainFile?: string, options?: {
+            chat?: string;
+        }): Promise<Launch>;
+        followLogs(onLine: (name: string, line: string) => void, options?: {
+            signal?: AbortSignal;
+        }): Promise<void>;
+    };
+    // (undocumented)
+    readonly notices: {
+        list(): Notice[];
+        answer(id: string, answer: NoticeAnswer): Promise<"done" | "dismissed" | "ignored" | "refused" | "missing" | "over">;
+    };
+    on<K extends TurriEventType>(type: K, listener: (event: Extract<TurriEvent, {
+        type: K;
+    }>) => void, options?: {
+        signal?: AbortSignal;
+    }): () => void;
+    // (undocumented)
+    on(listener: (event: TurriEvent) => void, options?: {
+        signal?: AbortSignal;
+    }): () => void;
+    // (undocumented)
+    readonly sentinel: {
+        check(request: CheckRequest): {
+            check: string;
+        } | {
+            refused: string;
+        };
+    };
+    // (undocumented)
+    readonly settings: {
+        get(key: string, options?: {
+            module?: string;
+        }): unknown;
+        set(key: string, value: unknown, options?: {
+            module?: string;
+        }): Promise<{
+            file: string;
+            said: string;
+        }>;
+        choices(key: string, typed?: string): string[];
+        turnOnConformanceTests(plainFile?: string): string;
+    };
+    // (undocumented)
+    readonly skills: {
+        list(): Array<{
+            name: string;
+            description: string;
+        }>;
+        run(name: string, options?: SkillRunOptions): Promise<SkillResult>;
+    };
     spending(): SessionSpending;
-    standing(files?: string[]): ModuleStanding[];
-    status(): {
-        modules: (ModuleStatus & {
-            lookedAhead?: boolean;
-        })[];
-        jobs: Job[];
-        planned: Job[];
+    // (undocumented)
+    readonly work: {
+        status(): WorkStatus;
+        jobs(): Job[];
+        job(id: string): Job | undefined;
+        standing(files?: string[]): ModuleStanding[];
+        map(options?: {
+            refresh?: boolean;
+        }): MarkedPage[];
+        history(options?: {
+            runs?: number;
+        }): {
+            jobs: Job[];
+            runs: RunView[];
+            more: number;
+        };
+        lookAhead(plainFile: string): Promise<{
+            statuses: ModuleStatus[];
+            next: PlannedPulse[];
+        }>;
+        regenerate(request: Partial<WorkRequest> & WorkRunOptions & {
+            chat?: string;
+        }): Promise<{
+            planned: ModuleStatus[];
+            done: Promise<WorkResult>;
+        }>;
+        conform(request: Partial<WorkRequest> & WorkRunOptions & {
+            chat?: string;
+        }): Promise<{
+            planned: ModuleStatus[];
+            done: Promise<WorkResult>;
+        }>;
+        halt(target: HaltTarget): Promise<string>;
     };
-    turnOnConformanceTests(plainFile?: string): string;
+}
+
+// @public (undocumented)
+export class TurriError extends Error {
+    constructor(code: TurriErrorCode, message: string, options?: {
+        cause?: unknown;
+    });
+    // (undocumented)
+    readonly code: TurriErrorCode;
 }
 
 // @public
-export interface TurriHost {
-    dialogs?: AskUserIO;
-    onChatSession?(chat: string, session: AgentSession): void;
-    onConcluded?(conclusion: Conclusion & {
+export type TurriErrorCode =
+/** A config.turri.yaml that does not parse: nothing is started on it. */
+"config-invalid"
+/** Asked of turri but refused: a module that cannot be built as it is, conformance tests turned off, two options that exclude each other. */
+| "refused"
+/** No room for another chat. */
+| "chat-limit"
+/** A chat asked of a session with no front end, which has none. */
+| "no-chat"
+/** A handle to a chat that has been closed. */
+| "chat-closed"
+/** A chat, a job, a notice or a module that is not there. */
+| "not-found"
+/** A front end's session made without turri's extension built into it. */
+| "extension-not-built"
+/** A second session opened in a process that has one open. */
+| "session-open"
+/** Stopped through its signal before it was done. */
+| "aborted";
+
+// @public (undocumented)
+export type TurriEvent = {
+    [K in TurriEventType]: {
+        type: K;
+    } & TurriEventMap[K];
+}[TurriEventType];
+
+// @public
+export interface TurriEventMap {
+    captureEnded: {
+        chat?: string;
+        root: string;
+    } & CaptureEnd;
+    captureProgress: {
+        chat?: string;
+        status: CaptureStatus;
+    };
+    chats: {
+        chats: ChatInfo[];
+    };
+    chatSession: {
         chat: string;
-    }): void;
-    onEvent?(event: SessionEvent): void;
-    onJobChange?(job: Job): void;
-    onLaunch?(launch: Launch): void;
-    onNotice?(notice: Notice): void;
-    onNoticeOver?(notice: Notice): void;
-    onPlanChange?(): void;
-    pulseEndsShown?: boolean;
-    sentinel?: {
-        tools?: ToolDefinition[];
-        surface?: string;
     };
-    surface?: string;
-    systemPrompt?(prompt: string): string;
+    concluded: {
+        chat: string;
+        conclusion: Conclusion;
+    };
+    entry: {
+        chat: string;
+        entry: ChatEntry;
+    };
+    failure: {
+        what: "healer" | "provider" | "history" | "planner";
+        text: string;
+    };
+    incident: {
+        text: string;
+        event: ModelEvent;
+    };
+    job: {
+        job: Job;
+        final: boolean;
+    };
+    launch: {
+        launch: Launch;
+    };
+    notice: {
+        notice: Notice;
+    };
+    noticeOver: {
+        notice: Notice;
+    };
+    notification: {
+        chat?: string;
+        text: string;
+        level: "info" | "warning" | "error";
+    };
+    orphansStopped: {
+        count: number;
+    };
+    plan: Record<never, never>;
+    renamed: {
+        what: "func-id" | "scenario-id";
+        from: string;
+        to: string;
+        spec: string;
+    };
+    skillProgress: {
+        chat?: string;
+        progress: SkillProgress | null;
+    };
+    spending: {
+        spending: SessionSpending;
+    };
 }
 
-// @public
-export interface TurriOptions extends Omit<TurriHost, "dialogs"> {
+// @public (undocumented)
+export type TurriEventType = keyof TurriEventMap;
+
+// @public (undocumented)
+export interface TurriOptions {
     agentDir?: string;
-    dialogs?: (chat: string) => AskUserIO | undefined;
-    extensions?: ExtensionFactory[];
-    restore?: boolean;
+    captured?: {
+        summary: string;
+    };
+    client?: ClientInfo;
+    frontend?: Frontend;
+    onEvent?(event: TurriEvent): void;
+    overrides?: SessionOverrides;
+    persist?: boolean;
     sessionDir?: string;
-    uiContext?: (chat: string) => ExtensionUIContext | undefined;
 }
 
 // @public
-interface UsageReport {
+export interface UsageReport {
     // (undocumented)
     cacheRead: number;
     // (undocumented)
@@ -1015,10 +1919,10 @@ interface UsageReport {
 }
 
 // @public
-const VERSION_ENTRY = "turri_version";
+export const VERSION_ENTRY = "turri_version";
 
 // @public (undocumented)
-type Wall = {
+export type Wall = {
     kind: "seatbelt";
 } | {
     kind: "bubblewrap";
@@ -1028,6 +1932,50 @@ type Wall = {
     why: string;
     fix?: string;
 };
+
+// @public
+export interface WorkRequest {
+    fromScratch?: "module" | "chain";
+    funcIds?: string[];
+    model?: string;
+    plainFile: string;
+    separately?: boolean;
+}
+
+// @public
+export interface WorkResult {
+    exported?: ExportResult;
+    // (undocumented)
+    failed: Job[];
+    jobs: Job[];
+    // (undocumented)
+    plainFile: string;
+    reason?: string;
+    status: "completed" | "failed" | "incomplete" | "stopped";
+    unfinished: ModuleState[];
+}
+
+// @public
+export interface WorkRunOptions {
+    command?: string[];
+    exportTo?: string;
+    report?: string;
+    signal?: AbortSignal;
+    startOver?: boolean | "ask";
+}
+
+// @public
+export interface WorkStatus {
+    busy: boolean;
+    // (undocumented)
+    jobs: Job[];
+    // (undocumented)
+    modules: Array<ModuleStatus & {
+        lookedAhead?: boolean;
+    }>;
+    // (undocumented)
+    planned: Job[];
+}
 
 // (No @packageDocumentation comment for this package)
 

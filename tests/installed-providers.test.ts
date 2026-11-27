@@ -66,14 +66,16 @@ describe("the providers a person's installed pi extensions register", () => {
     await expect(refuseIfModelIsBlind("company-gateway/big-model", 1)).rejects.toBeInstanceOf(ModelCannotReadImagesError);
   });
 
-  it("leave turri's extension, built into pi as an older turri installed it, a no-op while they load", async () => {
-    const { default: extension } = await import("../src/extension.ts");
+  it("leave a session's extension, built into a pi they load, a no-op while they load", async () => {
+    const { createTurri } = await import("../src/session.ts");
+    const turri = await createTurri();
     process.env[LOADING_PROVIDERS] = "1";
     try {
-      // It would start a session of its own - its ledger, its chats - and register every tool: here it touches nothing.
-      expect(extension(new Proxy({}, { get: () => { throw new Error("touched pi"); } }) as never)).toBeUndefined();
+      // Built in, it would register every tool and link a chat: here it touches nothing of pi.
+      await expect(turri.extension(new Proxy({}, { get: () => { throw new Error("touched pi"); } }) as never)).resolves.toBeUndefined();
     } finally {
       delete process.env[LOADING_PROVIDERS];
+      await turri.dispose();
     }
   });
 });

@@ -48,10 +48,12 @@ export interface ModelSet {
 }
 
 /** The two models given, full specs without a thinking level - `amazon-bedrock/global.xai.grok-4.7`; strong is harness unless named. */
-export type ModelChoice = Omit<ModelSet, "strong"> & { strong?: string };
+/** The two models given in place of a vendor's - the strong one, the judging examples', the harness model unless named. */
+export type ModelPair = Omit<ModelSet, "strong"> & { strong?: string };
 
 /** The makers turri has a pair of its own for on Bedrock. */
-type PresetMaker = "anthropic" | "openai";
+/** The makers turri has a pair of its own for on Bedrock. */
+export type PresetMaker = "anthropic" | "openai";
 
 /** The geographies turri's own pair for each maker is served in - the first the default. Every other: bedrockMakers. */
 export const BEDROCK_REGIONS: Record<PresetMaker, string[]> = {
@@ -190,7 +192,8 @@ export function bedrockDefaultModels(catalogue: ModelCatalogue, choice: BedrockC
 /** Bedrock's default: Anthropic's models, anywhere. */
 export const BEDROCK_DEFAULT: Required<BedrockChoice> = { maker: "anthropic", region: "global" };
 
-interface VendorPreset {
+/** A vendor's own pair, and how it is named. */
+export interface VendorPreset {
   label: string;
   /** The model you talk to: it writes the specs and plans the work. */
   harness: string;
@@ -689,7 +692,7 @@ export interface InitConfigOptions {
   /** On Amazon Bedrock: the geography, and whose models - read from the models when they are given. */
   bedrock?: BedrockChoice;
   /** The two models - any pair pi's catalogue has as chat models - in place of the vendor's own. */
-  models?: ModelChoice;
+  models?: ModelPair;
   /** pi's catalogue, to check the models against - read from pi when it is needed and not given. */
   catalogue?: ModelCatalogue;
   /** How the message is coloured: plain unless given - `turri init-config` gives turri's colours for a terminal. */
@@ -774,5 +777,5 @@ export interface Asked {
   /** Left out with the models named: read from them. */
   vendor?: Vendor;
   bedrock?: BedrockChoice;
-  models?: ModelChoice;
+  models?: ModelPair;
 }

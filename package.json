@@ -15,44 +15,29 @@
   },
   "exports": {
     ".": {
-      "turri-source": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./host": {
-      "turri-source": "./src/host.ts",
-      "types": "./dist/host.d.ts",
-      "import": "./dist/host.js"
+      "turri-source": "./src/api/session.ts",
+      "types": "./dist/api/session.d.ts",
+      "import": "./dist/api/session.js"
     },
     "./plain": {
       "turri-source": "./src/api/plain.ts",
       "types": "./dist/api/plain.d.ts",
       "import": "./dist/api/plain.js"
     },
-    "./config": {
-      "turri-source": "./src/api/config.ts",
-      "types": "./dist/api/config.d.ts",
-      "import": "./dist/api/config.js"
+    "./project": {
+      "turri-source": "./src/api/project.ts",
+      "types": "./dist/api/project.d.ts",
+      "import": "./dist/api/project.js"
     },
-    "./ledger": {
-      "turri-source": "./src/api/ledger.ts",
-      "types": "./dist/api/ledger.d.ts",
-      "import": "./dist/api/ledger.js"
+    "./models": {
+      "turri-source": "./src/api/models.ts",
+      "types": "./dist/api/models.d.ts",
+      "import": "./dist/api/models.js"
     },
-    "./terminal": {
-      "turri-source": "./src/api/terminal.ts",
-      "types": "./dist/api/terminal.d.ts",
-      "import": "./dist/api/terminal.js"
-    },
-    "./commands": {
-      "turri-source": "./src/api/commands.ts",
-      "types": "./dist/api/commands.d.ts",
-      "import": "./dist/api/commands.js"
-    },
-    "./startup": {
-      "turri-source": "./src/api/startup.ts",
-      "types": "./dist/api/startup.d.ts",
-      "import": "./dist/api/startup.js"
+    "./system": {
+      "turri-source": "./src/api/system.ts",
+      "types": "./dist/api/system.d.ts",
+      "import": "./dist/api/system.js"
     },
     "./package.json": "./package.json"
   },

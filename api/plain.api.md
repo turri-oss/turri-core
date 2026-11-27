@@ -8,10 +8,10 @@
 export const ACCEPTANCE_TEST_HEADING = "acceptance tests";
 
 // @public (undocumented)
-const ACCEPTANCE_TESTS = "acceptance_tests";
+export const ACCEPTANCE_TESTS = "acceptance_tests";
 
 // @public
-interface CheckedFunctionalSpec {
+export interface CheckedFunctionalSpec {
     // (undocumented)
     acceptance: number;
     // (undocumented)
@@ -58,32 +58,21 @@ export function conceptsOf(plainFile: string, templateDirs?: string[]): ModuleCo
 export const CONFORMANCE_TEST_HEADING = "conformance tests";
 
 // @public (undocumented)
-const CONFORMANCE_TESTS = "conformance_tests";
+export const CONFORMANCE_TESTS = "conformance_tests";
 
 // @public
 export const DEFINITIONS = "definitions";
 
 // @public
-interface DriftReport {
-    baseFolder?: string;
-    code: JobCases | null | undefined;
-    conformance: JobCases | null | undefined;
-    conformanceOff?: true;
-    conformanceOnly?: string[];
-    // (undocumented)
-    module: string;
-    // (undocumented)
-    plainFile: string;
-    renames?: string[];
-    // (undocumented)
-    running?: {
-        jobId: string;
-        title: string;
-    };
-    // (undocumented)
-    startOver?: ModuleStatus["startOver"];
-    why?: string;
-}
+export const DIFF_HEADER: RegExp;
+
+// @public
+export type DiffWhere = Record<number, {
+    file: string;
+    line: number;
+    section?: string;
+    written?: string;
+}>;
 
 // @public
 export function findConcepts(text: string): Array<{
@@ -99,12 +88,6 @@ export function formatCheckResults(results: CheckResult[]): string;
 export const FUNCTIONAL_REQUIREMENTS = "functional specs";
 
 // @public
-function functionalityCompletion(plainFile: string): Array<{
-    codebase: string;
-    modules: ModuleCompletion[];
-}>;
-
-// @public
 export function highlightLine(line: string, state?: HighlightState): {
     tokens: Token[];
     state: HighlightState;
@@ -114,9 +97,10 @@ export function highlightLine(line: string, state?: HighlightState): {
 export function highlightLines(lines: string[]): Token[][];
 
 // @public
-export type HighlightState = ReadonlyArray<Extract<Rule, {
-    kind: "block";
-}>>;
+export interface HighlightState {
+    // (undocumented)
+    readonly __highlightState: true;
+}
 
 // @public
 export function isStack(template: Pick<StdlibTemplate, "name">): boolean;
@@ -129,38 +113,15 @@ export function iterateFunctionalSpecs(tree: MarshalledPlainSource, replaceCodeV
 }>;
 
 // @public
-interface JobCases {
-    // (undocumented)
-    add: TouchedSpec[];
-    // (undocumented)
-    again: TouchedSpec[];
-    // (undocumented)
-    delete: TouchedSpec[];
-    // (undocumented)
-    fresh: boolean;
-    // (undocumented)
-    mechanical: boolean;
-    // (undocumented)
-    patch: TouchedSpec[];
-    scenarios?: ScenarioCases[];
-}
+export function locateDiffLines(diff: string, files: Array<{
+    name: string;
+    text: string;
+}>): DiffWhere;
 
 // @public
-interface MarshalledPlainSource {
+export interface MarshalledPlainSource {
     // (undocumented)
     [heading: string]: unknown;
-}
-
-// @public
-interface ModuleCompletion {
-    completed: number;
-    conformanceTested: number;
-    incomplete: string[];
-    // (undocumented)
-    module: string;
-    specified: number;
-    tested: string[];
-    withScenarios: number;
 }
 
 // @public
@@ -172,59 +133,11 @@ export interface ModuleConcept {
     module: string | null;
 }
 
-// @public
-interface ModuleStanding {
-    completion?: ReturnType<typeof functionalityCompletion>;
-    // (undocumented)
-    completionError?: string;
-    drift?: DriftReport[];
-    // (undocumented)
-    driftError?: string;
-    // (undocumented)
-    module: string;
-    plainFile: string;
-}
-
-// @public
-interface ModuleStatus {
-    base?: {
-        folder: string;
-        files: number;
-    };
-    configModule?: string;
-    conformanceNote?: string;
-    // (undocumented)
-    module: string;
-    // (undocumented)
-    plainFile: string;
-    planned: Array<{
-        title: string;
-        cases: JobCases;
-        track: Track;
-        planning?: true;
-        afterCode?: true;
-        specs?: string[];
-    }>;
-    planNotes?: string[];
-    renames?: string[];
-    running?: {
-        jobId: string;
-        title: string;
-        steered?: string[];
-    };
-    startOver?: {
-        requires: string[];
-        codebases: string[];
-        old?: true;
-    };
-    why?: string;
-}
-
 // @public (undocumented)
 export const NON_FUNCTIONAL_REQUIREMENTS = "implementation reqs";
 
 // @public
-interface ParseOptions {
+export interface ParseOptions {
     allowNoFunctionalities?: boolean;
     requireTestPlainFiles?: boolean;
     testDir?: string;
@@ -349,9 +262,6 @@ export interface PlainTestPlainFileNode {
 }
 
 // @public
-export function projectStanding(projectDir: string, files?: string[]): ModuleStanding[];
-
-// @public
 export function requiresOrder(projectDir: string, options?: {
     files?: string[];
 }): string[];
@@ -366,49 +276,7 @@ export const RESOURCE_MARKER = "[resource]";
 export function roleOf(scopes: string[]): PlainRole | undefined;
 
 // @public
-type Rule = {
-    kind: "match";
-    name?: string;
-    re: RegExp;
-    captures?: Record<string, string | undefined>;
-} | {
-    kind: "block";
-    name?: string;
-    begin: RegExp;
-    end: RegExp;
-    patterns: Rule[];
-    beginCaptures?: Record<string, string | undefined>;
-    endCaptures?: Record<string, string | undefined>;
-};
-
-// @public
-interface ScenarioCases extends TouchedSpec {
-    // (undocumented)
-    added: ScenarioRef[];
-    // (undocumented)
-    changed: ScenarioRef[];
-    // (undocumented)
-    codeChanged?: "text" | "again" | "concept";
-    // (undocumented)
-    removed: ScenarioRef[];
-    // (undocumented)
-    rewritten: ScenarioRef[];
-    // (undocumented)
-    unchanged: ScenarioRef[];
-}
-
-// @public
-interface ScenarioRef {
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    kind: "conformance" | "acceptance";
-    // (undocumented)
-    text: string;
-}
-
-// @public
-interface ScenarioText {
+export interface ScenarioText {
     // (undocumented)
     id: string;
     // (undocumented)
@@ -416,7 +284,7 @@ interface ScenarioText {
 }
 
 // @public (undocumented)
-interface Specifications {
+export interface Specifications {
     // (undocumented)
     [FUNCTIONAL_REQUIREMENTS]: string[];
     // (undocumented)
@@ -467,19 +335,6 @@ export interface Token {
     // (undocumented)
     text: string;
 }
-
-// @public
-interface TouchedSpec {
-    // (undocumented)
-    funcId: string;
-    // (undocumented)
-    module?: string;
-    // (undocumented)
-    text: string;
-}
-
-// @public
-type Track = "code" | "conformance";
 
 // (No @packageDocumentation comment for this package)
 

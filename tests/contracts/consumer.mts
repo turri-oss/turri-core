@@ -3,24 +3,26 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
-import { createTurri, isChatEntry, type SessionEvent, type ChatEntry } from "@turri-dev/core";
-import { credentialsFile, savedChatFiles } from "@turri-dev/core/host";
+import { BANNER_ENTRY, capturePhases, createTurri, isChatEntry, isChatEntryOf, isTurriError, rungOf, type ChatEntry, type TurriEvent } from "@turri-dev/core";
 import { checkPlainFile, highlightLines, isStack, plainGraph, stdlibTemplates } from "@turri-dev/core/plain";
-import { bedrockModels, configForSpec, configLines, configSettings, configuredModel, hasBedrockPreset, readProjectConfig } from "@turri-dev/core/config";
-import { readLedger, runViews } from "@turri-dev/core/ledger";
-import { readDrift } from "@turri-dev/core/commands";
-import { BANNER_ENTRY, capturePhases, rungOf, type TurriView } from "@turri-dev/core/terminal";
+import { configForSpec, configLines, configSettings, configuredModel, credentialsFile, readDrift, readLedger, readProjectConfig, runViews, savedChatFiles } from "@turri-dev/core/project";
+import { bedrockModels, hasBedrockPreset, loginDeviceId } from "@turri-dev/core/models";
+import { checkNode, coreVersion } from "@turri-dev/core/system";
 
 const project = process.cwd();
 const agentDir = process.env.PI_CODING_AGENT_DIR!;
 const file = join(project, "app.plain");
 writeFileSync(file, "***implementation reqs***\n\n- Use Python.\n\n***functional specs***\n\n# greet\nSay hello.\n");
 writeFileSync("config.turri.yaml", "sentinel: false\n");
+
+// /plain: the language alone.
 assert.equal(checkPlainFile(file).ok, true);
 assert.equal(plainGraph(project).modules.some((module) => module.module === "app"), true);
 assert.ok(highlightLines(["# greet"])[0]!.length);
 assert.ok(stdlibTemplates().length);
-assert.ok(isStack({ name: "stdlib/backend/python-flask" })); // the desktop's catalogue uses the import name alone
+assert.ok(isStack({ name: "stdlib/backend/python-flask" })); // a catalogue may name a stack by its import name alone
+
+// /project: the project on disk, with no session.
 assert.equal(configForSpec(file).sentinel, false);
 assert.ok(configSettings().some((setting) => setting.key === "sentinel"));
 assert.deepEqual(configLines(project), []);
@@ -32,38 +34,44 @@ const settings = readProjectConfig(settingsDir);
 assert.deepEqual(configuredModel(settings, "harness-model"), { model: versioned });
 assert.deepEqual(configuredModel(settings, "models.coding"), { thinking: "high" });
 assert.equal(configuredModel(settings, "models.judge"), undefined);
-assert.equal(configuredModel(settings, "coding-model"), undefined);
-const choice = { maker: "anthropic", region: "global" };
-assert.ok(hasBedrockPreset(choice));
-assert.match(bedrockModels(choice).harness, /^amazon-bedrock\/global\.anthropic\./);
-assert.equal(hasBedrockPreset({ maker: "another-maker", region: "global" }), false);
 assert.equal(credentialsFile(agentDir), join(agentDir, "auth.json"));
 assert.deepEqual(await savedChatFiles(project, join(project, "sessions")), []);
 assert.equal(readDrift(file)[0]?.module, "app");
 assert.equal(existsSync("plain_modules"), false);
+
+// /models and /system.
+const choice = { maker: "anthropic", region: "global" } as const;
+assert.ok(hasBedrockPreset(choice));
+assert.match(bedrockModels(choice).harness, /^amazon-bedrock\/global\.anthropic\./);
+assert.equal(typeof loginDeviceId(project, agentDir), "string");
+assert.equal(checkNode().level, "ok");
+assert.equal(typeof coreVersion().version, "string");
 
 // pi can replay records from other extensions or older writers. A job without details is not a typed job announcement.
 const message = { type: "custom_message", content: "finished", display: false } as const;
 assert.equal(isChatEntry({ ...message, customType: "another_extension" }), false);
 assert.equal(isChatEntry({ ...message, customType: "turri_job" }), false);
 
-const events: SessionEvent[] = [];
-const session = await createTurri({ agentDir, sessionDir: join(project, "sessions"), onEvent: (e) => events.push(e) });
+// The session, as a front end on turri's own chat sessions opens it.
+const events: TurriEvent[] = [];
+const turri = await createTurri({ frontend: {}, agentDir, sessionDir: join(project, "sessions"), onEvent: (event) => events.push(event) });
 try {
-  assert.deepEqual(session.status(), { jobs: [], modules: [], planned: [] });
-  assert.deepEqual(session.launches(), []);
-  assert.deepEqual(session.standing([file])[0]?.drift, readDrift(file));
-  const chat = await session.openChat();
+  await assert.rejects(createTurri(), (error: unknown) => isTurriError(error, "session-open"));
+  assert.deepEqual(turri.work.status(), { jobs: [], modules: [], planned: [], busy: false });
+  assert.deepEqual(turri.launches.list(), []);
+  assert.deepEqual(turri.work.standing([file])[0]?.drift, readDrift(file));
+  const chat = await turri.chats.open();
   assert.equal(readLedger(project)[0]?.kind, "run.started");
   assert.equal(runViews(project).length, 1);
-  assert.ok(chat.session instanceof AgentSession, "core and host must use the same pi instance");
-  const banner = (entry: ChatEntry) => entry.type === "custom" && entry.customType === BANNER_ENTRY && typeof entry.data.version === "string";
-  assert.ok(events.some((e) => e.type === "entry" && e.chat === chat.id && banner(e.entry)));
-  assert.ok(session.entries(chat.id).some(banner));
+  assert.ok(chat.session instanceof AgentSession, "core and front end must use the same pi instance");
+  const banner = (entry: ChatEntry) => isChatEntryOf(entry, BANNER_ENTRY) && typeof entry.data.version === "string";
+  assert.ok(events.some((event) => event.type === "entry" && event.chat === chat.id && banner(event.entry)));
+  assert.ok(chat.entries().some(banner));
   await chat.session.sendCustomMessage({ customType: "turri_command_outcome", content: "read the plan", display: false });
   const outcome = (entry: ChatEntry) => entry.type === "custom_message" && entry.customType === "turri_command_outcome" && entry.content === "read the plan";
-  assert.ok(events.some((e) => e.type === "entry" && e.chat === chat.id && outcome(e.entry)));
-  assert.ok(session.entries(chat.id).some(outcome));
+  assert.ok(events.some((event) => event.type === "entry" && event.chat === chat.id && outcome(event.entry)));
+  // Every event is plain data: a front end may send it to another process as it is.
+  for (const event of events) assert.deepEqual(structuredClone(event), event);
   // A reopened conversation's history is visible, but spending before this run is not billed to it again.
   const savedDir = join(project, "saved");
   mkdirSync(savedDir);
@@ -71,19 +79,19 @@ try {
   const usage = (cost: number) => ({ input: 1, output: 2, cacheRead: 0, cacheWrite: 0, totalTokens: 3,
     cost: { input: 0, output: cost, cacheRead: 0, cacheWrite: 0, total: cost } });
   history.appendMessage({ role: "assistant", api: "openai-completions", provider: "stub", model: "test", content: [{ type: "text", text: "saved" }], stopReason: "stop", timestamp: Date.now(), usage: usage(5) });
-  const saved = await session.openChat({ sessionFile: history.getSessionFile()! });
+  const saved = await turri.chats.open({ sessionFile: history.getSessionFile()! });
   assert.equal(saved.session.getSessionStats().cost, 5);
-  assert.equal(session.spending().chat, 0);
+  assert.equal(turri.spending().chat, 0);
   saved.session.sessionManager.appendUsage("call", "stub", "test", usage(2));
-  assert.equal(session.spending().chat, 2);
-  await session.closeChat(saved.id);
-  assert.equal(session.spending().chat, 2);
+  assert.equal(turri.spending().chat, 2);
+  await turri.chats.close(saved.id);
+  assert.equal(turri.spending().chat, 2);
+  assert.throws(() => saved.session, (error: unknown) => isTurriError(error, "chat-closed"));
 } finally {
-  await session.dispose();
+  await turri.dispose();
 }
 
-const view: TurriView = { skillProgress(_ctx, progress) { if (progress) assert.ok(progress.current < progress.phases.length); } };
-assert.equal(typeof view.skillProgress, "function");
+// turri's words for its data, for any front end to show.
 assert.equal(typeof rungOf, "function");
 const compact = capturePhases({ stage: "compact-writing", pipeline: "compact" });
 const staged = capturePhases({ stage: "capturing", pipeline: "staged" });
@@ -91,3 +99,6 @@ assert.deepEqual([compact.current, compact.phases.length, compact.phases[compact
 assert.deepEqual([staged.current, staged.phases.length, staged.phases[staged.current]], [2, 8, "features"]);
 
 assert.throws(() => import.meta.resolve("@turri-dev/core/dist/extension.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+for (const gone of ["host", "terminal", "startup", "commands", "config", "ledger", "cli-compat"]) {
+  assert.throws(() => import.meta.resolve(`@turri-dev/core/${gone}`), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" }, gone);
+}

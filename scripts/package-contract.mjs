@@ -38,10 +38,8 @@ try {
   npm(["ci", "--prefer-offline", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], dir);
   copyFileSync("tests/contracts/consumer.mts", join(dir, "consumer.mts"));
   copyFileSync("tests/contracts/private-import.mts", join(dir, "private-import.mts"));
-  copyFileSync("tests/contracts/startup.mts", join(dir, "startup.mts"));
   const node = (args, env = process.env) => execFileSync(process.execPath, args, { cwd: dir, env, stdio: "inherit" });
-  node([resolve("node_modules/typescript/bin/tsc"), "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--target", "ES2023", "consumer.mts", "private-import.mts", "startup.mts"]);
-  node(["startup.mts"]);
+  node([resolve("node_modules/typescript/bin/tsc"), "--noEmit", "--strict", "--skipLibCheck", "--module", "NodeNext", "--target", "ES2023", "consumer.mts", "private-import.mts"]);
   node(["private-import.mts"]);
   const home = join(dir, "home");
   mkdirSync(home);

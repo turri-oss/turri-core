@@ -10,7 +10,8 @@ import { failureReport } from "./failure-reports.ts";
  * a host are told it, and the runs a project has had, each with its pulses.
  */
 
-type Of<K extends LedgerEntry["kind"]> = Extract<LedgerEntry, { kind: K }>;
+/** The ledger's entry of one kind. */
+export type LedgerEntryOf<K extends LedgerEntry["kind"]> = Extract<LedgerEntry, { kind: K }>;
 
 /** The projects whose ledgers a folder's pulses may be in: its own, and those of the projects in folders under it. */
 export function ledgerProjects(cwd: string, depth = 3): string[] {
@@ -39,24 +40,24 @@ export interface PulseView {
   run: string;
   /** How its run was started - chat, host, regenerate - and when. */
   runMode?: string;
-  queued?: Of<"job.queued"> & { module?: string };
-  started?: Of<"job.started">;
-  finished?: Of<"job.finished">;
+  queued?: LedgerEntryOf<"job.queued"> & { module?: string };
+  started?: LedgerEntryOf<"job.started">;
+  finished?: LedgerEntryOf<"job.finished">;
   /** Its ***plain diff as it last was, and how many times steering moved it. */
-  diff?: Of<"job.diff">;
+  diff?: LedgerEntryOf<"job.diff">;
   steered: number;
   stages: string[];
-  retried: Array<Of<"job.retried">>;
+  retried: Array<LedgerEntryOf<"job.retried">>;
   rounds: Map<string, { round: number; of: number }>;
-  scripts: Array<Of<"script.run">>;
+  scripts: Array<LedgerEntryOf<"script.run">>;
   judge: Map<string, number>;
-  reviews: Array<Of<"review.verdict">>;
-  healers: Array<Of<"healer.ended"> | Of<"healer.failed">>;
+  reviews: Array<LedgerEntryOf<"review.verdict">>;
+  healers: Array<LedgerEntryOf<"healer.ended"> | LedgerEntryOf<"healer.failed">>;
   provider: { retries: number; stalls: number; errors: string[] };
   refused: Map<string, number>;
   stopped: string[];
-  history: Array<Of<"history.committed"> | Of<"history.failed"> | Of<"history.reset"> | Of<"history.rolledBack">>;
-  environment?: Of<"environment.error">;
+  history: Array<LedgerEntryOf<"history.committed"> | LedgerEntryOf<"history.failed"> | LedgerEntryOf<"history.reset"> | LedgerEntryOf<"history.rolledBack">>;
+  environment?: LedgerEntryOf<"environment.error">;
   usage?: UsageReport;
 }
 
@@ -81,7 +82,7 @@ export function pulseView(id: string, entries: LedgerEntry[]): PulseView | undef
     stopped: [],
     history: [],
   };
-  const started = entries.find((entry): entry is Of<"run.started"> & LedgerEntry => entry.kind === "run.started" && entry.run === view.run);
+  const started = entries.find((entry): entry is LedgerEntryOf<"run.started"> & LedgerEntry => entry.kind === "run.started" && entry.run === view.run);
   if (started !== undefined) view.runMode = `${started.mode}, ${started.ts.slice(0, 16).replace("T", " ")}`;
   for (const entry of own) {
     if (entry.job !== fullId) continue;
@@ -257,8 +258,8 @@ export function describePastPulse(projects: string[], id: string, options: { rep
 /** A run of the project's, and its pulses: runs and pulses the most recent first. */
 export interface RunView {
   run: string;
-  started?: Of<"run.started">;
-  ended?: Of<"run.ended">;
+  started?: LedgerEntryOf<"run.started">;
+  ended?: LedgerEntryOf<"run.ended">;
   pulses: PulseView[];
 }
 
@@ -269,8 +270,8 @@ export function runViews(project: string): RunView[] {
   return [...runs]
     .map(([run, own]) => {
       const ids = [...new Set(own.filter((entry) => entry.kind === "job.queued").map((entry) => entry.job!))];
-      const started = own.find((entry): entry is Of<"run.started"> & LedgerEntry => entry.kind === "run.started");
-      const ended = own.find((entry): entry is Of<"run.ended"> & LedgerEntry => entry.kind === "run.ended");
+      const started = own.find((entry): entry is LedgerEntryOf<"run.started"> & LedgerEntry => entry.kind === "run.started");
+      const ended = own.find((entry): entry is LedgerEntryOf<"run.ended"> & LedgerEntry => entry.kind === "run.ended");
       // Its pulses the most recent first, as its runs are.
       return { run, ...(started !== undefined ? { started } : {}), ...(ended !== undefined ? { ended } : {}), pulses: ids.map((id) => pulseView(id, own)!).filter(Boolean).reverse() };
     })
@@ -282,7 +283,7 @@ export function describeRuns(runs: RunView[]): string {
   if (runs.length === 0) return "The ledger is empty: nothing has run here since it began.";
   return runs
     .map((view) => {
-      const started = view.started as (Of<"run.started"> & { ts?: string }) | undefined;
+      const started = view.started as (LedgerEntryOf<"run.started"> & { ts?: string }) | undefined;
       const when = started?.ts !== undefined ? started.ts.slice(0, 19).replace("T", " ") : "";
       const version = started?.version !== undefined && started.version !== null ? ` · turri ${started.version}${started.commit !== null && started.commit !== undefined ? ` (${started.commit.slice(0, 7)}${started.dirty === true ? ", changed" : ""})` : ""}` : "";
       const head = `run ${view.run} · ${started?.mode ?? "?"} · ${when}${view.ended !== undefined ? ` · ${formatElapsed(view.ended.ms)}` : view.run === ledgerRun() ? " · this run, still running" : " · still running, or killed"}${version}`;
