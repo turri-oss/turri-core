@@ -12,7 +12,7 @@ import { checkModels, modelsInUse, piModelAccess, type ModelAccess } from "./mod
 import { asksModels, modelChoices, specsOf, type DoctorModels, type DoctorOptions } from "./doctor-checks.ts";
 import { applyBedrockRegion, bedrockRegionFor, describeBedrockRegion, regionInGeography, type BedrockRegion } from "./bedrock-region.ts";
 import { baseFilesAsync } from "./regenerate/base-folder.ts";
-import { readScript, scriptAgainstMachine, stackOnMachineAsync } from "./stack.ts";
+import { readScript, scriptAgainstMachine, stackOnMachineAsync, type StackNeed } from "./stack.ts";
 
 /**
  * `turri doctor`: whether this machine is ready for turri.
@@ -73,21 +73,29 @@ export function checkSandbox(wall: Wall = sandboxAvailable(), platform: NodeJS.P
  */
 export async function checkProject(
   project: string,
-  machine: { has?: (command: string) => boolean; exists?: (path: string) => boolean; jdk?: () => boolean | Promise<boolean> } = {},
+  machine: {
+    has?: (command: string) => boolean;
+    exists?: (path: string) => boolean;
+    jdk?: () => boolean | Promise<boolean>;
+    version?: (toolchain: string) => string | undefined | Promise<string | undefined>;
+  } = {},
 ): Promise<Check[]> {
   const checks: Check[] = [];
-  for (const { module, needs, missing } of await stackOnMachineAsync(project, machine.has, machine.jdk)) {
+  for (const { module, needs, missing, older } of await stackOnMachineAsync(project, machine.has, machine.jdk, machine.version)) {
     if (needs.length === 0) continue;
-    checks.push(
-      missing.length === 0
-        ? { level: "ok", name: `${module}`, detail: `has ${needs.map((need) => need.toolchain).join(", ")}` }
-        : {
-            level: "missing",
-            name: `${module}`,
-            detail: `its implementation reqs need ${missing.map((need) => `${need.toolchain} (${need.words.join(", ")})`).join(", ")}, which this machine lacks`,
-            fix: `install ${missing.map((need) => need.toolchain).join(" and ")} on this machine - the agents use its toolchains, and install none`,
-          },
-    );
+    if (missing.length === 0 && older.length === 0) {
+      checks.push({ level: "ok", name: `${module}`, detail: `has ${needs.map((need) => need.toolchain).join(", ")}` });
+      continue;
+    }
+    const named = (need: StackNeed) => `${need.toolchain}${need.version !== undefined ? ` ${need.version}` : ""}`;
+    const lacks = missing.length > 0 ? `${missing.map((need) => `${named(need)} (${need.words.join(", ")})`).join(", ")}, which this machine lacks` : "";
+    const old = older.map((need) => `${need.toolchain} ${need.version} (${need.words.join(", ")}), and this machine's is ${need.found}`).join("; ");
+    checks.push({
+      level: "missing",
+      name: `${module}`,
+      detail: `its implementation reqs need ${[lacks, old].filter((part) => part !== "").join("; ")}`,
+      fix: `install ${[...missing, ...older].map((need) => (need.version !== undefined ? `${need.toolchain} ${need.version} or newer` : need.toolchain)).join(" and ")} on this machine - the agents use its toolchains, and install none`,
+    });
   }
   const scripts = findTestScripts(project);
   for (const script of [scripts.unit, scripts.prepare, scripts.conformance]) {

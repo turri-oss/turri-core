@@ -10,7 +10,7 @@ turri doctor
 
 Everything marked `✗` stops the run, so fix those first. Two more things matter for a long run:
 
-- **The toolchains.** The agents use this machine's: run `turri doctor` in the project, and it says which toolchain a module's implementation reqs name that this machine lacks.
+- **The toolchains.** The agents use this machine's: run `turri doctor` in the project, and it says which toolchain a module's implementation reqs name that this machine lacks, or has older than the version they pin.
 - **The models.** In a project, `turri doctor` sends each model `config.turri.yaml` names one short request, as turri's agents will - so a key the provider refuses, a model [pi](https://pi.dev) does not know or an account without access to it shows now, not an hour into the run. Models the run is given on the command line are given to doctor the same way - `--harness-model`, `--coding-model`, `--judge-model`, read as the config's keys - and are checked with the config's.
 - **Credentials that do not expire mid-run.** An API key in the environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, ...) or [pi](https://pi.dev)'s saved login - whatever `doctor` shows as the model provider.
 

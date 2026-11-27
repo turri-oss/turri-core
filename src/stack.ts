@@ -16,11 +16,44 @@ import { onThisMachine } from "./regenerate/test-scripts.ts";
  * a hint for the person, not a verdict: a req can name a technology it does not use.
  */
 
-/** A toolchain the reqs name: its name, the commands any one of which shows it is there, and the words that named it. */
+/**
+ * A toolchain the reqs name: its name, the commands any one of which shows it is there, the words that named it - and
+ * the version they pin it to, the highest they name, when they name one (`Go 1.25`, `Java 21`).
+ */
 export interface StackNeed {
   toolchain: string;
   commands: string[];
   words: string[];
+  version?: string;
+}
+
+/** A toolchain this machine has, older than the version its reqs pin: what it has. */
+export type OlderNeed = StackNeed & { version: string; found: string };
+
+/**
+ * The toolchains whose version the reqs pin and this machine is asked for: how the reqs name it, and how its command
+ * says its own. Not Python: its stacks run through uv, which finds or fetches the Python a project asks for itself.
+ */
+const PINNED: Record<string, { named: RegExp; command: string; args: string[]; read: RegExp }> = {
+  Go: { named: /\bgo (\d+\.\d+(?:\.\d+)?)\b/gi, command: "go", args: ["version"], read: /\bgo(\d+\.\d+(?:\.\d+)?)/ },
+  Java: { named: /\bjava (\d+)\b/gi, command: "java", args: ["-version"], read: /version "(\d+(?:\.\d+)*)/ },
+  Node: { named: /\bnode(?:\.js)? (\d+(?:\.\d+)*)\b/gi, command: "node", args: ["--version"], read: /\bv(\d+(?:\.\d+)*)/ },
+  Rust: { named: /\brust (\d+\.\d+(?:\.\d+)?)\b/gi, command: "cargo", args: ["--version"], read: /\bcargo (\d+\.\d+(?:\.\d+)?)/ },
+};
+
+/** Whether version `a` is older than `b`, segment by segment, as far as `b` says: 1.24.3 is older than 1.25, 1.25.1 is not. */
+export function olderThan(a: string, b: string): boolean {
+  const [x, y] = [a.split(".").map(Number), b.split(".").map(Number)];
+  for (let at = 0; at < y.length; at += 1) {
+    const [p, q] = [x[at] ?? 0, y[at]!];
+    if (p !== q) return p < q;
+  }
+  return false;
+}
+
+/** What a toolchain's command says its version is - from its whole output - or nothing when it says none. */
+export function versionIn(toolchain: string, output: string): string | undefined {
+  return PINNED[toolchain]?.read.exec(output)?.[1];
 }
 
 /** Words in implementation reqs, and the toolchain each means. */
@@ -43,7 +76,11 @@ export function stackOf(text: string): StackNeed[] {
   const needs: StackNeed[] = [];
   for (const stack of STACKS) {
     const words = [...new Set([...text.matchAll(stack.words)].map((match) => match[0].toLowerCase()))];
-    if (words.length > 0) needs.push({ toolchain: stack.toolchain, commands: stack.commands, words });
+    if (words.length === 0) continue;
+    const pinned = PINNED[stack.toolchain];
+    const versions = pinned === undefined ? [] : [...text.matchAll(pinned.named)].map((match) => match[1]!);
+    const version = versions.reduce<string | undefined>((highest, each) => (highest === undefined || olderThan(highest, each) ? each : highest), undefined);
+    needs.push({ toolchain: stack.toolchain, commands: stack.commands, words, ...(version !== undefined ? { version } : {}) });
   }
   return needs;
 }
@@ -101,36 +138,76 @@ export async function projectImplementationReqsAsync(project: string): Promise<A
 /** Whether a command is on this machine's PATH. */
 const onPath = (command: string) => onThisMachine(command) !== undefined;
 
+/** The version of a toolchain on this machine, as its command says it - nothing when it says none. */
+function versionHere(toolchain: string): string | undefined {
+  const pinned = PINNED[toolchain];
+  if (pinned === undefined) return undefined;
+  const run = spawnSync(pinned.command, pinned.args, { encoding: "utf8", timeout: 10_000, env: { ...process.env, JAVA_TOOL_OPTIONS: "" } });
+  return run.error === undefined ? versionIn(toolchain, `${run.stdout ?? ""}\n${run.stderr ?? ""}`) : undefined;
+}
+
+/** `versionHere`, without holding the thread up. */
+async function versionHereAsync(toolchain: string): Promise<string | undefined> {
+  const pinned = PINNED[toolchain];
+  if (pinned === undefined) return undefined;
+  const run = await spawnAsync(pinned.command, pinned.args, { env: { ...process.env, JAVA_TOOL_OPTIONS: "" } });
+  return versionIn(toolchain, `${run.stdout ?? ""}\n${run.stderr ?? ""}`);
+}
+
+/** What a project's modules need of this machine: each module's needs, those the machine lacks, and those it has older. */
+export type MachineNeeds = Array<{ module: string; needs: StackNeed[]; missing: StackNeed[]; older: OlderNeed[] }>;
+
 /**
- * What a project's modules need of this machine, and which of it the machine lacks - `has` finding a command, and on
- * macOS a JDK behind `java` (`toolchainCheck`), asked at most once.
+ * What a project's modules need of this machine, which of it the machine lacks - `has` finding a command, and on macOS
+ * a JDK behind `java` (`toolchainCheck`), asked at most once - and which it has older than their reqs pin: `version`
+ * says the machine's, asked at most once a toolchain.
  */
 export function stackOnMachine(
   project: string,
   has: (command: string) => boolean = onPath,
   jdk: () => boolean = jdkHere,
-): Array<{ module: string; needs: StackNeed[]; missing: StackNeed[] }> {
+  version: (toolchain: string) => string | undefined = versionHere,
+): MachineNeeds {
   let found: boolean | undefined;
-  return needsAgainst(projectImplementationReqs(project), toolchainCheck(has, () => (found ??= jdk())));
+  const modules = projectImplementationReqs(project);
+  const versions = new Map<string, string | undefined>();
+  const here = toolchainCheck(has, () => (found ??= jdk()));
+  for (const need of modules.flatMap(({ reqs }) => stackOf(reqs.join("\n")))) {
+    if (need.version !== undefined && !versions.has(need.toolchain) && need.commands.some(here)) versions.set(need.toolchain, version(need.toolchain));
+  }
+  return needsAgainst(modules, here, versions);
 }
 
-/** `stackOnMachine`, never holding the host's thread up: the modules parsed one a turn, a JDK looked for without blocking. */
+/** `stackOnMachine`, never holding the host's thread up: the modules parsed one a turn, a JDK and versions asked without blocking. */
 export async function stackOnMachineAsync(
   project: string,
   has: (command: string) => boolean = onPath,
   jdk: () => boolean | Promise<boolean> = jdkHereAsync,
-): Promise<Array<{ module: string; needs: StackNeed[]; missing: StackNeed[] }>> {
+  version: (toolchain: string) => string | undefined | Promise<string | undefined> = versionHereAsync,
+): Promise<MachineNeeds> {
   const modules = await projectImplementationReqsAsync(project);
+  const needs = modules.flatMap(({ reqs }) => stackOf(reqs.join("\n")));
   // Asked only when a module needs Java and java is on the PATH - as stackOnMachine asks it, at most once.
   let found = false;
-  if (modules.some(({ reqs }) => stackOf(reqs.join("\n")).some((need) => need.commands.includes("java"))) && has("java")) found = await jdk();
-  return needsAgainst(modules, toolchainCheck(has, () => found));
+  if (needs.some((need) => need.commands.includes("java")) && has("java")) found = await jdk();
+  const here = toolchainCheck(has, () => found);
+  const versions = new Map<string, string | undefined>();
+  for (const need of needs) {
+    if (need.version !== undefined && !versions.has(need.toolchain) && need.commands.some(here)) versions.set(need.toolchain, await version(need.toolchain));
+  }
+  return needsAgainst(modules, here, versions);
 }
 
-function needsAgainst(modules: Array<{ module: string; reqs: string[] }>, here: (command: string) => boolean): Array<{ module: string; needs: StackNeed[]; missing: StackNeed[] }> {
+function needsAgainst(modules: Array<{ module: string; reqs: string[] }>, here: (command: string) => boolean, versions: Map<string, string | undefined>): MachineNeeds {
   return modules.map(({ module, reqs }) => {
     const needs = stackOf(reqs.join("\n"));
-    return { module, needs, missing: needs.filter((need) => !need.commands.some(here)) };
+    const missing = needs.filter((need) => !need.commands.some(here));
+    // A version the machine's command does not say is not held against it.
+    const older = needs.flatMap((need) => {
+      const found = versions.get(need.toolchain);
+      return need.version !== undefined && found !== undefined && !missing.includes(need) && olderThan(found, need.version) ? [{ ...need, version: need.version, found }] : [];
+    });
+    return { module, needs, missing, older };
   });
 }
 

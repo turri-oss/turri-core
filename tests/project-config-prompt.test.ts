@@ -68,4 +68,11 @@ describe("what the chat's agent is told about this machine", () => {
     expect(block).toContain("test_scripts/run_unittests_odin.sh does not fit this machine: it names `/usr/libexec/no_such_odin_home`, which this machine does not have");
     expect(block).not.toMatch(/VM|vm-image|managing-vms/);
   });
+
+  it("says a toolchain this machine has older than the version the reqs pin", async () => {
+    const { stackOnMachine } = await import("../src/stack.ts");
+    writeFileSync(join(root, "tidy.plain"), "***implementation reqs***\n\n- :Implementation: is written in Go 1.25.\n\n***functional specs***\n\n# plan\nPlan.\n");
+    const modules = stackOnMachine(root, (command) => command === "go", () => true, (toolchain) => (toolchain === "Go" ? "1.24.3" : undefined));
+    expect(machineBlock(root, modules)).toContain("- tidy: its implementation reqs need Go 1.25 (written in go) - this machine has Go 1.24.3, OLDER than 1.25.");
+  });
 });

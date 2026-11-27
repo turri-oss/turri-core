@@ -1758,8 +1758,15 @@ export function machineBlock(cwd: string, modules: ReturnType<typeof stackOnMach
   return [
     "<this machine>",
     `The agents' commands run on this machine, with its toolchains, ${walls}. The testing scripts run here too, unfenced, in the person's environment. Nothing is installed by an agent: what the machine lacks is the person's to install.`,
-    ...needing.map(({ module, needs, missing }) =>
-      `- ${module}: its implementation reqs need ${needs.map((need) => `${need.toolchain} (${need.words.join(", ")})`).join(", ")}${missing.length > 0 ? ` - this machine LACKS ${missing.map((need) => need.toolchain).join(", ")}` : " - this machine has them"}.`,
+    ...needing.map(({ module, needs, missing, older }) =>
+      `- ${module}: its implementation reqs need ${needs.map((need) => `${need.toolchain}${need.version !== undefined ? ` ${need.version}` : ""} (${need.words.join(", ")})`).join(", ")}${
+        missing.length > 0 || older.length > 0
+          ? ` - this machine ${[
+              ...(missing.length > 0 ? [`LACKS ${missing.map((need) => need.toolchain).join(", ")}`] : []),
+              ...older.map((need) => `has ${need.toolchain} ${need.found}, OLDER than ${need.version}`),
+            ].join(", and ")}`
+          : " - this machine has them"
+      }.`,
     ),
     ...misfits,
     "</this machine>",

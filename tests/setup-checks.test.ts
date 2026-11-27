@@ -57,9 +57,31 @@ describe("a project, against this machine", () => {
     writeFileSync(join(project, "server.plain"), "***implementation reqs***\n\n- :Implementation: is written in Java 21 with Spring Boot.\n\n***functional specs***\n\n# serve\nServe.\n");
     const has = (command: string) => command === "java";
     expect(await checkProject(project, { has, jdk: () => false })).toEqual([
-      { level: "missing", name: "server", detail: "its implementation reqs need Java (java, spring boot), which this machine lacks", fix: expect.stringContaining("install Java") },
+      { level: "missing", name: "server", detail: "its implementation reqs need Java 21 (java, spring boot), which this machine lacks", fix: expect.stringContaining("install Java 21 or newer") },
     ]);
-    expect(await checkProject(project, { has, jdk: () => true })).toEqual([{ level: "ok", name: "server", detail: "has Java" }]);
+    expect(await checkProject(project, { has, jdk: () => true, version: () => "21.0.8" })).toEqual([{ level: "ok", name: "server", detail: "has Java" }]);
+  });
+
+  it("says a toolchain the reqs pin a version of is older here, with the version to install - one it cannot read is not held against it", async () => {
+    writeFileSync(join(project, "tidy.plain"), "***implementation reqs***\n\n- :Implementation: is written in Go 1.25, as one Go module.\n\n***functional specs***\n\n# plan\nPlan.\n");
+    const asked: string[] = [];
+    const has = (command: string) => command === "go";
+    const go = (found: string | undefined) => (toolchain: string) => (asked.push(toolchain), found);
+    expect(await checkProject(project, { has, version: go("1.24.3") })).toEqual([
+      {
+        level: "missing",
+        name: "tidy",
+        detail: "its implementation reqs need Go 1.25 (written in go, go module), and this machine's is 1.24.3",
+        fix: "install Go 1.25 or newer on this machine - the agents use its toolchains, and install none",
+      },
+    ]);
+    expect(asked).toEqual(["Go"]);
+    expect(await checkProject(project, { has, version: go("1.25.1") })).toEqual([{ level: "ok", name: "tidy", detail: "has Go" }]);
+    expect(await checkProject(project, { has, version: go(undefined) })).toEqual([{ level: "ok", name: "tidy", detail: "has Go" }]);
+    // Not there at all: lacking it is what is said, and its version is not asked.
+    asked.length = 0;
+    expect((await checkProject(project, { has: () => false, version: go("1.20") })).map(({ detail, fix }) => ({ detail, fix }))[0]).toEqual({ detail: "its implementation reqs need Go 1.25 (written in go, go module), which this machine lacks", fix: "install Go 1.25 or newer on this machine - the agents use its toolchains, and install none" });
+    expect(asked).toEqual([]);
   });
 
   it("says what in its testing scripts this machine does not have", async () => {
@@ -98,6 +120,28 @@ describe("what a project's implementation reqs need", () => {
   it("is the toolchains they name, read by keyword, each with the commands that show it is there", () => {
     expect(stackOf("- :Implementation: uses Python 3.12 with FastAPI.\n- The frontend is React, built with Vite.").map((need) => need.toolchain)).toEqual(["Python", "Node"]);
     expect(stackOf("- :Implementation: is written in Rust with Axum.")[0]).toEqual({ toolchain: "Rust", commands: ["cargo"], words: ["rust", "axum"] });
+  });
+
+  it("is pinned to the highest version they name of Go, Java, Node or Rust - not Python, which uv finds itself", () => {
+    expect(stackOf("- :Implementation: is written in Go 1.25, as one Go module.\n- It builds with Go 1.24 too.")[0]).toMatchObject({ toolchain: "Go", version: "1.25" });
+    expect(stackOf("- :Implementation: is written in Java 21 with Spring Boot.")[0]).toMatchObject({ toolchain: "Java", version: "21" });
+    expect(stackOf("- It runs on Node.js 22 with Express.")[0]).toMatchObject({ toolchain: "Node", version: "22" });
+    expect(stackOf("- :Implementation: is written in Python 3.12.")[0]).not.toHaveProperty("version");
+  });
+
+  it("reads a toolchain's own version from what its command says, and compares it as far as the pin says", async () => {
+    const { olderThan, versionIn } = await import("../src/stack.ts");
+    expect(versionIn("Go", "go version go1.24.3 darwin/arm64")).toBe("1.24.3");
+    expect(versionIn("Java", 'openjdk version "21.0.8" 2025-07-15\nOpenJDK Runtime Environment')).toBe("21.0.8");
+    expect(versionIn("Node", "v22.11.0")).toBe("22.11.0");
+    expect(versionIn("Rust", "cargo 1.82.0 (8f40fc59f 2024-08-21)")).toBe("1.82.0");
+    expect(versionIn("Go", "bash: go: command not found")).toBeUndefined();
+    expect(olderThan("1.24.3", "1.25")).toBe(true);
+    expect(olderThan("1.25.1", "1.25")).toBe(false);
+    expect(olderThan("1.25", "1.25")).toBe(false);
+    expect(olderThan("21.0.8", "21")).toBe(false);
+    expect(olderThan("17.0.12", "21")).toBe(true);
+    expect(olderThan("1.100", "1.25")).toBe(false);
   });
 });
 
