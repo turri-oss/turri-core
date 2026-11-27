@@ -46,6 +46,7 @@ import { didNotLand } from "./regenerate/failure-reports.ts";
 import { conformanceRefusal, createWorkLoop, TestingStepsMissing, describeModules, isUpToDate, type ModuleStatus, type PlannedPulse, type WorkLoop } from "./regenerate/loop.ts";
 import { didNotPass, PANEL_KEY } from "./regenerate/job-panel.ts";
 import { emitSessionEvent, type SkillProgress } from "./session-events.ts";
+import { followHarnessModel, outOfReachText } from "./chat-model.ts";
 import { createSessionSpending } from "./session-spending.ts";
 import { lookAhead } from "./preview.ts";
 import { defaultMapFiles } from "./regenerate/spec-map.ts";
@@ -508,6 +509,15 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
       return undefined;
     }
   };
+  // A person's chat runs on harness-model, and sends nothing to a model while that cannot be reached (chat-model.ts).
+  const harness = isSentinel
+    ? undefined
+    : followHarnessModel({
+        wanted: () => modelSpec(projectModels(readProjectConfig(cwd)).harness),
+        setModel: (model) => pi.setModel(model),
+        setThinking: (level) => pi.setThinkingLevel(level as Parameters<typeof pi.setThinkingLevel>[0]),
+        changed: (outOfReach) => emitSessionEvent(host, { type: "outOfReach", chat: link.id, outOfReach: outOfReach ?? null }),
+      });
 
   // Finished work is announced twice, to two audiences, because pi treats them differently.
   // An entry is drawn the moment it is appended: the person sees the job end, now. The agent
@@ -623,9 +633,19 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
     },
     thinkingLevel: () => pi.getThinkingLevel(),
     context: contextNow,
+    ...(harness !== undefined
+      ? {
+          onHarnessModel: async () => {
+            const ctx = contextNow();
+            if (ctx !== undefined) await harness.check(ctx);
+          },
+          outOfReach: harness.outOfReach,
+        }
+      : {}),
   });
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     lastContext = ctx;
+    await harness?.check(ctx);
   });
   pi.on("before_agent_start", (_event, ctx) => {
     lastContext = ctx;
@@ -691,6 +711,19 @@ function turriExtension(api: ExtensionAPI, session: TurriCore, link: ChatLink, b
   let lastUserMessage = "";
   /** While a skill runs in this chat: what passes the person's message to its agent. */
   let skillMessage: ((text: string) => void) | undefined;
+  // Nothing reaches a model from a chat that cannot be on harness-model: what is typed, a skill, a prompt template, what a
+  // command sends - pi hears each as input after its commands run, which still do, and before anything is sent.
+  if (harness !== undefined) {
+    pi.on("input", async (_event, ctx) => {
+      await harness.check(ctx);
+      const outOfReach = harness.outOfReach();
+      if (outOfReach === undefined) return { action: "continue" as const };
+      const text = outOfReachText(outOfReach);
+      if (ctx.hasUI) ctx.ui.notify(text, "error");
+      emitSessionEvent(host, { type: "notification", chat: link.id, text, level: "error" });
+      return { action: "handled" as const };
+    });
+  }
   pi.on("input", (event) => {
     if (event.source !== "extension") lastUserMessage = event.text;
     // A skill running in this chat holds its agent for the whole run: what the person types meanwhile is for the
@@ -2313,6 +2346,7 @@ function registerJobTools(pi: ExtensionAPI, session: TurriCore) {
         jobs.setMaxRunning(limit);
         return `Up to ${limit} pulse${limit === 1 ? "" : "s"} run at once now.`;
       },
+      harnessChanged: () => session.onHarnessModel(),
     },
   });
 }

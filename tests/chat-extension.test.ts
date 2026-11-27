@@ -57,7 +57,7 @@ type Command = { handler: (args: string, ctx: unknown) => Promise<unknown> };
 type Tool = { name: string; execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> };
 
 /** pi as a chat's extension is built into it: what is registered and appended kept, in order, and nothing else done. */
-function recordingPi() {
+function recordingPi(own: Record<string, unknown> = {}) {
   const order: string[] = [];
   const entries: Array<{ type: string; data: unknown }> = [];
   const commands = new Map<string, Command>();
@@ -75,6 +75,7 @@ function recordingPi() {
         if (key === "registerTool") return (tool: Tool) => void tools.set(tool.name, tool);
         if (key === "on") return (event: string, handler: Handler) => handlers.set(event, [...(handlers.get(event) ?? []), handler]);
         if (key === "appendEntry") return (type: string, data: unknown) => (order.push(`entry ${type}`), entries.push({ type, data }));
+        if (typeof key === "string" && Object.hasOwn(own, key)) return own[key];
         return () => undefined;
       },
     },
@@ -363,5 +364,113 @@ describe("a question in a chat with a screen", () => {
     const result = await pis[0]!.tools.get("cultivate")!.execute("id", { skill: "debug-specs", context: "The specs disagree." }, undefined, undefined, withPiDialogs(events));
     expect(result.content[0]!.text).toContain("<artifact>\nDjango\n</artifact>");
     expect(events).toEqual(["front end asked Which stack?"]);
+  });
+});
+
+describe("a person's chat and harness-model", () => {
+  const model = (provider: string, id: string) => ({ provider, id });
+  /** A chat of the person's on a pi whose models are `models`, signed in to `signedIn`: what it was put on, kept. */
+  async function chatOn(models: Array<{ provider: string; id: string }>, signedIn: Set<string>) {
+    const events: SessionEvent[] = [];
+    const session = createTurriCore({ onEvent: (event) => events.push(event) });
+    const put: string[] = [];
+    let on: { provider: string; id: string } | undefined = model("amazon-bedrock", "us.anthropic.claude-sonnet");
+    const made = recordingPi({
+      setModel: async (chosen: { provider: string; id: string }) => (put.push(`${chosen.provider}/${chosen.id}`), (on = chosen), true),
+      setThinkingLevel: (level: string) => void put.push(`:${level}`),
+    });
+    session.setDriver({ create: async () => void (await session.extension(made.pi)), dispose: async () => {} });
+    await session.open({ hidden: true });
+    const ctx = () => ({
+      ...contextOf(false),
+      model: on,
+      modelRegistry: {
+        find: (provider: string, id: string) => models.find((each) => each.provider === provider && each.id === id),
+        hasConfiguredAuth: (found: { provider: string }) => signedIn.has(found.provider),
+      },
+    });
+    /** Something sent to the chat: whether it went on to the model. */
+    const send = async (text: string) => {
+      for (const handler of made.handlers.get("input") ?? []) {
+        const result = (await handler({ type: "input", text, source: "interactive" }, ctx())) as { action: string } | undefined;
+        if (result?.action === "handled") return false;
+      }
+      return true;
+    };
+    return { session, events, put, send, start: () => made.start(ctx()), choose: (chosen: { provider: string; id: string }) => void (on = chosen) };
+  }
+
+  it("is put on harness-model as it starts, with its thinking", async () => {
+    writeFileSync(join(project, "config.turri.yaml"), "harness-model: openai/gpt-6-astra:high\n");
+    const { session, put, start } = await chatOn([model("openai", "gpt-6-astra")], new Set(["openai"]));
+    try {
+      await start();
+      expect(put).toEqual(["openai/gpt-6-astra", ":high"]);
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  it("sends nothing to a model while harness-model's provider is not signed in - said, and heard - until it is", async () => {
+    writeFileSync(join(project, "config.turri.yaml"), "harness-model: openai/gpt-6-astra\n");
+    const signedIn = new Set<string>();
+    const { session, events, put, send, start } = await chatOn([model("openai", "gpt-6-astra")], signedIn);
+    try {
+      await start();
+      expect(put).toEqual([]);
+      expect(await send("build the todo app")).toBe(false);
+      const chat = session.chats()[0]!.id;
+      expect(events).toContainEqual({ type: "outOfReach", chat, outOfReach: { model: "openai/gpt-6-astra", provider: "openai", why: "signed-out" } });
+      expect(events).toContainEqual(expect.objectContaining({ type: "notification", chat, level: "error", text: expect.stringContaining("Nothing was sent: openai/gpt-6-astra") }));
+      expect(session.outOfReach(chat)?.why).toBe("signed-out");
+      // Signed in: the chat is put on it, and what is sent goes on.
+      signedIn.add("openai");
+      await session.onHarnessModel();
+      expect(put).toEqual(["openai/gpt-6-astra"]);
+      expect(events.at(-1)).toEqual({ type: "outOfReach", chat, outOfReach: null });
+      expect(await send("build the todo app")).toBe(true);
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  it("says a harness-model there is no such model of, as one it cannot reach", async () => {
+    writeFileSync(join(project, "config.turri.yaml"), "harness-model: openai/gpt-9\n");
+    const { session, send, start } = await chatOn([model("openai", "gpt-6-astra")], new Set(["openai"]));
+    try {
+      await start();
+      expect(await send("hello")).toBe(false);
+      expect(session.outOfReach(session.chats()[0]!.id)).toEqual({ model: "openai/gpt-9", provider: "openai", why: "unknown" });
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  it("keeps a model the person chose until harness-model changes, then goes with it", async () => {
+    writeFileSync(join(project, "config.turri.yaml"), "harness-model: openai/gpt-6-astra\n");
+    const models = [model("openai", "gpt-6-astra"), model("openai", "gpt-6-luna"), model("anthropic", "claude-opus-5-5")];
+    const { session, put, send, start, choose } = await chatOn(models, new Set(["openai", "anthropic"]));
+    try {
+      await start();
+      choose(model("openai", "gpt-6-luna"));
+      expect(await send("go on")).toBe(true);
+      expect(put).toEqual(["openai/gpt-6-astra"]);
+      writeFileSync(join(project, "config.turri.yaml"), "harness-model: anthropic/claude-opus-5-5\n");
+      expect(await send("go on")).toBe(true);
+      expect(put).toEqual(["openai/gpt-6-astra", "anthropic/claude-opus-5-5"]);
+    } finally {
+      await session.dispose();
+    }
+  });
+
+  it("leaves a chat on pi's own choice when harness-model is unset", async () => {
+    const { session, put, send, start } = await chatOn([], new Set());
+    try {
+      await start();
+      expect(await send("hello")).toBe(true);
+      expect(put).toEqual([]);
+    } finally {
+      await session.dispose();
+    }
   });
 });

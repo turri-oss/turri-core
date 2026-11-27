@@ -42,12 +42,16 @@ export interface LiveHooks {
   chatModel(spec: string | undefined, ctx: ExtensionContext): Promise<string | undefined>;
   /** How many pulses run at once: the number, or the machine's default. */
   parallelJobs(count: number | undefined): string | undefined;
+  /** harness-model changed: every chat of the person's put on it. */
+  harnessChanged?(): Promise<void>;
 }
 
 /** What a written setting changes as turri runs, outside any chat: the session's. */
 export interface WriteHooks {
   /** The chat that changed it switches to its model - provider/id:thinking - or, undefined, no longer set in the file. */
   chatModel?(spec: string | undefined): Promise<string | undefined>;
+  /** harness-model changed: every chat of the person's put on it, not only the one that changed it. */
+  harnessChanged?(): Promise<void>;
   /** How many pulses run at once: the number, or the machine's default. */
   parallelJobs(count: number | undefined): string | undefined;
 }
@@ -78,6 +82,7 @@ export async function changeSetting(
     if (gave !== undefined) notes.push(gave);
     const said = await hooks.chatModel?.(hooks.chatSpec?.());
     if (said !== undefined) notes.push(said);
+    await hooks.harnessChanged?.();
   }
   if (setting.key === "coding-model" || setting.key === "models.coding" || setting.key === "models.default") {
     const gave = givenWay(cwd, "codingModel", "the coding model");
@@ -213,7 +218,7 @@ export function registerSettings(pi: ExtensionAPI, options: SettingsOptions): vo
 
   /** Write a setting - or unset it - and say what it did and when it takes effect. */
   const change = async (setting: Setting, value: unknown, ctx: ExtensionContext, module?: string): Promise<string> =>
-    (await changeSetting(cwd, setting, value, module, { chatModel: (spec) => options.live.chatModel(spec, ctx), chatSpec: options.chatSpec, parallelJobs: options.live.parallelJobs })).said;
+    (await changeSetting(cwd, setting, value, module, { chatModel: (spec) => options.live.chatModel(spec, ctx), chatSpec: options.chatSpec, parallelJobs: options.live.parallelJobs, ...(options.live.harnessChanged !== undefined ? { harnessChanged: options.live.harnessChanged } : {}) })).said;
 
   /** Set a setting to what was typed - or unset it - and say what it did and when it takes effect. */
   const apply = async (setting: Setting, typed: string, ctx: ExtensionContext): Promise<void> => {

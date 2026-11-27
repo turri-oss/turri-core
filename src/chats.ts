@@ -12,6 +12,7 @@ import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { newNotice, noticeTask, SENTINEL, sentinelStartChoice, wentWrong, type ChatRole, type Conclusion, type Notice, type NoticeAnswer, type NoticeInput, type SentinelCheck } from "./notice.ts";
 import { emitSessionEvent, type SessionEvent } from "./session-events.ts";
 import { createSessionSpending, type SessionSpending } from "./session-spending.ts";
+import type { ModelOutOfReach } from "./chat-model.ts";
 
 /**
  * The chats of a turri session.
@@ -154,6 +155,10 @@ export interface ChatInstance {
   thinkingLevel(): string | undefined;
   /** The chat's context, as its tools get it - for its model and its providers. */
   context(): ExtensionContext | undefined;
+  /** A person's chat: put on harness-model if it is not on it as the config has it now - or why it cannot be kept. */
+  onHarnessModel?(): Promise<void>;
+  /** A person's chat: harness-model as it cannot be reached now - none while the chat is on it. */
+  outOfReach?(): ModelOutOfReach | undefined;
 }
 
 /** A chat's extension, linked to its chat. */
@@ -210,6 +215,10 @@ export interface TurriCore {
   session(id: string): AgentSession | undefined;
   /** The questions the chat asks now declined, as ctrl+c at one declines it - `none` when it asks nothing. */
   decline(id: string): "declined" | "none" | "missing";
+  /** Each of the person's chats put on harness-model as the config has it now - after a sign-in, or a change to it. */
+  onHarnessModel(): Promise<void>;
+  /** harness-model as the chat cannot be on it now - none while it is, or for the sentinel's. */
+  outOfReach(id: string): ModelOutOfReach | undefined;
   /** The chat shown now. */
   shown(): string | undefined;
   /** Open a chat - fresh, or the saved one `sessionFile` is - shown at once unless `hidden`; the sentinel with `role`. */
@@ -517,6 +526,16 @@ export function createChats(options: CoreOptions): TurriCore {
       for (const decline of asking) decline();
       return asking.length > 0 ? "declined" : "none";
     },
+    async onHarnessModel() {
+      for (const chat of [...chats]) {
+        try {
+          await chat.instance?.onHarnessModel?.();
+        } catch {
+          /* a chat let go as it was put on it */
+        }
+      }
+    },
+    outOfReach: (id) => chats.find((chat) => chat.id === id)?.instance?.outOfReach?.(),
     shown: () => shownId,
     shownChat: () => chats.find((chat) => chat.id === shownId),
     chatOfSession: (session) => chats.find((chat) => chat.session === session),

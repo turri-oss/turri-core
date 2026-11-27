@@ -99,7 +99,7 @@ models:                              # each agent role's model, thinking and tur
 | key | what it sets | left out |
 | --- | --- | --- |
 | `module` | the `.plain` file `turri regenerate` and the chat's `regenerate` build when none is named, from the project root | a file has to be named |
-| `harness-model` | the model `turri` starts on - the one you talk to - and, in the conversation, the planner that cuts the work into jobs (on whatever model the chat is on when it plans); under `turri regenerate`, the planner too | [pi](https://pi.dev)'s configured model |
+| `harness-model` | the model `turri` starts on - the one you talk to: every chat of yours is put on it as it opens and again when it changes, and sends nothing while it cannot be reached here - and, in the conversation, the planner that cuts the work into jobs (on whatever model the chat is on when it plans); under `turri regenerate`, the planner too | [pi](https://pi.dev)'s configured model |
 | `coding-model` | every regeneration: functionalities, \*\*\*plain diffs, conformance tests, repairs, planning \*\*\*plain diffs, the explorer | `harness-model` |
 | `judge-model` | the judge and the test review of a conformance run | `coding-model` |
 | `review` | `true` or `false`: whether the code and its unit tests - and the conformance tests - are reviewed once they pass: two reviews at most, the second weighed by the arbiter; off, a job lands once its tests pass. A module's first pulse of one functional spec - the project set up and the smallest thing that runs - lands on its unit tests with no review - see [regenerating the code](regenerating.md#the-code-and-its-unit-tests-are-reviewed) | `false` |

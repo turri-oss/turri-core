@@ -75,6 +75,8 @@ try {
   assert.equal(readLedger(project)[0]?.kind, "run.started");
   assert.equal(runViews(project).length, 1);
   assert.ok(chat.session instanceof AgentSession, "core and front end must use the same pi instance");
+  assert.equal(chat.outOfReach(), undefined); // no harness-model: pi's own choice
+  await turri.chats.onHarnessModel();
   const banner = (entry: ChatEntry) => isChatEntryOf(entry, BANNER_ENTRY) && typeof entry.data.version === "string";
   assert.ok(events.some((event) => event.type === "entry" && event.chat === chat.id && banner(event.entry)));
   assert.ok(chat.entries().some(banner));

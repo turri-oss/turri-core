@@ -23,7 +23,7 @@ One interface for every front end. 0.1.0's surface was cut for its two consumers
 ### Added
 
 - A session's work loop runs with no chat open, on the config's models: the coding model builds, the harness model plans.
-- A fresh chat of the person's starts on the project's harness model.
+- A person's chat runs on `harness-model`: put on it as it starts and whenever it changes, a model chosen in the chat holding until then. While it cannot be reached - no such model, or its provider not signed in - the chat refuses what is sent to it and says why, rather than reaching pi's own choice of model: `Chat.outOfReach()`, the `outOfReach` event, and `chats.onHarnessModel()` after a sign-in.
 - `launches.followLogs` and `followLaunchedLogs` stop on a signal.
 - `launchOutput` events: each launch's agent's words as they stream. `launches.launch` takes `onOutput`, `signal`, `guidance`, `inModule` and `again`, and `launchModule` `onOutput`.
 - `map` events: the spec map as it changes, for a front end that shows it (`Frontend.shows.map`) - its files looked at each second, its marks laid again as the work moves.

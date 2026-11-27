@@ -2,6 +2,7 @@ import type { ModelEvent } from "./regenerate/activity.ts";
 import type { ChatEntry } from "./chat-entries.ts";
 import type { CaptureResult } from "./capture/capture.ts";
 import type { CaptureStatus } from "./capture/progress.ts";
+import type { ModelOutOfReach } from "./chat-model.ts";
 
 /** A foreground skill's position. A view chooses its own width, colours and animation. */
 export interface SkillProgress {
@@ -26,7 +27,9 @@ export type SessionEvent =
     ))
   | { type: "entry"; chat: string; entry: ChatEntry }
   /** What turri says to the person, outside any chat's transcript: in the chat shown, as pi says what an extension says. */
-  | { type: "notification"; chat?: string; text: string; level: "info" | "warning" | "error" };
+  | { type: "notification"; chat?: string; text: string; level: "info" | "warning" | "error" }
+  /** A person's chat cannot be on harness-model now, or can again: null. */
+  | { type: "outOfReach"; chat: string; outOfReach: ModelOutOfReach | null };
 
 /** An observer that has lost its window must not interrupt a skill or prevent a chat from opening. */
 export function emitSessionEvent(host: { onEvent?(event: SessionEvent): void }, event: SessionEvent): void {

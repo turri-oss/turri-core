@@ -156,6 +156,7 @@ export interface Chat {
     readonly id: string;
     // (undocumented)
     info(): ChatInfo;
+    outOfReach(): ModelOutOfReach | undefined;
     readonly session: AgentSession;
     stop(): Promise<"stopped" | "idle">;
 }
@@ -1198,6 +1199,15 @@ export interface ModelEvent {
 }
 
 // @public
+export interface ModelOutOfReach {
+    model: string;
+    // (undocumented)
+    provider: string;
+    // (undocumented)
+    why: "unknown" | "signed-out";
+}
+
+// @public
 export type ModelRole = "default" | AgentRole;
 
 // @public
@@ -1741,6 +1751,7 @@ export interface Turri {
         adopt(session: AgentSession): Chat;
         restore(run?: RunRecord | "last"): Promise<Chat[]>;
         close(id: string): Promise<void>;
+        onHarnessModel(): Promise<void>;
     };
     readonly cwd: string;
     dispose(): Promise<void>;
@@ -1935,6 +1946,10 @@ export interface TurriEventMap {
     };
     orphansStopped: {
         count: number;
+    };
+    outOfReach: {
+        chat: string;
+        outOfReach: ModelOutOfReach | null;
     };
     plan: Record<never, never>;
     renamed: {

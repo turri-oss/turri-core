@@ -28,6 +28,7 @@ export {
 } from "../session.ts";
 export { isTurriError, TurriError, type TurriErrorCode } from "../errors.ts";
 export type { ClientInfo } from "../client.ts";
+export type { ModelOutOfReach } from "../chat-model.ts";
 export { MAX_CHATS, type ChatInfo, type ChatStatus } from "../chats.ts";
 export type { RunRecord } from "../chat-records.ts";
 export {

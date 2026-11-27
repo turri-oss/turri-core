@@ -3,6 +3,7 @@ import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager,
 import { runAsk, type AskUserIO, type DialogAsked } from "./ask.ts";
 import { inChat } from "./chat-scope.ts";
 import { isChatEntry, type ChatEntry } from "./chat-entries.ts";
+import type { ModelOutOfReach } from "./chat-model.ts";
 import { lastRun, type RunRecord } from "./chat-records.ts";
 import { interruptChat, type ChatInfo, type ChatState, type TurriCore, type TurriHost } from "./chats.ts";
 import type { ClientInfo } from "./client.ts";
@@ -185,6 +186,8 @@ export interface TurriEventMap {
   incident: { text: string; event: ModelEvent };
   /** What the session has spent changed. */
   spending: { spending: SessionSpending };
+  /** A person's chat cannot be on harness-model now - and sends nothing to a model - or, null, it can again. */
+  outOfReach: { chat: string; outOfReach: ModelOutOfReach | null };
   /** Something of turri's own failed - a healer, a provider, the history, the planner - said in a line. */
   failure: { what: "healer" | "provider" | "history" | "planner"; text: string };
   /** A func-id or scenario-id renamed in a module's records. */
@@ -208,6 +211,11 @@ export interface Chat {
   stop(): Promise<"stopped" | "idle">;
   /** Decline every question it asks now: the asker told the person declined, its turn going on. */
   decline(): Promise<"declined" | "none">;
+  /**
+   * harness-model as this chat cannot be on it now - no such model here, or its provider not signed in: while it cannot,
+   * the chat sends nothing to a model. None while it is on it, or for the sentinel's chat.
+   */
+  outOfReach(): ModelOutOfReach | undefined;
 }
 
 /** What the pulses view shows: each codebase, the pulses this session ran, and those planned. */
@@ -283,6 +291,11 @@ export interface Turri {
     restore(run?: RunRecord | "last"): Promise<Chat[]>;
     /** Closed: its turn stopped, its conversation let go - its pulses run on. */
     close(id: string): Promise<void>;
+    /**
+     * Each of the person's chats put on harness-model as the config has it now, where it can be: after the person signed
+     * in to a provider, or changed harness-model outside turri. A chat checks it again as it is sent something, too.
+     */
+    onHarnessModel(): Promise<void>;
   };
 
   readonly work: {
@@ -488,8 +501,6 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
           session.dispose();
           throw error;
         }
-        // A fresh chat of the person's starts on the project's harness model; a reopened one keeps what it had.
-        if (chat.role === undefined && sessionFile === undefined) await onHarnessModel(session);
       },
       async dispose(chat) {
         const session = chat.session;
@@ -534,20 +545,6 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
     });
   }
 
-  /** A person's chat on the project's harness model, as the config names it - pi's own default otherwise. */
-  async function onHarnessModel(session: AgentSession): Promise<void> {
-    const named = splitModelSpec(modelSpec(projectModels(readProjectConfig(cwd)).harness));
-    if (named.model === undefined) return;
-    try {
-      const slash = named.model.indexOf("/");
-      const model = slash > 0 ? session.extensionRunner.createContext().modelRegistry.find(named.model.slice(0, slash), named.model.slice(slash + 1)) : undefined;
-      if (model !== undefined && session.model !== model) await session.setModel(model);
-      if (named.thinking !== undefined) session.setThinkingLevel(named.thinking as never);
-    } catch {
-      /* a model that cannot be found or switched to: the chat keeps pi's */
-    }
-  }
-
   const stateOf = (id: string): ChatState | undefined => {
     const session = core.session(id);
     return session !== undefined ? core.chatOfSession(session) : undefined;
@@ -574,6 +571,11 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
       const said = core.decline(id);
       if (said === "missing") throw new TurriError("chat-closed", `The chat ${id} is closed.`);
       return said;
+    },
+    outOfReach() {
+      if (core.session(id) === undefined) throw new TurriError("chat-closed", `The chat ${id} is closed.`);
+      const outOfReach = core.outOfReach(id);
+      return outOfReach !== undefined ? snapshot(outOfReach) : undefined;
     },
   });
   const chatOrThrow = (id: string): ChatState => {
@@ -657,6 +659,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
         return core.chats().filter((chat) => !before.has(chat.id)).map((chat) => handle(chat.id));
       },
       close: (id) => core.close(id),
+      onHarnessModel: () => core.onHarnessModel(),
     },
     work: {
       status() {
@@ -747,6 +750,7 @@ export async function createTurri(options: TurriOptions = {}): Promise<Turri> {
         const known = reachableModels();
         const written = givenValue(cwd, setting, value, known.length > 0 ? (model) => known.includes(model) : undefined);
         return changeSetting(cwd, setting, written, asked.module, {
+          harnessChanged: () => core.onHarnessModel(),
           parallelJobs: (count) => {
             const limit = count ?? parallelJobs(cwd);
             core.jobs.setMaxRunning(limit);
