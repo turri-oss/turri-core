@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { afterCommand, beforeCommand, type AuditScope } from "../../src/regenerate/audit.ts";
 import { conversationCommand, conversationWriting, resetConversationWrites } from "../../src/regenerate/conversation-writes.ts";
 import { applySpecDiff } from "../../src/regenerate/regenerate.ts";
@@ -155,6 +155,36 @@ describe("what the conversation changes while an agent's command runs", () => {
     expect(readFileSync(join(project, "app.plain"), "utf8")).toContain("the person changed");
     expect(result.conversation).toEqual(["app.plain"]);
     expect(result.putBack).toEqual(["config.yaml"]);
+  });
+
+  // The clock's millisecond is all the audit orders them by: what the conversation did that ended in the millisecond the
+  // command began may have come after it, and the person's edit is never undone on a guess.
+  it("leaves a spec the conversation edited in the millisecond the command began", () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    try {
+      const before = beforeCommand(coder());
+      const done = conversationWriting([join(project, "app.plain")]);
+      writeFileSync(join(project, "app.plain"), "***definitions***\n- :App: is an app the person changed.\n");
+      done();
+      expect(afterCommand(before).conversation).toEqual(["app.plain"]);
+      expect(readFileSync(join(project, "app.plain"), "utf8")).toContain("the person changed");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("leaves what a command of the conversation's own changed, ending in the millisecond the agent's began", () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    try {
+      const before = beforeCommand(coder());
+      const done = conversationCommand();
+      writeFileSync(join(project, "test_scripts", "run_unittests_python.sh"), "python3 -m pytest\n");
+      done();
+      expect(afterCommand(before).conversation).toEqual(["test_scripts/run_unittests_python.sh"]);
+      expect(readFileSync(join(project, "test_scripts", "run_unittests_python.sh"), "utf8")).toBe("python3 -m pytest\n");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("puts back a spec the conversation wrote before the command began, as the command's change", () => {

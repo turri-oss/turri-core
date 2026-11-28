@@ -85,14 +85,18 @@ export function conversationSettled(): void {
   commands.clear();
 }
 
-/** Whether the conversation may have written this file after `since` - a write of its to it, or a command of its own. */
+/**
+ * Whether the conversation may have written this file since `since` - a write of its to it, or a command of its own.
+ * One that ended in the millisecond `since` names may have come after it: the clock tells them apart no finer, and the
+ * person's edit is never undone on a guess.
+ */
 export function writtenByConversation(path: string, since: number): boolean {
   const now = Date.now();
   const live = (running: Running) => now - running.started < STALE_MS;
-  if ([...commands].some(live) || lastCommandEnd > since) return true;
+  if ([...commands].some(live) || lastCommandEnd >= since) return true;
   const key = canonical(path);
   if ([...(writing.get(key) ?? [])].some(live)) return true;
-  return (wrote.get(key) ?? 0) > since;
+  return (wrote.get(key) ?? 0) >= since;
 }
 
 /** For tests: forget everything. */
