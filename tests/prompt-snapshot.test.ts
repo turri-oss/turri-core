@@ -14,6 +14,17 @@ vi.mock("../src/regenerate/diagnose.ts", async (importOriginal) => ({
   diagnoseFailure: async () => undefined,
 }));
 
+// What the model is told of this machine is the machine's own: the snapshot is of one with Seatbelt up and every
+// language of the standard library installed, whichever machine - CI's Linux among them - runs it.
+vi.mock("../src/regenerate/os-sandbox.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/regenerate/os-sandbox.ts")>()),
+  sandboxAvailable: () => ({ kind: "seatbelt" }),
+}));
+vi.mock("../src/stack.ts", async (importOriginal) => {
+  const stack = await importOriginal<typeof import("../src/stack.ts")>();
+  return { ...stack, toolchainsBlock: () => stack.toolchainsBlock(() => true) };
+});
+
 const { createTurriCore, chatRulesBlock } = await import("../src/extension.ts");
 const { PACKAGE_ROOT } = await import("../src/regenerate/paths.ts");
 
